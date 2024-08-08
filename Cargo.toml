@@ -1,0 +1,10 @@
+[package]
+name = "refimage"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+color-backtrace = "0.6.1"
+num-traits = "0.2.19"
+quick-error = "2.0.1"
+rayon = { version = "1.10.0", optional = true }
