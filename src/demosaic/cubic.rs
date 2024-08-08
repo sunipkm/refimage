@@ -20,8 +20,6 @@
 //!       ;   1   0  -9 -16  -9   0   1 ];
 //! ```
 
-use std::cmp::min;
-use std::io::Read;
 
 #[cfg(feature = "rayon")]
 use std::slice;
@@ -29,25 +27,15 @@ use std::slice;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
-use crate::demosaic::border_mirror::*;
 use crate::demosaic::{BayerError, BayerRead, BayerResult, RasterMut, CFA};
 use crate::traits::{
-    do_div, do_div_float, do_prod, do_prod2, do_sub, do_sum, f64_to_larger, get_clamp, get_mean,
+    do_div_float, do_prod, get_mean,
     large_to_f64, Enlargeable,
 };
-use crate::{ImageData, Primitive};
 
-macro_rules! do_prod_macro {
-    ( $( $x:expr ),* ) => {
-        {
-            let mut prod = do_prod($x, 1);
-            $(
-                prod = do_prod2(prod, $x);
-            )*
-            prod
-        }
-    };
-}
+#[cfg(feature = "rayon")]
+use crate::demosaic::border_mirror::BorderMirror;
+use crate::{ImageData, Primitive};
 
 const PADDING: usize = 3;
 
@@ -78,7 +66,7 @@ macro_rules! apply_kernel_row {
         while i + 1 < $w {
             apply_kernel_c!($T; $row, $w, $prv3, $prv2, $prv1, $curr, $nxt1, $nxt2, $nxt3, cfa_c, i);
             apply_kernel_g!($T; $row, $w, $prv3, $prv2, $prv1, $curr, $nxt1, $nxt2, $nxt3, cfa_g, i + 1);
-            i = i + 2;
+            i += 2;
         }
 
         if i < $w {
@@ -307,7 +295,7 @@ mod tests {
 
     #[test]
     fn test_even() {
-        color_backtrace::install();
+        // color_backtrace::install();
         // R: set.seed(0); matrix(floor(runif(n=64, min=0, max=256)), nrow=8, byrow=TRUE)
         let src = [
             229, 67, 95, 146, 232, 51, 229, 241, 169, 161, 15, 52, 45, 175, 98, 197, 127, 183, 253,
@@ -370,7 +358,7 @@ mod tests {
 
     #[test]
     fn test_overflow() {
-        color_backtrace::install();
+        // color_backtrace::install();
         let src = [
             255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0,
             255, 255, 255, 255, 255, 0, 0, 0, 255, 255, 255, 255, 255, 0, 255, 255, 255, 255, 255,

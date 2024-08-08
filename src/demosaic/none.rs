@@ -32,7 +32,7 @@ macro_rules! apply_kernel_row {
         while i + 1 < $w {
             apply_kernel_c!($row, $curr, cfa_c, i);
             apply_kernel_g!($row, $curr, i + 1);
-            i = i + 2;
+            i += 2;
         }
 
         if i < $w {

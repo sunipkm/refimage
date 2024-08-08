@@ -5,18 +5,6 @@ use super::RasterMut;
 
 impl<'a, T: Primitive> RasterMut<'a, T> {
     /// Allocate a new raster for the given destination buffer slice.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// const IMG_W: usize = 320;
-    /// const IMG_H: usize = 200;
-    /// let mut buf = [0; 3 * IMG_W * IMG_H];
-    ///
-    /// bayer::RasterMut::new(
-    ///         IMG_W, IMG_H, bayer::RasterDepth::Depth8,
-    ///         &mut buf);
-    /// ```
     pub fn new(w: usize, h: usize, buf: &'a mut [T])
             -> Self {
         let stride = w.checked_mul(3).expect("overflow");
@@ -25,18 +13,6 @@ impl<'a, T: Primitive> RasterMut<'a, T> {
 
     /// Allocate a new raster for the given destination buffer slice.
     /// Stride is in number of bytes.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// const IMG_W: usize = 320;
-    /// const IMG_H: usize = 200;
-    /// let mut buf = [0; 3 * IMG_W * IMG_H];
-    ///
-    /// bayer::RasterMut::with_offset(
-    ///         0, 0, IMG_W, IMG_H, 3 * IMG_W, bayer::RasterDepth::Depth8,
-    ///         &mut buf);
-    /// ```
     pub fn with_offset(
             x: usize, y: usize, w: usize, h: usize, stride: usize, buf: &'a mut [T])
             -> Self {

@@ -4,8 +4,10 @@
 mod traits;
 #[macro_use]
 mod demosaic;
-use demosaic::CFA;
-pub use traits::{Primitive, Lerp};
+pub use demosaic::BayerError;
+use demosaic::{run_demosaic, Demosaic, RasterMut, CFA};
+use traits::Enlargeable;
+pub use traits::{Lerp, Primitive};
 
 // use bayer::{run_demosaic, Demosaic, CFA};
 // pub use bayer::{BayerDepth, BayerError, BayerResult};
@@ -64,17 +66,6 @@ pub struct ImageData<'a, T: Primitive> {
     height: u16,
     channels: u8,
     cspace: ColorSpace,
-}
-
-mod test {
-    use super::DataStor;
-
-    #[test]
-    fn test_datastor() {
-        let mut data = vec![1, 2, 3, 4, 5];
-        let mut ds = DataStor::Ref(&mut data);
-        let a = ds.to_owned();
-    }
 }
 
 /// Enum to describe the color space of the image.
@@ -156,17 +147,60 @@ impl<'a, T: Primitive> ImageData<'a, T> {
     pub fn color_space(&self) -> ColorSpace {
         self.cspace
     }
+}
 
-    // Debayer the image.
-    // pub fn debayer(&self, alg: Demosaic) -> Result<ImageData<T>, BayerError> {
-    //     let depth = BayerDepth::Depth16BE;
-    //     let cfa = self.cspace.try_into().map_err(|_| BayerError::NoGood)?;
-    //     if self.channels > 1 || self.cspace == ColorSpace::Gray || self.cspace == ColorSpace::Rgb {
-    //         return Err(BayerError::WrongDepth);
-    //     }
-    //     let mut dst = Vec::<T>::with_capacity(self.width() * self.height() * 3);
-    //     let src = self.as_slice();
-    //     run_demosaic(src, depth, cfa, alg, dst.as_mut_slice())?;
-    //     todo!()
-    // }
+impl<'a, T: Primitive + Enlargeable> ImageData<'a, T> {
+    /// Debayer the image.
+    pub fn debayer(&self, alg: Demosaic) -> Result<ImageData<T>, BayerError> {
+        let cfa = self.cspace.try_into().map_err(|_| BayerError::NoGood)?;
+        if self.channels > 1 || self.cspace == ColorSpace::Gray || self.cspace == ColorSpace::Rgb {
+            return Err(BayerError::WrongDepth);
+        }
+        let mut dst = vec![T::zero(); self.width() * self.height() * 3];
+        let mut dst = RasterMut::new(self.width(), self.height(), &mut dst);
+        run_demosaic(self, cfa, alg, &mut dst)?;
+        Ok(ImageData::new(
+            DataStor::Own(dst.as_mut_slice().into()),
+            self.width,
+            self.height,
+            3,
+            ColorSpace::Rgb,
+        ))
+    }
+}
+
+mod test {
+    #[test]
+    fn test_datastor() {
+        let mut data = vec![1, 2, 3, 4, 5];
+        let ds = crate::DataStor::Ref(&mut data);
+        let _a = ds.to_owned();
+    }
+
+    #[test]
+    fn test_debayer() {
+        // color_backtrace::install();
+        let src = [
+            229, 67, 95, 146, 232, 51, 229, 241, 169, 161, 15, 52, 45, 175, 98, 197,
+        ];
+        let expected = [
+            229, 0, 0, 0, 67, 0, 95, 0, 0, 0, 146, 0, 0, 232, 0, 0, 0, 51, 0, 229, 0, 0, 0, 241,
+            169, 0, 0, 0, 161, 0, 15, 0, 0, 0, 52, 0, 0, 45, 0, 0, 0, 175, 0, 98, 0, 0, 0, 197,
+        ];
+        let img = crate::ImageData::new(
+            crate::DataStor::Own(src.into()),
+            4,
+            4,
+            1,
+            crate::ColorSpace::Rggb,
+        );
+        let a = img.debayer(crate::Demosaic::None);
+        assert!(a.is_ok());
+        let a = a.unwrap(); // at this point, a is an ImageData struct
+        assert!(a.channels() == 3);
+        assert!(a.width() == 4);
+        assert!(a.height() == 4);
+        assert!(a.color_space() == crate::ColorSpace::Rgb);
+        assert_eq!(a.as_slice(), &expected);
+    }
 }

@@ -3,7 +3,6 @@
 use crate::demosaic::RasterMut;
 use crate::demosaic::{BayerError, BayerRead, BayerResult, CFA};
 use crate::{ImageData, Primitive};
-use crate::demosaic::rotate;
 
 use super::border_replicate::BorderReplicate;
 
@@ -33,7 +32,7 @@ macro_rules! apply_kernel_row {
         while i + 1 < $w {
             apply_kernel_c!($row, $prev, $curr, cfa_c, i);
             apply_kernel_g!($row, $prev, $curr, cfa_g, i + 1);
-            i = i + 2;
+            i += 2;
         }
 
         if i < $w {

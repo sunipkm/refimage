@@ -77,6 +77,7 @@ where
     T::clamp_from(mean)
 }
 
+#[allow(dead_code)]
 pub(crate) fn get_clamp<T>(value: T) -> T
 where
     T: Primitive + Enlargeable,
@@ -86,33 +87,38 @@ where
 
 pub(crate) fn do_prod<T>(v1: T, v2: i32) -> T::Larger
 where T: Primitive + Enlargeable {
-    let prod = v1.to_larger() * NumCast::from(v2).unwrap();
-    prod
+    
+    v1.to_larger() * NumCast::from(v2).unwrap()
 }
 
+#[allow(dead_code)]
 pub(crate) fn do_prod2<T>(v1: T, v2: T) -> T::Larger
 where T: Primitive + Enlargeable {
-    let prod = v1.to_larger() * v2.to_larger();
-    prod
+    
+    v1.to_larger() * v2.to_larger()
 }
 
+#[allow(dead_code)]
 pub(crate) fn do_sum<T>(src: &[T]) -> T::Larger
 where T: Primitive + Enlargeable {
     src.iter().fold(T::Larger::zero(), |acc, &x| acc + x.to_larger())
 }
 
+#[allow(dead_code)]
 pub(crate) fn do_div<T>(v1: T::Larger, v2: i32) -> T
 where T: Primitive + Enlargeable {
     let div = v1 / NumCast::from(v2).unwrap();
     T::clamp_from(div)
 }
 
+#[allow(dead_code)]
 pub(crate) fn do_div2<T>(v1: T, v2: i32) -> T
 where T: Primitive + Enlargeable {
     let div = v1.to_larger() / NumCast::from(v2).unwrap();
     T::clamp_from(div)
 }
 
+#[allow(dead_code)]
 pub(crate) fn do_sub<T>(v1: T::Larger, v2: T::Larger) -> T
 where T: Primitive + Enlargeable {
     let sub = v1 - v2;
@@ -124,6 +130,7 @@ where T: Copy + ToPrimitive {
     NumCast::from(v).unwrap()
 }
 
+#[allow(dead_code)]
 pub(crate) fn f64_to_larger<T>(v: f64) -> T::Larger
 where T:  Enlargeable {
     NumCast::from(v).unwrap()
