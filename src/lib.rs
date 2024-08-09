@@ -4,13 +4,10 @@
 mod traits;
 #[macro_use]
 mod demosaic;
-pub use demosaic::BayerError;
-use demosaic::{run_demosaic, Demosaic, RasterMut, CFA};
+pub use demosaic::{BayerError, Demosaic};
+use demosaic::{run_demosaic, RasterMut, ColorFilterArray};
 use traits::Enlargeable;
 pub use traits::{Lerp, Primitive};
-
-// use bayer::{run_demosaic, Demosaic, CFA};
-// pub use bayer::{BayerDepth, BayerError, BayerResult};
 
 /// Enum to hold the data store.
 #[derive(Debug, PartialEq)]
@@ -86,15 +83,15 @@ pub enum ColorSpace {
     Rggb,
 }
 
-impl TryInto<CFA> for ColorSpace {
+impl TryInto<ColorFilterArray> for ColorSpace {
     type Error = ();
 
-    fn try_into(self) -> Result<CFA, Self::Error> {
+    fn try_into(self) -> Result<ColorFilterArray, Self::Error> {
         match self {
-            ColorSpace::Bggr => Ok(CFA::BGGR),
-            ColorSpace::Gbrg => Ok(CFA::GBRG),
-            ColorSpace::Grbg => Ok(CFA::GRBG),
-            ColorSpace::Rggb => Ok(CFA::RGGB),
+            ColorSpace::Bggr => Ok(ColorFilterArray::Bggr),
+            ColorSpace::Gbrg => Ok(ColorFilterArray::Gbrg),
+            ColorSpace::Grbg => Ok(ColorFilterArray::Grbg),
+            ColorSpace::Rggb => Ok(ColorFilterArray::Rggb),
             _ => Err(()),
         }
     }

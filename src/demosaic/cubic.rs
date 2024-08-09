@@ -27,7 +27,7 @@ use std::slice;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
-use crate::demosaic::{BayerError, BayerRead, BayerResult, RasterMut, CFA};
+use crate::demosaic::{BayerError, BayerRead, BayerResult, RasterMut, ColorFilterArray};
 use crate::traits::{
     do_div_float, do_prod, get_mean,
     large_to_f64, Enlargeable,
@@ -39,7 +39,7 @@ use crate::{ImageData, Primitive};
 
 const PADDING: usize = 3;
 
-pub fn run<T>(src: &ImageData<'_, T>, cfa: CFA, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
+pub fn run<T>(src: &ImageData<'_, T>, cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
 where
     T: Primitive + Enlargeable,
 {
@@ -56,7 +56,7 @@ macro_rules! apply_kernel_row {
             $nxt1:expr, $nxt2:expr, $nxt3:expr,
             $cfa:expr, $w:expr) => {{
         let (mut i, cfa_c, cfa_g) =
-            if $cfa == CFA::BGGR || $cfa == CFA::RGGB {
+            if $cfa == ColorFilterArray::Bggr || $cfa == ColorFilterArray::Rggb {
                 (0, $cfa, $cfa.next_x())
             } else {
                 apply_kernel_g!($T; $row, $w, $prv3, $prv2, $prv1, $curr, $nxt1, $nxt2, $nxt3, $cfa, 0);
@@ -81,7 +81,7 @@ macro_rules! apply_kernel_c {
             $nxt1:expr, $nxt2:expr, $nxt3:expr,
             $cfa:expr, $i:expr) => {{
         // current = B/R, diagonal = R/B.
-        let (c, d) = if $cfa == CFA::BGGR { (2, 0) } else { (0, 2) };
+        let (c, d) = if $cfa == ColorFilterArray::Bggr { (2, 0) } else { (0, 2) };
         let j = $i + PADDING;
 
         let g_pos = do_prod(
@@ -141,7 +141,7 @@ macro_rules! apply_kernel_g {
             $nxt1:expr, $nxt2:expr, $nxt3:expr,
             $cfa:expr, $i:expr) => {{
         // horizontal = B/R, vertical = R/G.
-        let (h, v) = if $cfa == CFA::GBRG { (2, 0) } else { (0, 2) };
+        let (h, v) = if $cfa == ColorFilterArray::Gbrg { (2, 0) } else { (0, 2) };
         let j = $i + PADDING;
 
         let h_pos = do_prod(get_mean(&[$curr[j - 1], $curr[j + 1]]), 18);
@@ -163,7 +163,7 @@ macro_rules! apply_kernel_g {
 
 #[cfg(feature = "rayon")]
 #[allow(unused_parens)]
-fn debayer<T>(r: &[T], cfa: CFA, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
+fn debayer<T>(r: &[T], cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
 where
     T: Primitive + Enlargeable,
     {
@@ -223,7 +223,7 @@ where
 
 #[cfg(not(feature = "rayon"))]
 #[allow(unused_parens)]
-fn debayer<T>(r: &[T], cfa: CFA, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
+fn debayer<T>(r: &[T], cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
 where
     T: Primitive + Enlargeable,
 {
@@ -291,7 +291,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::debayer;
-    use crate::demosaic::{RasterMut, CFA};
+    use crate::demosaic::{RasterMut, ColorFilterArray};
 
     #[test]
     fn test_even() {
@@ -322,7 +322,7 @@ mod tests {
         const IMG_H: usize = 8;
         let mut buf = [0u8; 3 * IMG_W * IMG_H];
 
-        let res = debayer(&src, CFA::RGGB, &mut RasterMut::new(IMG_W, IMG_H, &mut buf));
+        let res = debayer(&src, ColorFilterArray::Rggb, &mut RasterMut::new(IMG_W, IMG_H, &mut buf));
         assert!(res.is_ok());
         assert_eq!(&buf[..], &expected[..]);
     }
@@ -351,7 +351,7 @@ mod tests {
         const IMG_H: usize = 7;
         let mut buf = [0u8; 3 * IMG_W * IMG_H];
 
-        let res = debayer(&src, CFA::RGGB, &mut RasterMut::new(IMG_W, IMG_H, &mut buf));
+        let res = debayer(&src, ColorFilterArray::Rggb, &mut RasterMut::new(IMG_W, IMG_H, &mut buf));
         assert!(res.is_ok());
         assert_eq!(&buf[..], &expected[..]);
     }
@@ -381,7 +381,7 @@ mod tests {
         const IMG_H: usize = 7;
         let mut buf = [0u8; 3 * IMG_W * IMG_H];
 
-        let res = debayer(&src, CFA::RGGB, &mut RasterMut::new(IMG_W, IMG_H, &mut buf));
+        let res = debayer(&src, ColorFilterArray::Rggb, &mut RasterMut::new(IMG_W, IMG_H, &mut buf));
         assert!(res.is_ok());
         assert_eq!(&buf[..], &expected[..]);
     }

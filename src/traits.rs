@@ -3,7 +3,9 @@ use std::ops::AddAssign;
 
 /// The type of each channel in a pixel. For example, this can be `u8`, `u16`, `f32`.
 // TODO rename to `PixelComponent`? Split up into separate traits? Seal?
-pub trait Primitive: Copy + NumCast + Num + PartialOrd<Self> + Clone + Bounded + Send + Sync {
+pub trait Primitive:
+    Copy + NumCast + Num + PartialOrd<Self> + Clone + Bounded + Send + Sync
+{
     /// The maximum value for this type of primitive within the context of color.
     /// For floats, the maximum is `1.0`, whereas the integer types inherit their usual maximum values.
     const DEFAULT_MAX_VALUE: Self;
@@ -22,19 +24,13 @@ macro_rules! declare_primitive {
     };
 }
 
-declare_primitive!(usize: (0)..Self::MAX);
 declare_primitive!(u8: (0)..Self::MAX);
 declare_primitive!(u16: (0)..Self::MAX);
 declare_primitive!(u32: (0)..Self::MAX);
-declare_primitive!(u64: (0)..Self::MAX);
-declare_primitive!(u128: (0)..Self::MAX);
 
-declare_primitive!(isize: (Self::MIN)..Self::MAX);
 declare_primitive!(i8: (Self::MIN)..Self::MAX);
 declare_primitive!(i16: (Self::MIN)..Self::MAX);
 declare_primitive!(i32: (Self::MIN)..Self::MAX);
-declare_primitive!(i64: (Self::MIN)..Self::MAX);
-declare_primitive!(i128: (Self::MIN)..Self::MAX);
 declare_primitive!(f32: (0.0)..1.0);
 declare_primitive!(f64: (0.0)..1.0);
 
@@ -50,6 +46,7 @@ pub trait Enlargeable: Sized + Bounded + NumCast + Copy {
         + AddAssign
         + Zero;
 
+    /// Clamp a larger value to the range of the smaller type.
     fn clamp_from(n: Self::Larger) -> Self {
         if n > Self::max_value().to_larger() {
             Self::max_value()
@@ -60,6 +57,7 @@ pub trait Enlargeable: Sized + Bounded + NumCast + Copy {
         }
     }
 
+    /// Convert the value to a larger type.
     fn to_larger(self) -> Self::Larger {
         NumCast::from(self).unwrap()
     }
@@ -86,61 +84,77 @@ where
 }
 
 pub(crate) fn do_prod<T>(v1: T, v2: i32) -> T::Larger
-where T: Primitive + Enlargeable {
-    
+where
+    T: Primitive + Enlargeable,
+{
     v1.to_larger() * NumCast::from(v2).unwrap()
 }
 
 #[allow(dead_code)]
 pub(crate) fn do_prod2<T>(v1: T, v2: T) -> T::Larger
-where T: Primitive + Enlargeable {
-    
+where
+    T: Primitive + Enlargeable,
+{
     v1.to_larger() * v2.to_larger()
 }
 
 #[allow(dead_code)]
 pub(crate) fn do_sum<T>(src: &[T]) -> T::Larger
-where T: Primitive + Enlargeable {
-    src.iter().fold(T::Larger::zero(), |acc, &x| acc + x.to_larger())
+where
+    T: Primitive + Enlargeable,
+{
+    src.iter()
+        .fold(T::Larger::zero(), |acc, &x| acc + x.to_larger())
 }
 
 #[allow(dead_code)]
 pub(crate) fn do_div<T>(v1: T::Larger, v2: i32) -> T
-where T: Primitive + Enlargeable {
+where
+    T: Primitive + Enlargeable,
+{
     let div = v1 / NumCast::from(v2).unwrap();
     T::clamp_from(div)
 }
 
 #[allow(dead_code)]
 pub(crate) fn do_div2<T>(v1: T, v2: i32) -> T
-where T: Primitive + Enlargeable {
+where
+    T: Primitive + Enlargeable,
+{
     let div = v1.to_larger() / NumCast::from(v2).unwrap();
     T::clamp_from(div)
 }
 
 #[allow(dead_code)]
 pub(crate) fn do_sub<T>(v1: T::Larger, v2: T::Larger) -> T
-where T: Primitive + Enlargeable {
+where
+    T: Primitive + Enlargeable,
+{
     let sub = v1 - v2;
     T::clamp_from(sub)
 }
 
 pub(crate) fn large_to_f64<T>(v: T) -> f64
-where T: Copy + ToPrimitive {
+where
+    T: Copy + ToPrimitive,
+{
     NumCast::from(v).unwrap()
 }
 
 #[allow(dead_code)]
 pub(crate) fn f64_to_larger<T>(v: f64) -> T::Larger
-where T:  Enlargeable {
+where
+    T: Enlargeable,
+{
     NumCast::from(v).unwrap()
 }
 
 pub(crate) fn do_div_float<T>(v1: f64, v2: i32) -> T
-where T: Primitive + Enlargeable {
+where
+    T: Primitive + Enlargeable,
+{
     NumCast::from(v1 / v2 as f64).unwrap_or(T::max_value())
 }
-
 
 impl Enlargeable for u8 {
     type Larger = u32;
@@ -151,16 +165,6 @@ impl Enlargeable for u16 {
 impl Enlargeable for u32 {
     type Larger = u64;
 }
-impl Enlargeable for u64 {
-    type Larger = u128;
-}
-impl Enlargeable for usize {
-    // Note: On 32-bit architectures, u64 should be enough here.
-    #[cfg(target_pointer_width = "64")]
-    type Larger = u128;
-    #[cfg(target_pointer_width = "32")]
-    type Larger = u64;
-}
 impl Enlargeable for i8 {
     type Larger = i32;
 }
@@ -168,16 +172,6 @@ impl Enlargeable for i16 {
     type Larger = i32;
 }
 impl Enlargeable for i32 {
-    type Larger = i64;
-}
-impl Enlargeable for i64 {
-    type Larger = i128;
-}
-impl Enlargeable for isize {
-    // Note: On 32-bit architectures, i64 should be enough here.
-    #[cfg(target_pointer_width = "64")]
-    type Larger = i128;
-    #[cfg(target_pointer_width = "32")]
     type Larger = i64;
 }
 impl Enlargeable for f32 {

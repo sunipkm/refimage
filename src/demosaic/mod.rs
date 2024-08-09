@@ -14,7 +14,7 @@ mod cubic;
 
 pub use errcode::BayerError;
 pub use errcode::BayerResult;
-pub use bayer::{BayerRead, CFA};
+pub use bayer::{BayerRead, ColorFilterArray};
 
 use crate::traits::Enlargeable;
 use crate::ImageData;
@@ -33,13 +33,17 @@ pub(crate)struct RasterMut<'a, T: Primitive> {
 /// The demosaicing algorithm to use to fill in the missing data.
 #[derive(Clone,Copy,Debug,Eq,PartialEq)]
 pub enum Demosaic {
+    /// No interpolation.
     None,
+    /// Nearest neighbour interpolation.
     NearestNeighbour,
+    /// Linear interpolation.
     Linear,
+    /// Cubic interpolation.
     Cubic,
 }
 
-pub(crate) fn run_demosaic<T>(r: &ImageData<T>, cfa: CFA, alg: Demosaic,
+pub(crate) fn run_demosaic<T>(r: &ImageData<T>, cfa: ColorFilterArray, alg: Demosaic,
     dst: &mut RasterMut<'_, T>)
     -> BayerResult<()> 
     where T: Primitive + Enlargeable {

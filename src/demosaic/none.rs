@@ -1,11 +1,11 @@
 //! Demosaicing without any interpolation.
 use crate::demosaic::RasterMut;
-use crate::demosaic::{BayerError, BayerRead, BayerResult, CFA};
+use crate::demosaic::{BayerError, BayerRead, BayerResult, ColorFilterArray};
 use crate::{ImageData, Primitive};
 
 use super::border_none::BorderNone;
 
-pub fn run<T>(src: &ImageData<'_, T>, cfa: CFA, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
+pub fn run<T>(src: &ImageData<'_, T>, cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
 where
     T: Primitive,
 {
@@ -22,7 +22,7 @@ macro_rules! apply_kernel_row {
             *e = T::zero();
         }
 
-        let (mut i, cfa_c) = if $cfa == CFA::BGGR || $cfa == CFA::RGGB {
+        let (mut i, cfa_c) = if $cfa == ColorFilterArray::Bggr || $cfa == ColorFilterArray::Rggb {
             (0, $cfa)
         } else {
             apply_kernel_g!($row, $curr, 0);
@@ -43,7 +43,7 @@ macro_rules! apply_kernel_row {
 
 macro_rules! apply_kernel_c {
     ($row:ident, $curr:expr, $cfa:expr, $i:expr) => {{
-        if $cfa == CFA::BGGR {
+        if $cfa == ColorFilterArray::Bggr {
             $row[3 * $i + 2] = $curr[$i];
         } else {
             $row[3 * $i + 0] = $curr[$i];
@@ -57,7 +57,7 @@ macro_rules! apply_kernel_g {
     }};
 }
 
-fn debayer<T>(r: &[T], cfa: CFA, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
+fn debayer<T>(r: &[T], cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
 where
     T: Primitive,
 {
@@ -80,7 +80,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::debayer;
-    use crate::demosaic::{RasterMut, CFA};
+    use crate::demosaic::{RasterMut, ColorFilterArray};
 
     #[test]
     fn test_even() {
@@ -98,7 +98,7 @@ mod tests {
         const IMG_H: usize = 4;
         let mut buf = [0u8; 3 * IMG_W * IMG_H];
 
-        let res = debayer(&src, CFA::RGGB, &mut RasterMut::new(IMG_W, IMG_H, &mut buf));
+        let res = debayer(&src, ColorFilterArray::Rggb, &mut RasterMut::new(IMG_W, IMG_H, &mut buf));
         assert!(res.is_ok());
         assert_eq!(&buf[..], &expected[..]);
     }
@@ -119,7 +119,7 @@ mod tests {
 
         let res = debayer(
             &src[..],
-            CFA::RGGB,
+            ColorFilterArray::Rggb,
             &mut RasterMut::new(IMG_W, IMG_H, &mut buf),
         );
         assert!(res.is_ok());

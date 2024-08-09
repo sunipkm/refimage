@@ -7,11 +7,11 @@ use crate::demosaic::BayerResult;
 /// top-right, bottom-left, and bottom-right pixels in the 2x2 block,
 /// in that order.
 #[derive(Clone,Copy,Debug,Eq,PartialEq)]
-pub enum CFA {
-    BGGR,
-    GBRG,
-    GRBG,
-    RGGB,
+pub enum ColorFilterArray {
+    Bggr,
+    Gbrg,
+    Grbg,
+    Rggb,
 }
 
 /// Trait for reading Bayer lines.
@@ -19,24 +19,24 @@ pub trait BayerRead<T> {
     fn read_row(&self, r: &[T], dst: &mut [T]) -> BayerResult<()>;
 }
 
-impl CFA {
+impl ColorFilterArray {
     /// The 2x2 pixel block obtained when moving right 1 column.
     pub fn next_x(self) -> Self {
         match self {
-            CFA::BGGR => CFA::GBRG,
-            CFA::GBRG => CFA::BGGR,
-            CFA::GRBG => CFA::RGGB,
-            CFA::RGGB => CFA::GRBG,
+            ColorFilterArray::Bggr => ColorFilterArray::Gbrg,
+            ColorFilterArray::Gbrg => ColorFilterArray::Bggr,
+            ColorFilterArray::Grbg => ColorFilterArray::Rggb,
+            ColorFilterArray::Rggb => ColorFilterArray::Grbg,
         }
     }
 
     /// The 2x2 pixel block obtained when moving down 1 row.
     pub fn next_y(self) -> Self {
         match self {
-            CFA::BGGR => CFA::GRBG,
-            CFA::GBRG => CFA::RGGB,
-            CFA::GRBG => CFA::BGGR,
-            CFA::RGGB => CFA::GBRG,
+            ColorFilterArray::Bggr => ColorFilterArray::Grbg,
+            ColorFilterArray::Gbrg => ColorFilterArray::Rggb,
+            ColorFilterArray::Grbg => ColorFilterArray::Bggr,
+            ColorFilterArray::Rggb => ColorFilterArray::Gbrg,
         }
     }
 }
