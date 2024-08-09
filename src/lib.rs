@@ -4,6 +4,7 @@
 mod traits;
 #[macro_use]
 mod demosaic;
+
 pub use demosaic::{BayerError, Demosaic};
 use demosaic::{run_demosaic, RasterMut, ColorFilterArray};
 use traits::Enlargeable;
@@ -11,46 +12,60 @@ pub use traits::{Lerp, Primitive};
 
 /// Enum to hold the data store.
 #[derive(Debug, PartialEq)]
-pub enum DataStor<'a, T: Primitive> {
+enum DataStorEnum<'a, T: Primitive> {
     /// A reference to a slice of data.
     Ref(&'a mut [T]),
     /// Owned data.
     Own(Vec<T>),
 }
 
-impl<'a, T: Primitive> DataStor<'a, T> {
+/// Private struct to hold the data store.
+#[derive(Debug, PartialEq)]
+pub struct DataStor<'a, T: Primitive>(DataStorEnum<'a, T>);
+
+impl <'a, T: Primitive> DataStor<'a, T> {
+    /// Create a new data store from owned data.
+    pub fn from_mut_ref(data: &'a mut [T]) -> Self {
+        DataStor(DataStorEnum::Ref(data))
+    }
+
+    /// Create a new data store from owned data.
+    pub fn from_owned(data: Vec<T>) -> Self {
+        DataStor(DataStorEnum::Own(data))
+    }
+    
     /// Get the data as a slice.
     pub fn as_slice(&self) -> &[T] {
-        match self {
-            DataStor::Ref(data) => data,
-            DataStor::Own(data) => data.as_slice(),
+        match &self.0 {
+            DataStorEnum::Ref(data) => data,
+            DataStorEnum::Own(data) => data.as_slice(),
         }
     }
 
     /// Get the data as a mutable slice.
     pub fn as_mut_slice(&mut self) -> &mut [T] {
-        match self {
-            DataStor::Ref(data) => data,
-            DataStor::Own(data) => data,
+        match &mut self.0 {
+            DataStorEnum::Ref(data) => data,
+            DataStorEnum::Own(data) => data,
         }
     }
 }
 
-impl<'a, T: Primitive> DataStor<'a, T> {
+impl <'a, T: Primitive> DataStor<'a, T> {
     /// Convert to owned data.
     pub fn to_owned(self) -> Self {
-        match self {
-            DataStor::Ref(data) => DataStor::Own(data.to_vec()),
-            DataStor::Own(data) => DataStor::Own(data),
+        match self.0 {
+            DataStorEnum::Ref(data) => DataStor(DataStorEnum::Own(data.to_vec())),
+            DataStorEnum::Own(data) => DataStor(DataStorEnum::Own(data)),
         }
     }
 }
 
-impl<'a, T: Primitive> Clone for DataStor<'a, T> {
+impl <'a, T: Primitive> Clone for DataStor<'a, T> {
     fn clone(&self) -> Self {
-        match self {
-            DataStor::Ref(data) => DataStor::Own(data.to_vec()),
-            DataStor::Own(data) => DataStor::Own(data.clone()),
+        match &self.0 {
+            DataStorEnum::Ref(data) => DataStor(DataStorEnum::Own(data.to_vec())),
+            DataStorEnum::Own(data) => DataStor(DataStorEnum::Own(data.clone())),
         }
     }
 }
@@ -157,7 +172,7 @@ impl<'a, T: Primitive + Enlargeable> ImageData<'a, T> {
         let mut dst = RasterMut::new(self.width(), self.height(), &mut dst);
         run_demosaic(self, cfa, alg, &mut dst)?;
         Ok(ImageData::new(
-            DataStor::Own(dst.as_mut_slice().into()),
+            DataStor::from_owned(dst.as_mut_slice().into()),
             self.width,
             self.height,
             3,
@@ -170,7 +185,7 @@ mod test {
     #[test]
     fn test_datastor() {
         let mut data = vec![1, 2, 3, 4, 5];
-        let ds = crate::DataStor::Ref(&mut data);
+        let ds = crate::DataStor::from_mut_ref(data.as_mut_slice());
         let _a = ds.to_owned();
     }
 
@@ -185,7 +200,7 @@ mod test {
             169, 0, 0, 0, 161, 0, 15, 0, 0, 0, 52, 0, 0, 45, 0, 0, 0, 175, 0, 98, 0, 0, 0, 197,
         ];
         let img = crate::ImageData::new(
-            crate::DataStor::Own(src.into()),
+            crate::DataStor::from_owned(src.into()),
             4,
             4,
             1,
