@@ -1,10 +1,11 @@
+use bytemuck::NoUninit;
 use num_traits::{Bounded, Num, NumCast, ToPrimitive, Zero};
 use std::ops::AddAssign;
 
 /// The type of each channel in a pixel. For example, this can be `u8`, `u16`, `f32`.
 // TODO rename to `PixelComponent`? Split up into separate traits? Seal?
 pub trait Primitive:
-    Copy + NumCast + Num + PartialOrd<Self> + Clone + Bounded + Send + Sync
+    Copy + NumCast + Num + PartialOrd<Self> + Clone + Bounded + Send + Sync + NoUninit
 {
     /// The maximum value for this type of primitive within the context of color.
     /// For floats, the maximum is `1.0`, whereas the integer types inherit their usual maximum values.
@@ -31,6 +32,7 @@ declare_primitive!(u32: (0)..Self::MAX);
 declare_primitive!(i8: (Self::MIN)..Self::MAX);
 declare_primitive!(i16: (Self::MIN)..Self::MAX);
 declare_primitive!(i32: (Self::MIN)..Self::MAX);
+
 declare_primitive!(f32: (0.0)..1.0);
 declare_primitive!(f64: (0.0)..1.0);
 

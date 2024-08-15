@@ -12,7 +12,7 @@ pub fn run<T>(src: &ImageData<'_, T>, cfa: ColorFilterArray, dst: &mut RasterMut
 where
     T: Primitive,
 {
-    if src.width < 2 || src.height < 2 {
+    if src.width() < 2 || src.height() < 2 {
         return Err(BayerError::WrongResolution);
     }
 

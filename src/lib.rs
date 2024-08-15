@@ -4,73 +4,17 @@
 mod traits;
 #[macro_use]
 mod demosaic;
+mod datastor;
+mod imagedata;
+#[macro_use]
+mod dynamicimagedata;
 
+use demosaic::ColorFilterArray;
 pub use demosaic::{BayerError, Demosaic};
-use demosaic::{run_demosaic, RasterMut, ColorFilterArray};
-use traits::Enlargeable;
 pub use traits::{Lerp, Primitive};
+pub(crate) use datastor::DataStor;
 
-/// Enum to hold the data store.
-#[derive(Debug, PartialEq)]
-enum DataStorEnum<'a, T: Primitive> {
-    /// A reference to a slice of data.
-    Ref(&'a mut [T]),
-    /// Owned data.
-    Own(Vec<T>),
-}
-
-/// Private struct to hold the data store.
-#[derive(Debug, PartialEq)]
-pub struct DataStor<'a, T: Primitive>(DataStorEnum<'a, T>);
-
-impl <'a, T: Primitive> DataStor<'a, T> {
-    /// Create a new data store from owned data.
-    pub fn from_mut_ref(data: &'a mut [T]) -> Self {
-        DataStor(DataStorEnum::Ref(data))
-    }
-
-    /// Create a new data store from owned data.
-    pub fn from_owned(data: Vec<T>) -> Self {
-        DataStor(DataStorEnum::Own(data))
-    }
-    
-    /// Get the data as a slice.
-    pub fn as_slice(&self) -> &[T] {
-        match &self.0 {
-            DataStorEnum::Ref(data) => data,
-            DataStorEnum::Own(data) => data.as_slice(),
-        }
-    }
-
-    /// Get the data as a mutable slice.
-    pub fn as_mut_slice(&mut self) -> &mut [T] {
-        match &mut self.0 {
-            DataStorEnum::Ref(data) => data,
-            DataStorEnum::Own(data) => data,
-        }
-    }
-}
-
-impl <'a, T: Primitive> DataStor<'a, T> {
-    /// Convert to owned data.
-    pub fn to_owned(self) -> Self {
-        match self.0 {
-            DataStorEnum::Ref(data) => DataStor(DataStorEnum::Own(data.to_vec())),
-            DataStorEnum::Own(data) => DataStor(DataStorEnum::Own(data)),
-        }
-    }
-}
-
-impl <'a, T: Primitive> Clone for DataStor<'a, T> {
-    fn clone(&self) -> Self {
-        match &self.0 {
-            DataStorEnum::Ref(data) => DataStor(DataStorEnum::Own(data.to_vec())),
-            DataStorEnum::Own(data) => DataStor(DataStorEnum::Own(data.clone())),
-        }
-    }
-}
-
-/// Struct to hold image data.
+/// Concrete type to hold image data.
 #[derive(Debug, PartialEq, Clone)]
 pub struct ImageData<'a, T: Primitive> {
     data: DataStor<'a, T>,
@@ -80,14 +24,23 @@ pub struct ImageData<'a, T: Primitive> {
     cspace: ColorSpace,
 }
 
+/// Holds image data with a generic primitive type.
+pub enum DynamicImageData<'a> {
+    /// Image data with a `u8` primitive type.
+    U8(ImageData<'a, u8>),
+    /// Image data with a `u16` primitive type.
+    U16(ImageData<'a, u16>),
+    /// Image data with a `f32` primitive type.
+    F32(ImageData<'a, f32>),
+}
+
 /// Enum to describe the color space of the image.
 #[repr(u8)]
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[non_exhaustive]
+#[derive(Debug, PartialEq, Clone, Copy, PartialOrd)]
 pub enum ColorSpace {
     /// Grayscale image.
     Gray,
-    /// RGB image.
-    Rgb,
     /// Bayer mosaic BGGR.
     Bggr,
     /// Bayer mosaic GBRG.
@@ -96,6 +49,20 @@ pub enum ColorSpace {
     Grbg,
     /// Bayer mosaic RGGB.
     Rggb,
+    /// RGB image.
+    Rgb,
+}
+
+/// Enum to describe the pixel type of the image.
+#[repr(u8)]
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum PixelType {
+    /// 8-bit unsigned integer.
+    U8,
+    /// 16-bit unsigned integer.
+    U16,
+    /// 32-bit floating point.
+    F32,
 }
 
 impl TryInto<ColorFilterArray> for ColorSpace {
@@ -109,75 +76,6 @@ impl TryInto<ColorFilterArray> for ColorSpace {
             ColorSpace::Rggb => Ok(ColorFilterArray::Rggb),
             _ => Err(()),
         }
-    }
-}
-
-impl<'a, T: Primitive> ImageData<'a, T> {
-    /// Create a new image data struct.
-    pub fn new(
-        data: DataStor<'a, T>,
-        width: u16,
-        height: u16,
-        channels: u8,
-        cspace: ColorSpace,
-    ) -> Self {
-        ImageData {
-            data,
-            width,
-            height,
-            channels,
-            cspace,
-        }
-    }
-
-    /// Get the data as a slice.
-    pub fn as_slice(&self) -> &[T] {
-        self.data.as_slice()
-    }
-
-    /// Get the data as a mutable slice.
-    pub fn as_mut_slice(&mut self) -> &mut [T] {
-        self.data.as_mut_slice()
-    }
-
-    /// Get the width of the image.
-    pub fn width(&self) -> usize {
-        self.width.into()
-    }
-
-    /// Get the height of the image.
-    pub fn height(&self) -> usize {
-        self.height.into()
-    }
-
-    /// Get the number of channels in the image.
-    pub fn channels(&self) -> u8 {
-        self.channels
-    }
-
-    /// Get the color space of the image.
-    pub fn color_space(&self) -> ColorSpace {
-        self.cspace
-    }
-}
-
-impl<'a, T: Primitive + Enlargeable> ImageData<'a, T> {
-    /// Debayer the image.
-    pub fn debayer(&self, alg: Demosaic) -> Result<ImageData<T>, BayerError> {
-        let cfa = self.cspace.try_into().map_err(|_| BayerError::NoGood)?;
-        if self.channels > 1 || self.cspace == ColorSpace::Gray || self.cspace == ColorSpace::Rgb {
-            return Err(BayerError::WrongDepth);
-        }
-        let mut dst = vec![T::zero(); self.width() * self.height() * 3];
-        let mut dst = RasterMut::new(self.width(), self.height(), &mut dst);
-        run_demosaic(self, cfa, alg, &mut dst)?;
-        Ok(ImageData::new(
-            DataStor::from_owned(dst.as_mut_slice().into()),
-            self.width,
-            self.height,
-            3,
-            ColorSpace::Rgb,
-        ))
     }
 }
 
@@ -203,9 +101,8 @@ mod test {
             crate::DataStor::from_owned(src.into()),
             4,
             4,
-            1,
             crate::ColorSpace::Rggb,
-        );
+        ).expect("Failed to create ImageData");
         let a = img.debayer(crate::Demosaic::None);
         assert!(a.is_ok());
         let a = a.unwrap(); // at this point, a is an ImageData struct
