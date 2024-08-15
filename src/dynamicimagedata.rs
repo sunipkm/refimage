@@ -283,7 +283,7 @@ mod test {
         let ds = crate::DataStor::from_mut_ref(data.as_mut_slice());
         let a = ImageData::new(ds, 3, 2, ColorSpace::Gray).expect("Failed to create ImageData");
         let b = DynamicImageData::from(a.clone());
-        let c: DynamicImage = DynamicImage::try_from(b).unwrap();
+        let c = DynamicImage::try_from(b).unwrap();
         let c_ = c.resize(128, 128, image::imageops::FilterType::Nearest);
         let _d: DynamicImageData = c_
             .try_into()

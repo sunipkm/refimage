@@ -16,13 +16,17 @@
 use rayon::prelude::*;
 
 use crate::demosaic::border_replicate::*;
-use crate::demosaic::{BayerError, BayerRead, BayerResult, RasterMut, ColorFilterArray};
+use crate::demosaic::{BayerError, BayerRead, BayerResult, ColorFilterArray, RasterMut};
 use crate::traits::{get_mean, Enlargeable};
 use crate::{ImageData, Primitive};
 
 const PADDING: usize = 1;
 
-pub fn run<T>(src: &ImageData<'_, T>, cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
+pub fn run<T>(
+    src: &ImageData<'_, T>,
+    cfa: ColorFilterArray,
+    dst: &mut RasterMut<'_, T>,
+) -> BayerResult<()>
 where
     T: Primitive + Enlargeable,
 {
@@ -36,7 +40,11 @@ where
 macro_rules! apply_kernel_c {
     ($T:ty; $row:ident, $prev:expr, $curr:expr, $next:expr, $cfa:expr, $i:expr) => {{
         // current = B/R, diagonal = R/B.
-        let (c, d) = if $cfa == ColorFilterArray::Bggr { (2, 0) } else { (0, 2) };
+        let (c, d) = if $cfa == ColorFilterArray::Bggr {
+            (2, 0)
+        } else {
+            (0, 2)
+        };
         let j = $i + PADDING;
 
         $row[3 * $i + c] = $curr[j];
@@ -48,7 +56,11 @@ macro_rules! apply_kernel_c {
 macro_rules! apply_kernel_g {
     ($T:ty; $row:ident, $prev:expr, $curr:expr, $next:expr, $cfa:expr, $i:expr) => {{
         // horizontal = B/R, vertical = R/G.
-        let (h, v) = if $cfa == ColorFilterArray::Gbrg { (2, 0) } else { (0, 2) };
+        let (h, v) = if $cfa == ColorFilterArray::Gbrg {
+            (2, 0)
+        } else {
+            (0, 2)
+        };
         let j = $i + PADDING;
 
         $row[3 * $i + h] = get_mean(&[$curr[j - 1], $curr[j + 1]]);
@@ -84,7 +96,6 @@ macro_rules! apply_kernel_row {
 /*--------------------------------------------------------------*/
 
 #[cfg(feature = "rayon")]
-#[allow(unused_parens,clippy::erasing_op,clippy::identity_op)]
 fn debayer<T>(r: &[T], cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
 where
     T: Primitive + Enlargeable,
@@ -103,14 +114,13 @@ where
 
         {
             let (top, src) = data.split_at_mut(stride * PADDING);
-            top[(stride * 0)..(stride * 1)].copy_from_slice(&src[(stride * 1)..(stride * 2)]);
+            top[0..stride].copy_from_slice(&src[stride..(stride * 2)]);
         }
 
         {
             let (src, bottom) = data.split_at_mut(stride * (h + PADDING));
             let yy = PADDING + h;
-            bottom[(stride * 0)..(stride * 1)]
-                .copy_from_slice(&src[(stride * (yy - 2))..(stride * (yy - 1))]);
+            bottom[0..stride].copy_from_slice(&src[(stride * (yy - 2))..(stride * (yy - 1))]);
         }
     }
 
@@ -119,8 +129,8 @@ where
         .enumerate()
         .for_each(|(y, row)| {
             let stride = 2 * PADDING + w;
-            let prev = &data[(stride * (PADDING + y - 1))..(stride * (PADDING + y + 0))];
-            let curr = &data[(stride * (PADDING + y + 0))..(stride * (PADDING + y + 1))];
+            let prev = &data[(stride * (PADDING + y - 1))..(stride * (PADDING + y))];
+            let curr = &data[(stride * (PADDING + y))..(stride * (PADDING + y + 1))];
             let next = &data[(stride * (PADDING + y + 1))..(stride * (PADDING + y + 2))];
             let cfa_y = if y % 2 == 0 { cfa } else { cfa.next_y() };
 
@@ -177,7 +187,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::debayer;
-    use crate::demosaic::{RasterMut, ColorFilterArray};
+    use crate::demosaic::{ColorFilterArray, RasterMut};
 
     #[test]
     fn test_even() {
@@ -220,7 +230,7 @@ mod tests {
         let mut buf = [0u8; 3 * IMG_W * IMG_H];
 
         let res = debayer(
-            & src,
+            &src,
             ColorFilterArray::Rggb,
             &mut RasterMut::new(IMG_W, IMG_H, &mut buf),
         );
