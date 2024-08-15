@@ -728,6 +728,7 @@ name = "refimage"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "crc32fast",
  "flate2",
  "image",
  "num-traits",

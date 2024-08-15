@@ -8,6 +8,8 @@ mod datastor;
 mod imagedata;
 #[macro_use]
 mod dynamicimagedata;
+#[cfg(feature = "serde")]
+mod dynamicimagedata_serde;
 
 use demosaic::ColorFilterArray;
 pub use demosaic::{BayerError, Demosaic};
