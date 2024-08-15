@@ -113,6 +113,16 @@ impl<'a> From<ImageData<'a, f32>> for DynamicImageData<'a> {
 }
 
 impl<'a> DynamicImageData<'a> {
+    /// Get the data as a slice of `u8`, regardless of the underlying type.
+    pub fn as_raw_u8(&self) -> &[u8] {
+        dynamic_map!(self, ref image, { image.as_u8_slice() })
+    }
+
+    /// Get the data as a slice of `u8`, regardless of the underlying type.
+    pub fn as_raw_u8_checked(&self) -> Option<&[u8]> {
+        dynamic_map!(self, ref image, { image.as_u8_slice_checked() })
+    }
+
     /// Get the data as a slice of `u8`.
     pub fn as_slice_u8(&self) -> Option<&[u8]> {
         match self {
