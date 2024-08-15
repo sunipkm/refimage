@@ -19,6 +19,7 @@
 //!       ;   0   0   0   0   0   0   0
 //!       ;   1   0  -9 -16  -9   0   1 ];
 //! ```
+
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
@@ -157,7 +158,7 @@ macro_rules! apply_kernel_g {
 /*--------------------------------------------------------------*/
 
 #[cfg(feature = "rayon")]
-#[allow(unused_parens)]
+#[allow(unused_parens,clippy::erasing_op,clippy::identity_op)]
 fn debayer<T>(r: &[T], cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
 where
     T: Primitive + Enlargeable,
@@ -175,17 +176,17 @@ where
 
         {
             let (top, src) = data.split_at_mut(stride * PADDING);
-            top[0..stride].copy_from_slice(&src[(stride * 3)..(stride * 4)]);
-            top[stride..(stride * 2)].copy_from_slice(&src[(stride * 2)..(stride * 3)]);
-            top[(stride * 2)..(stride * 3)].copy_from_slice(&src[stride..(stride * 2)]);
+            top[(stride * 0)..(stride * 1)].copy_from_slice(&src[(stride * 3)..(stride * 4)]);
+            top[(stride * 1)..(stride * 2)].copy_from_slice(&src[(stride * 2)..(stride * 3)]);
+            top[(stride * 2)..(stride * 3)].copy_from_slice(&src[(stride * 1)..(stride * 2)]);
         }
 
         {
             let (src, bottom) = data.split_at_mut(stride * (h + PADDING));
             let yy = PADDING + h;
-            bottom[0..stride]
+            bottom[(stride * 0)..(stride * 1)]
                 .copy_from_slice(&src[(stride * (yy - 2))..(stride * (yy - 1))]);
-            bottom[stride..(stride * 2)]
+            bottom[(stride * 1)..(stride * 2)]
                 .copy_from_slice(&src[(stride * (yy - 3))..(stride * (yy - 2))]);
             bottom[(stride * 2)..(stride * 3)]
                 .copy_from_slice(&src[(stride * (yy - 4))..(stride * (yy - 3))]);
@@ -199,8 +200,8 @@ where
             let stride = 2 * PADDING + w;
             let prv3 = &data[(stride * (PADDING + y - 3))..(stride * (PADDING + y - 2))];
             let prv2 = &data[(stride * (PADDING + y - 2))..(stride * (PADDING + y - 1))];
-            let prv1 = &data[(stride * (PADDING + y - 1))..(stride * PADDING + y)];
-            let curr = &data[(stride * PADDING + y)..(stride * (PADDING + y + 1))];
+            let prv1 = &data[(stride * (PADDING + y - 1))..(stride * (PADDING + y + 0))];
+            let curr = &data[(stride * (PADDING + y + 0))..(stride * (PADDING + y + 1))];
             let nxt1 = &data[(stride * (PADDING + y + 1))..(stride * (PADDING + y + 2))];
             let nxt2 = &data[(stride * (PADDING + y + 2))..(stride * (PADDING + y + 3))];
             let nxt3 = &data[(stride * (PADDING + y + 3))..(stride * (PADDING + y + 4))];
