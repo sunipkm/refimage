@@ -13,8 +13,8 @@ impl TryFrom<DynamicImage> for DynamicImageData<'_> {
             DynamicImage::ImageLuma8(data) => Ok(DynamicImageData::U8(
                 ImageData::new(
                     DataStor::from_owned(data.into_raw()),
-                    wid,
-                    hei,
+                    wid.into(),
+                    hei.into(),
                     ColorSpace::Gray,
                 )
                 .map_err(|_| "Could not create DynamicImageData from ImageLuma8")?,
@@ -22,8 +22,8 @@ impl TryFrom<DynamicImage> for DynamicImageData<'_> {
             DynamicImage::ImageRgb8(data) => Ok(DynamicImageData::U8(
                 ImageData::new(
                     DataStor::from_owned(data.into_raw()),
-                    wid,
-                    hei,
+                    wid.into(),
+                    hei.into(),
                     ColorSpace::Rgb,
                 )
                 .map_err(|_| "Could not create DynamicImageData from ImageRgb8")?,
@@ -31,8 +31,8 @@ impl TryFrom<DynamicImage> for DynamicImageData<'_> {
             DynamicImage::ImageLuma16(data) => Ok(DynamicImageData::U16(
                 ImageData::new(
                     DataStor::from_owned(data.into_raw()),
-                    wid,
-                    hei,
+                    wid.into(),
+                    hei.into(),
                     ColorSpace::Gray,
                 )
                 .map_err(|_| "Could not create DynamicImageData from ImageLuma16")?,
@@ -40,8 +40,8 @@ impl TryFrom<DynamicImage> for DynamicImageData<'_> {
             DynamicImage::ImageRgb16(data) => Ok(DynamicImageData::U16(
                 ImageData::new(
                     DataStor::from_owned(data.into_raw()),
-                    wid,
-                    hei,
+                    wid.into(),
+                    hei.into(),
                     ColorSpace::Rgb,
                 )
                 .map_err(|_| "Could not create DynamicImageData from ImageRgb16")?,
@@ -49,8 +49,8 @@ impl TryFrom<DynamicImage> for DynamicImageData<'_> {
             DynamicImage::ImageRgb32F(data) => Ok(DynamicImageData::F32(
                 ImageData::new(
                     DataStor::from_owned(data.into_raw()),
-                    wid,
-                    hei,
+                    wid.into(),
+                    hei.into(),
                     ColorSpace::Rgb,
                 )
                 .map_err(|_| "Could not create DynamicImageData from ImageRgb32F")?,

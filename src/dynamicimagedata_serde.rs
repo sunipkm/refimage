@@ -157,7 +157,12 @@ impl<'b> TryFrom<SerialImage> for DynamicImageData<'b> {
         }
         match pixeltype {
             PixelType::U8 => {
-                let img = ImageData::new(DataStor::from_owned(out), width, height, cspace)?;
+                let img = ImageData::new(
+                    DataStor::from_owned(out),
+                    width.into(),
+                    height.into(),
+                    cspace,
+                )?;
                 if img.channels() != channels {
                     return Err("Data length does not match image size.");
                 }
@@ -167,8 +172,8 @@ impl<'b> TryFrom<SerialImage> for DynamicImageData<'b> {
                 let data = u8_slice_as_u16(&out).map_err(|_| "Could not cast u8 slice as u16")?;
                 let img = ImageData::new(
                     DataStor::from_owned(data.as_slice().to_vec()),
-                    width,
-                    height,
+                    width.into(),
+                    height.into(),
                     cspace,
                 )?;
                 if img.channels() != channels {
@@ -180,8 +185,8 @@ impl<'b> TryFrom<SerialImage> for DynamicImageData<'b> {
                 let data = u8_slice_as_f32(&out).map_err(|_| "Could not cast u8 slice as f32")?;
                 let img = ImageData::new(
                     DataStor::from_owned(data.as_slice().to_vec()),
-                    width,
-                    height,
+                    width.into(),
+                    height.into(),
                     cspace,
                 )?;
                 if img.channels() != channels {

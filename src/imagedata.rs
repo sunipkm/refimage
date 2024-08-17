@@ -9,10 +9,13 @@ impl<'a, T: Primitive> ImageData<'a, T> {
     /// Create a new image data struct.
     pub(crate) fn new(
         data: DataStor<'a, T>,
-        width: u16,
-        height: u16,
+        width: usize,
+        height: usize,
         cspace: ColorSpace,
     ) -> Result<Self, &'static str> {
+        if height > u16::MAX as usize || width > u16::MAX as usize {
+            return Err("Image too large.");
+        }
         if data.is_empty() {
             return Err("Data is empty");
         }
@@ -23,8 +26,8 @@ impl<'a, T: Primitive> ImageData<'a, T> {
             return Err("Height is zero");
         }
         let len = data.len();
-        let tot = (width as usize)
-            .checked_mul(height as usize)
+        let tot = width
+            .checked_mul(height)
             .ok_or("Image too large.")?;
         let (channels, rem) = len
             .checked_div_rem_euclid(&tot)
@@ -43,8 +46,8 @@ impl<'a, T: Primitive> ImageData<'a, T> {
 
         Ok(ImageData {
             data,
-            width,
-            height,
+            width: width as u16,
+            height: height as u16,
             channels: channels as u8,
             cspace,
         })
@@ -53,8 +56,8 @@ impl<'a, T: Primitive> ImageData<'a, T> {
     /// Create a new image data struct from owned data.
     pub fn from_mut_ref(
         data: &'a mut [T],
-        width: u16,
-        height: u16,
+        width: usize,
+        height: usize,
         cspace: ColorSpace,
     ) -> Result<Self, &'static str> {
         ImageData::new(DataStor::from_mut_ref(data), width, height, cspace)
@@ -63,8 +66,8 @@ impl<'a, T: Primitive> ImageData<'a, T> {
     /// Create a new image data struct from owned data.
     pub fn from_owned(
         data: Vec<T>,
-        width: u16,
-        height: u16,
+        width: usize,
+        height: usize,
         cspace: ColorSpace,
     ) -> Result<Self, &'static str> {
         ImageData::new(DataStor::from_owned(data), width, height, cspace)
