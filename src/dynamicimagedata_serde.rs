@@ -1,31 +1,21 @@
-use crate::{ColorSpace, DataStor, DynamicImageData, ImageData, PixelType};
+use crate::{DataStor, DynamicImageData, ImageData, PixelType};
+#[cfg(feature = "serde_flate")]
+use flate2::{write::ZlibDecoder, write::ZlibEncoder, Compress, Compression};
+#[cfg(feature = "serde")]
+pub use serde::{Deserialize, Deserializer, Serialize, Serializer};
+#[cfg(feature = "serde_flate")]
+use std::io::Write;
 
-struct DynamicImage<'a> {
+#[cfg(feature = "serde")]
+#[derive(Serialize, Deserialize)]
+struct SerialImage {
     width: u16,
     height: u16,
     channels: u8,
-    cspace: ColorSpace,
-    pixeltype: PixelType,
-    data: &'a [u8],
-}
-
-impl<'a> From<&'a DynamicImageData<'a>> for DynamicImage<'a> {
-    fn from(data: &'a DynamicImageData<'a>) -> DynamicImage<'a> {
-        let width = data.width();
-        let height = data.height();
-        let channels = data.channels();
-        let cspace = data.color_space();
-        let pixeltype: PixelType = (data).into();
-        let data = data.as_raw_u8();
-        DynamicImage {
-            width: width as _,
-            height: height as _,
-            channels,
-            cspace,
-            pixeltype,
-            data,
-        }
-    }
+    cspace: u8,
+    pixeltype: i8,
+    data: Vec<u8>,
+    crc: u32,
 }
 
 enum DtypeContainer<'a, T> {
@@ -92,31 +82,87 @@ fn u8_slice_as_u16(buf: &[u8]) -> ByteResult<DtypeContainer<u16>> {
     }
 }
 
-impl<'a, 'b> TryFrom<DynamicImage<'a>> for DynamicImageData<'b> {
+impl<'a> TryFrom<&'a DynamicImageData<'a>> for SerialImage {
     type Error = &'static str;
 
-    fn try_from(data: DynamicImage<'a>) -> Result<Self, Self::Error> {
+    fn try_from(data: &'a DynamicImageData<'a>) -> Result<Self, Self::Error> {
+        let width = data.width();
+        let height = data.height();
+        let channels = data.channels();
+        let cspace = data.color_space();
+        let pixeltype: PixelType = (data).into();
+        let data = data.as_raw_u8();
+        let out;
+        let crc = crc32fast::hash(data);
+        #[cfg(feature = "serde_flate")]
+        {
+            let mut encoder = ZlibEncoder::new_with_compress(
+                Vec::new(),
+                Compress::new(Compression::fast(), true),
+            );
+            encoder
+                .write_all(data)
+                .map_err(|_| "Could not write data to compressor.")?;
+            out = encoder
+                .finish()
+                .map_err(|_| "Could not finalize compression.")?;
+        }
+        #[cfg(not(feature = "serde_flate"))]
+        {
+            out = data.to_vec();
+        }
+        Ok(SerialImage {
+            width: width as _,
+            height: height as _,
+            channels,
+            cspace: cspace as _,
+            pixeltype: pixeltype as _,
+            data: out,
+            crc,
+        })
+    }
+}
+
+impl<'b> TryFrom<SerialImage> for DynamicImageData<'b> {
+    type Error = &'static str;
+
+    fn try_from(data: SerialImage) -> Result<Self, Self::Error> {
         let width = data.width;
         let height = data.height;
         let channels = data.channels;
-        let cspace = data.cspace;
-        let pixeltype = data.pixeltype;
+        let cspace = data.cspace.try_into()?;
+        let pixeltype = data.pixeltype.try_into()?;
+        #[allow(unused_mut)]
+        let mut out;
+        #[cfg(feature = "serde_flate")]
+        {
+            out = Vec::new();
+            let mut decoder = ZlibDecoder::new(out);
+            decoder
+                .write_all(&data.data)
+                .map_err(|_| "Could not decompress the data.")?;
+            out = decoder
+                .finish()
+                .map_err(|_| "Could not finalize the decompression.")?;
+        }
+        #[cfg(not(feature = "serde_flate"))]
+        {
+            out = data.data;
+        }
+        let crc = crc32fast::hash(&out);
+        if data.crc != crc {
+            return Err("Invalid data checksum");
+        }
         match pixeltype {
             PixelType::U8 => {
-                let img = ImageData::new(
-                    DataStor::from_owned(data.data.to_vec()),
-                    width,
-                    height,
-                    cspace,
-                )?;
+                let img = ImageData::new(DataStor::from_owned(out), width, height, cspace)?;
                 if img.channels() != channels {
                     return Err("Data length does not match image size.");
                 }
                 Ok(DynamicImageData::U8(img))
             }
             PixelType::U16 => {
-                let data =
-                    u8_slice_as_u16(data.data).map_err(|_| "Could not cast u8 slice as u16")?;
+                let data = u8_slice_as_u16(&out).map_err(|_| "Could not cast u8 slice as u16")?;
                 let img = ImageData::new(
                     DataStor::from_owned(data.as_slice().to_vec()),
                     width,
@@ -129,8 +175,7 @@ impl<'a, 'b> TryFrom<DynamicImage<'a>> for DynamicImageData<'b> {
                 Ok(DynamicImageData::U16(img))
             }
             PixelType::F32 => {
-                let data =
-                    u8_slice_as_f32(data.data).map_err(|_| "Could not cast u8 slice as f32")?;
+                let data = u8_slice_as_f32(&out).map_err(|_| "Could not cast u8 slice as f32")?;
                 let img = ImageData::new(
                     DataStor::from_owned(data.as_slice().to_vec()),
                     width,
@@ -143,5 +188,30 @@ impl<'a, 'b> TryFrom<DynamicImage<'a>> for DynamicImageData<'b> {
                 Ok(DynamicImageData::F32(img))
             }
         }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl Serialize for DynamicImageData<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerialImage::try_from(self)
+            .map_err(|_| serde::ser::Error::custom("Could not serialize DynamicImageData"))
+            .and_then(|img| img.serialize(serializer))
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for DynamicImageData<'de> {
+    fn deserialize<D>(deserializer: D) -> Result<DynamicImageData<'de>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        SerialImage::deserialize(deserializer).and_then(|img| {
+            DynamicImageData::try_from(img)
+                .map_err(|_| serde::de::Error::custom("Could not deserialize DynamicImageData"))
+        })
     }
 }

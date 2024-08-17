@@ -1,4 +1,5 @@
 #![deny(missing_docs)]
+// #![deny(exported_private_dependencies)]
 //! Crate to contain image data with a reference to a backing storage.
 
 mod traits;
@@ -8,13 +9,21 @@ mod datastor;
 mod imagedata;
 #[macro_use]
 mod dynamicimagedata;
-#[cfg(feature = "serde")]
+#[cfg(feature = "image")]
+pub mod dynamicimage_interop;
+#[cfg(feature = "serialize")]
 mod dynamicimagedata_serde;
 
+pub(crate) use datastor::DataStor;
 use demosaic::ColorFilterArray;
 pub use demosaic::{BayerError, Demosaic};
 pub use traits::{Lerp, Primitive};
-pub(crate) use datastor::DataStor;
+
+#[cfg(feature = "image")]
+pub use image::DynamicImage; // Used for image interop
+
+#[cfg(feature = "serde")]
+pub use serde::{Deserializer, Serializer};
 
 /// Concrete type to hold image data.
 #[derive(Debug, PartialEq, Clone)]
@@ -27,6 +36,7 @@ pub struct ImageData<'a, T: Primitive> {
 }
 
 /// Holds image data with a generic primitive type.
+#[derive(Debug, PartialEq, Clone)]
 pub enum DynamicImageData<'a> {
     /// Image data with a `u8` primitive type.
     U8(ImageData<'a, u8>),
@@ -42,29 +52,60 @@ pub enum DynamicImageData<'a> {
 #[derive(Debug, PartialEq, Clone, Copy, PartialOrd)]
 pub enum ColorSpace {
     /// Grayscale image.
-    Gray,
+    Gray = 0xa0,
     /// Bayer mosaic BGGR.
-    Bggr,
+    Bggr = 0xa1,
     /// Bayer mosaic GBRG.
-    Gbrg,
+    Gbrg = 0xa2,
     /// Bayer mosaic GRBG.
-    Grbg,
+    Grbg = 0xa3,
     /// Bayer mosaic RGGB.
-    Rggb,
+    Rggb = 0xa4,
     /// RGB image.
-    Rgb,
+    Rgb = 0xb0,
+}
+
+impl TryFrom<u8> for ColorSpace {
+    type Error = &'static str;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0xa0 => Ok(Self::Gray),
+            0xa1 => Ok(Self::Bggr),
+            0xa2 => Ok(Self::Gbrg),
+            0xa3 => Ok(Self::Grbg),
+            0xa4 => Ok(Self::Rggb),
+            0xb0 => Ok(Self::Rgb),
+            _ => Err("Invalid value for ColorSpace"),
+        }
+    }
 }
 
 /// Enum to describe the pixel type of the image.
-#[repr(u8)]
+/// The underlying `i8` representation conforms to the FITS standard.
+#[repr(i8)]
+#[non_exhaustive]
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum PixelType {
     /// 8-bit unsigned integer.
-    U8,
+    U8 = 8,
     /// 16-bit unsigned integer.
-    U16,
+    U16 = 16,
     /// 32-bit floating point.
-    F32,
+    F32 = -32,
+}
+
+impl TryFrom<i8> for PixelType {
+    type Error = &'static str;
+
+    fn try_from(value: i8) -> Result<Self, Self::Error> {
+        match value {
+            8 => Ok(Self::U8),
+            16 => Ok(Self::U16),
+            -32 => Ok(Self::F32),
+            _ => Err("Invalid value for PixelType"),
+        }
+    }
 }
 
 impl TryInto<ColorFilterArray> for ColorSpace {
@@ -104,7 +145,8 @@ mod test {
             4,
             4,
             crate::ColorSpace::Rggb,
-        ).expect("Failed to create ImageData");
+        )
+        .expect("Failed to create ImageData");
         let a = img.debayer(crate::Demosaic::None);
         assert!(a.is_ok());
         let a = a.unwrap(); // at this point, a is an ImageData struct
@@ -113,5 +155,23 @@ mod test {
         assert!(a.height() == 4);
         assert!(a.color_space() == crate::ColorSpace::Rgb);
         assert_eq!(a.as_slice(), &expected);
+    }
+
+    #[cfg(feature = "image")]
+    #[test]
+    fn test_dynamicimagedata() {
+        use crate::{ColorSpace, DynamicImageData, ImageData};
+        use image::DynamicImage;
+
+        let mut data: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
+        let ds = crate::DataStor::from_mut_ref(data.as_mut_slice());
+        let a = ImageData::new(ds, 3, 2, ColorSpace::Gray).expect("Failed to create ImageData");
+        let b = DynamicImageData::from(a.clone());
+        let c = DynamicImage::try_from(b).unwrap();
+        let c_ = c.resize(128, 128, image::imageops::FilterType::Nearest);
+        let _d: DynamicImageData = c_
+            .try_into()
+            .expect("Failed to convert DynamicImage to DynamicImageData");
+        assert_eq!(_d.width(), 128);
     }
 }
