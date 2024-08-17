@@ -10,8 +10,7 @@ bytemuck = { version = "1.16", features = [
     "wasm_simd",
     "extern_crate_alloc",
 ] }
-# image = { version = "0.25", optional = true }
-image = { path = "../image-rs-nofits", optional = true }
+image = { version = "0.25", optional = true }
 num-traits = "0.2"
 quick-error = "2.0"
 rayon = { version = "1.10", optional = true }

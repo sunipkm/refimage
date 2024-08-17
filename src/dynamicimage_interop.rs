@@ -104,14 +104,12 @@ impl<'a> TryFrom<DynamicImageData<'a>> for DynamicImage {
 }
 
 mod test {
-    use image::DynamicImage;
-
-    use crate::{ColorSpace, ImageData};
-
-    use super::DynamicImageData;
 
     #[test]
     fn test_dynamicimagedata() {
+        use super::DynamicImageData;
+        use crate::{ColorSpace, ImageData};
+        use image::DynamicImage;
         let mut data: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
         let ds = crate::DataStor::from_mut_ref(data.as_mut_slice());
         let a = ImageData::new(ds, 3, 2, ColorSpace::Gray).expect("Failed to create ImageData");
