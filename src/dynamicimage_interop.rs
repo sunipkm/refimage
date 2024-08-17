@@ -1,7 +1,7 @@
 //! Image interop
-pub use image::{DynamicImage, ImageBuffer};
+use image::ImageBuffer;
 
-use crate::{ColorSpace, DataStor, DynamicImageData, ImageData};
+use crate::{ColorSpace, DataStor, DynamicImage, DynamicImageData, ImageData};
 
 impl TryFrom<DynamicImage> for DynamicImageData<'_> {
     type Error = &'static str;

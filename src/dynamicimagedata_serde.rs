@@ -1,8 +1,10 @@
 use crate::{DataStor, DynamicImageData, ImageData, PixelType};
+#[cfg(feature = "serde")]
+use crate::{Deserializer, Serializer};
 #[cfg(feature = "serde_flate")]
 use flate2::{write::ZlibDecoder, write::ZlibEncoder, Compress, Compression};
 #[cfg(feature = "serde")]
-pub use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 #[cfg(feature = "serde_flate")]
 use std::io::Write;
 
