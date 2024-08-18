@@ -20,6 +20,8 @@ serde = { version = "1.0", features = ["derive"], optional = true }
 
 [dev-dependencies]
 color-backtrace = "0.6"
+serde-generate = "0.26"
+serde-reflection = "0.4"
 
 [features]
 default = ["rayon", "image", "serde"]

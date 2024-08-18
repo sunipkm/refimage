@@ -16,6 +16,7 @@ struct SerialImage {
     channels: u8,
     cspace: u8,
     pixeltype: i8,
+    compressed: bool,
     data: Vec<u8>,
     crc: u32,
 }
@@ -96,6 +97,7 @@ impl<'a> TryFrom<&'a DynamicImageData<'a>> for SerialImage {
         let data = data.as_raw_u8();
         let out;
         let crc = crc32fast::hash(data);
+        let compressed;
         #[cfg(feature = "serde_flate")]
         {
             let mut encoder = ZlibEncoder::new_with_compress(
@@ -108,10 +110,12 @@ impl<'a> TryFrom<&'a DynamicImageData<'a>> for SerialImage {
             out = encoder
                 .finish()
                 .map_err(|_| "Could not finalize compression.")?;
+            compressed = true;
         }
         #[cfg(not(feature = "serde_flate"))]
         {
             out = data.to_vec();
+            compressed = false;
         }
         Ok(SerialImage {
             width: width as _,
@@ -119,6 +123,7 @@ impl<'a> TryFrom<&'a DynamicImageData<'a>> for SerialImage {
             channels,
             cspace: cspace as _,
             pixeltype: pixeltype as _,
+            compressed,
             data: out,
             crc,
         })
@@ -138,6 +143,9 @@ impl<'b> TryFrom<SerialImage> for DynamicImageData<'b> {
         let mut out;
         #[cfg(feature = "serde_flate")]
         {
+            if !data.compressed {
+                return Err("Data is not compressed.");
+            }
             out = Vec::new();
             let mut decoder = ZlibDecoder::new(out);
             decoder
@@ -149,6 +157,9 @@ impl<'b> TryFrom<SerialImage> for DynamicImageData<'b> {
         }
         #[cfg(not(feature = "serde_flate"))]
         {
+            if data.compressed {
+                return Err("Data is compressed.");
+            }
             out = data.data;
         }
         let crc = crc32fast::hash(&out);
@@ -220,5 +231,44 @@ impl<'de> Deserialize<'de> for DynamicImageData<'de> {
             DynamicImageData::try_from(img)
                 .map_err(|_| serde::de::Error::custom("Could not deserialize DynamicImageData"))
         })
+    }
+}
+
+mod test {
+
+    #[test]
+    fn generate_pycode() {
+        use serde_reflection::{Tracer, TracerConfig};
+        use std::path::Path;
+
+        let mut tracer = Tracer::new(TracerConfig::default());
+        if let Err(v) = tracer.trace_simple_type::<super::SerialImage>() {
+            eprintln!("Tracer Error: {:?}", v);
+            return;
+        }
+        if let Ok(registry) = tracer.registry() {
+            let mut src = Vec::new();
+            let cfg =
+                serde_generate::CodeGeneratorConfig::new("refimage::DynamicImageData".to_string())
+                    .with_encodings(vec![serde_generate::Encoding::Bincode]);
+
+            let gen = serde_generate::python3::CodeGenerator::new(&cfg);
+            if let Err(v) = gen.output(&mut src, &registry) {
+                eprintln!("Output Error: {:?}", v);
+                return;
+            }
+            let outdir = Path::new(&"serde-interop/python3/dynamicimagedata");
+            if let Err(v) = std::fs::create_dir_all(outdir) {
+                match v.kind() {
+                    std::io::ErrorKind::AlreadyExists => {}
+                    _ => {
+                        eprintln!("Error creating directory: {:?}", v);
+                        return;
+                    }
+                }
+            }
+            std::fs::write(outdir.join("DynamicImageData.py"), src)
+                .expect("Could not write to file.");
+        }
     }
 }
