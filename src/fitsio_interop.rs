@@ -1,8 +1,5 @@
 use std::{
-    fs::remove_file,
-    io,
-    path::{Path, PathBuf},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    fmt::Display, path::{Path, PathBuf}, time::{Duration, SystemTime, UNIX_EPOCH}
 };
 
 use chrono::DateTime;
@@ -14,25 +11,74 @@ use fitsio::{
 };
 
 use crate::{
-    metadata::{LineItem, CAMERANAME_KEY, PROGRAMNAME_KEY, TIMESTAMP_KEY},
+    metadata::{LineItem, TIMESTAMP_KEY},
     DynamicImageData, GenericImage, GenericLineItem, ImageData, PixelStor, PixelType,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Hash)]
+/// Compression algorithms used in FITS files.
+pub enum FitsCompression {
+    /// No compression.
+    None,
+    /// GZIP compression.
+    Gzip,
+    /// Rice compression.
+    Rice,
+    /// HCOMPRESS compression.
+    Hcompress,
+    /// HCOMPRESS with smoothing.
+    Hsmooth,
+    /// BZIP2 compression.
+    Bzip2,
+    /// PLIO compression.
+    Plio,
+}
+
+impl FitsCompression {
+    fn extension(&self) -> &str {
+        match self {
+            FitsCompression::None => "fits",
+            FitsCompression::Gzip => "fits[compress G]",
+            FitsCompression::Rice => "fits[compress R]",
+            FitsCompression::Hcompress => "fits[compress H]",
+            FitsCompression::Hsmooth => "fits[compress HS]",
+            FitsCompression::Bzip2 => "fits[compress B]",
+            FitsCompression::Plio => "fits[compress P]",
+        }
+    }
+}
+
+impl From<Option<FitsCompression>> for FitsCompression {
+    fn from(opt: Option<FitsCompression>) -> Self {
+        opt.unwrap_or(FitsCompression::None)
+    }
+}
+
+impl Display for FitsCompression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FitsCompression::None => "uncomp",
+            FitsCompression::Gzip => "gzip",
+            FitsCompression::Rice => "rice",
+            FitsCompression::Hcompress => "hcompress",
+            FitsCompression::Hsmooth => "hscompress",
+            FitsCompression::Bzip2 => "bzip2",
+            FitsCompression::Plio => "plio",
+        }
+        .fmt(f)
+    }
+}
 
 impl GenericImage<'_> {
     /// Write the image data to a FITS file.
     pub fn write_fits(
         &self,
-        dir_prefix: &Path,
-        file_prefix: &str,
-        progname: Option<&str>,
-        compress: bool,
+        path: &Path,
+        compress: FitsCompression,
         overwrite: bool,
     ) -> Result<PathBuf, FitsError> {
-        if !dir_prefix.exists() {
-            return Err(FitsError::Io(io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("Directory {:?} does not exist", dir_prefix),
-            )));
+        if path.exists() && path.is_dir() {
+            return Err(FitsError::Message("Path is a directory".to_string()));
         }
 
         let timestamp = match self.get_key(TIMESTAMP_KEY) {
@@ -55,60 +101,33 @@ impl GenericImage<'_> {
                 .as_millis(),
         };
 
-        let cameraname = match self.get_key(CAMERANAME_KEY) {
-            Some(val) => val.get_value_string().unwrap_or_default(),
-            None => "",
-        };
+        // let cameraname = match self.get_key(CAMERANAME_KEY) {
+        //     Some(val) => val.get_value_string().unwrap_or_default(),
+        //     None => "",
+        // };
 
         let datestamp = DateTime::from_timestamp_millis(timestamp as i64).ok_or(
             FitsError::Message("Could not convert timestamp to NaiveDateTime".to_owned()),
         )?;
-        let datestamp = datestamp.format("%Y%m%d_%H%M%S").to_string();
+        let datestamp = datestamp.format("%Y-%m-%dT%H:%M:%S%.6f").to_string();
 
-        let file_prefix = if file_prefix.trim().is_empty() {
-            cameraname
-        } else {
-            file_prefix
+        let mut path = PathBuf::from(path);
+        path.set_extension((FitsCompression::None).extension()); // Default extension
+        if overwrite && path.exists() {
+            // There seems to be a bug in FITSIO, overwrite() the way called here does nothing
+            std::fs::remove_file(&path)?;
+        }
+
+        let fpath = path.clone();
+        path.set_extension(compress.extension());
+
+        let (hdu, mut fptr) = self.get_image().write_fits(path, compress)?;
+        let lineitem = LineItem {
+            name: "DATE-OBS".to_string(),
+            value: datestamp,
+            comment: Some("Date and time of FITS file data".to_string()),
         };
-
-        let fpath = dir_prefix.join(Path::new(&format!("{}_{}.fits", file_prefix, datestamp)));
-
-        if fpath.exists() {
-            if !overwrite {
-                return Err(FitsError::Io(io::Error::new(
-                    io::ErrorKind::AlreadyExists,
-                    format!("File {:?} already exists", fpath),
-                )));
-            } else {
-                let res = remove_file(fpath.clone());
-                if let Err(msg) = res {
-                    return Err(FitsError::Io(io::Error::new(
-                        io::ErrorKind::Other,
-                        format!("Could not remove file {:?}: {}", fpath, msg),
-                    )));
-                }
-            }
-        }
-
-        let path = Path::new(dir_prefix).join(Path::new(&format!(
-            "{}_{}.fits{}",
-            file_prefix,
-            timestamp,
-            if compress { "[compress]" } else { "" }
-        )));
-
-        let mut fptr = self.get_image().write_fits(path)?;
-        let hdu = fptr.primary_hdu()?;
-        if let Some(progname) = progname {
-            if !progname.is_empty() {
-                let lineitem = LineItem {
-                    name: PROGRAMNAME_KEY.to_owned(),
-                    value: progname.to_owned(),
-                    comment: Some("Name of the program that created the file".to_owned()),
-                };
-                lineitem.write_key(&hdu, &mut fptr)?;
-            }
-        }
+        lineitem.write_key(&hdu, &mut fptr)?;
         for item in self.get_metadata().iter() {
             item.write_key(&hdu, &mut fptr)?;
         }
@@ -117,27 +136,55 @@ impl GenericImage<'_> {
 }
 
 impl<'a> DynamicImageData<'a> {
-    fn write_fits(&self, path: PathBuf) -> Result<FitsFile, FitsError> {
+    fn write_fits(
+        &self,
+        path: PathBuf,
+        compress: FitsCompression,
+    ) -> Result<(FitsHdu, FitsFile), FitsError> {
         match self {
-            DynamicImageData::U8(data) => data.write_fits(path, PixelType::U8),
-            DynamicImageData::U16(data) => data.write_fits(path, PixelType::U16),
-            DynamicImageData::F32(data) => data.write_fits(path, PixelType::F32),
+            DynamicImageData::U8(data) => data.write_fits(path, compress, PixelType::U8),
+            DynamicImageData::U16(data) => data.write_fits(path, compress, PixelType::U16),
+            DynamicImageData::F32(data) => data.write_fits(path, compress, PixelType::F32),
         }
     }
 }
 
 impl<'a, T: PixelStor + WriteImage> ImageData<'a, T> {
     /// Write the image data to a FITS file.
-    fn write_fits(&self, path: PathBuf, pxltype: PixelType) -> Result<FitsFile, FitsError> {
+    fn write_fits(
+        &self,
+        path: PathBuf,
+        compress: FitsCompression,
+        pxltype: PixelType,
+    ) -> Result<(FitsHdu, FitsFile), FitsError> {
         let data = self.data.as_slice();
         let desc = ImageDescription {
             data_type: pxltype.into(),
-            dimensions: &[self.width as _, self.height as _],
+            dimensions: if self.channels() > 1 {
+                &[self.height() as _, self.width() as _, self.channels() as _]
+            } else {
+                &[self.height() as _, self.width() as _]
+            },
         };
-        let mut fptr = FitsFile::create(path).with_custom_primary(&desc).open()?;
-        let hdu = fptr.primary_hdu()?;
+        
+        let mut fptr = FitsFile::create(path);
+        
+        if compress == FitsCompression::None {
+            fptr = fptr.with_custom_primary(&desc);
+        }
+        let mut fptr = fptr.open()?;
+
+        let hdu = if compress == FitsCompression::None {
+            fptr.primary_hdu()?
+        } else {
+            let hdu = fptr.primary_hdu()?;
+            hdu.write_key(&mut fptr, "COMPRESSED_IMAGE", "T")?;
+            hdu.write_key(&mut fptr, "COMPRESSION_ALGO", compress.to_string())?;
+            fptr.create_image("IMAGE", &desc)?
+        };
+
         hdu.write_image(&mut fptr, data)?;
-        Ok(fptr)
+        Ok((hdu, fptr))
     }
 }
 
@@ -233,7 +280,7 @@ impl WriteKey for LineItem<Duration> {
 impl From<PixelType> for ImageType {
     fn from(pixeltype: PixelType) -> Self {
         match pixeltype {
-            PixelType::U8 => ImageType::Byte,
+            PixelType::U8 => ImageType::UnsignedByte,
             PixelType::U16 => ImageType::UnsignedShort,
             PixelType::F32 => ImageType::Float,
         }

@@ -14,8 +14,10 @@ mod dynamicimage_interop;
 mod dynamicimagedata_serde;
 #[cfg(feature = "fitsio")]
 mod fitsio_interop;
+#[cfg(feature = "fitsio")]
+pub use fitsio_interop::FitsCompression;
 mod metadata;
-pub use metadata::{GenericImage, InsertValue, GenericLineItem};
+pub use metadata::{GenericImage, GenericLineItem, InsertValue, CAMERANAME_KEY, PROGRAMNAME_KEY};
 
 pub(crate) use datastor::DataStor;
 use demosaic::ColorFilterArray;

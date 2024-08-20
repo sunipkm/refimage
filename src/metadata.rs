@@ -7,7 +7,7 @@ use crate::DynamicImageData;
 /// Key for the timestamp metadata.
 pub const TIMESTAMP_KEY: &str = "TIMESTAMP";
 /// Key for the camera name metadata.
-pub const CAMERANAME_KEY: &str = "CAMERANAME";
+pub const CAMERANAME_KEY: &str = "CAMERA";
 /// Key for the program name
 pub const PROGRAMNAME_KEY: &str = "PROGNAME";
 
