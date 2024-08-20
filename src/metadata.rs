@@ -4,12 +4,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::DynamicImageData;
 
+/// Key for the timestamp metadata.
+pub const TIMESTAMP_KEY: &str = "TIMESTAMP";
+/// Key for the camera name metadata.
+pub const CAMERANAME_KEY: &str = "CAMERANAME";
+/// Key for the program name
+pub const PROGRAMNAME_KEY: &str = "PROGNAME";
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 /// Holds a metadata line item.
 pub struct LineItem<T: InsertValue> {
-    name: String,
-    value: T,
-    comment: Option<String>,
+    pub(crate) name: String,
+    pub(crate) value: T,
+    pub(crate) comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -59,7 +66,7 @@ impl<'a> GenericImage<'a> {
     /// - `image`: The image data, of type `DynamicImageData`.
     pub fn new(tstamp: SystemTime, image: DynamicImageData<'a>) -> Self {
         let metadata = vec![GenericLineItem::SystemTime(LineItem {
-            name: "TSTAMP".to_string(),
+            name: TIMESTAMP_KEY.to_string(),
             value: tstamp,
             comment: Some("Timestamp of the image".to_owned()),
         })];
@@ -107,6 +114,16 @@ impl<'a> GenericImage<'a> {
     /// Get the metadata
     pub fn get_metadata(&self) -> &[GenericLineItem] {
         &self.metadata
+    }
+
+    /// Get a specific metadata value by name.
+    /// 
+    /// Returns the first metadata value with the given name.
+    /// 
+    /// # Arguments
+    /// - `name`: The name of the metadata value.
+    pub fn get_key(&self, name: &str) -> Option<&GenericLineItem> {
+        self.metadata.iter().find(|x| x.name() == name)
     }
 }
 

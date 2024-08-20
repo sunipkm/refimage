@@ -10,10 +10,12 @@ mod imagedata;
 #[macro_use]
 mod dynamicimagedata;
 #[cfg(feature = "image")]
-pub mod dynamicimage_interop;
+mod dynamicimage_interop;
 mod dynamicimagedata_serde;
+#[cfg(feature = "fitsio")]
+mod fitsio_interop;
 mod metadata;
-pub use metadata::{GenericImage, InsertValue, GenericLineItem, LineItem};
+pub use metadata::{GenericImage, InsertValue, GenericLineItem};
 
 pub(crate) use datastor::DataStor;
 use demosaic::ColorFilterArray;
