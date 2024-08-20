@@ -1,9 +1,9 @@
 //! Raster implementation.
-use crate::Primitive;
+use crate::PixelStor;
 
 use super::RasterMut;
 
-impl<'a, T: Primitive> RasterMut<'a, T> {
+impl<'a, T: PixelStor> RasterMut<'a, T> {
     /// Allocate a new raster for the given destination buffer slice.
     pub fn new(w: usize, h: usize, buf: &'a mut [T])
             -> Self {

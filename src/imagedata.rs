@@ -1,11 +1,11 @@
 use crate::{
     demosaic::{run_demosaic, RasterMut},
     traits::Enlargeable,
-    BayerError, ColorSpace, DataStor, Demosaic, ImageData, Primitive,
+    BayerError, ColorSpace, DataStor, Demosaic, ImageData, PixelStor,
 };
 use num_traits::CheckedEuclid;
 
-impl<'a, T: Primitive> ImageData<'a, T> {
+impl<'a, T: PixelStor> ImageData<'a, T> {
     /// Create a new image data struct.
     pub(crate) fn new(
         data: DataStor<'a, T>,
@@ -149,7 +149,7 @@ impl<'a, T: Primitive> ImageData<'a, T> {
     }
 }
 
-impl<'a, T: Primitive + Enlargeable> ImageData<'a, T> {
+impl<'a, T: PixelStor + Enlargeable> ImageData<'a, T> {
     /// Debayer the image.
     pub fn debayer(&self, alg: Demosaic) -> Result<ImageData<T>, BayerError> {
         let cfa = self.cspace.try_into().map_err(|_| BayerError::NoGood)?;

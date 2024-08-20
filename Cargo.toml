@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# required
 bytemuck = { version = "1.16", features = [
     "aarch64_simd",
     "wasm_simd",
@@ -11,12 +12,14 @@ bytemuck = { version = "1.16", features = [
 ] }
 num-traits = "0.2"
 quick-error = "2.0"
-crc32fast = { version = "1.4", optional = true }
+crc32fast = { version = "1.4" }
+serde = { version = "1.0", features = ["derive"] }
+
+# optional
 flate2 = { version = "1.0", optional = true }
 image = { version = "0.25", optional = true }
 rayon = { version = "1.10", optional = true }
 # rkyv = { version = "0.7", optional = true }
-serde = { version = "1.0", features = ["derive"], optional = true }
 
 [dev-dependencies]
 color-backtrace = "0.6"
@@ -24,8 +27,6 @@ serde-generate = "0.26"
 serde-reflection = "0.4"
 
 [features]
-default = ["rayon", "image", "serde"]
+default = ["rayon", "image", "serde_flate"]
 # rkyv = ["serialize", "dep:rkyv"]
-serde = ["serialize", "dep:serde"]
-serde_flate = ["serde", "dep:flate2"]
-serialize = ["dep:crc32fast"]
+serde_flate = ["dep:flate2"]

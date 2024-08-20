@@ -1,14 +1,11 @@
 use crate::{DataStor, DynamicImageData, ImageData, PixelType};
-#[cfg(feature = "serde")]
 use crate::{Deserializer, Serializer};
 #[cfg(feature = "serde_flate")]
 use flate2::{write::ZlibDecoder, write::ZlibEncoder, Compress, Compression};
-#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "serde_flate")]
 use std::io::Write;
 
-#[cfg(feature = "serde")]
 #[derive(Serialize, Deserialize)]
 struct SerialImage {
     width: u16,
@@ -209,7 +206,6 @@ impl<'b> TryFrom<SerialImage> for DynamicImageData<'b> {
     }
 }
 
-#[cfg(feature = "serde")]
 impl Serialize for DynamicImageData<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -221,9 +217,8 @@ impl Serialize for DynamicImageData<'_> {
     }
 }
 
-#[cfg(feature = "serde")]
-impl<'de> Deserialize<'de> for DynamicImageData<'de> {
-    fn deserialize<D>(deserializer: D) -> Result<DynamicImageData<'de>, D::Error>
+impl<'de: 'a, 'a> Deserialize<'de> for DynamicImageData<'a> {
+    fn deserialize<D>(deserializer: D) -> Result<DynamicImageData<'a>, D::Error>
     where
         D: Deserializer<'de>,
     {

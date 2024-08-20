@@ -18,7 +18,7 @@ use rayon::prelude::*;
 use crate::demosaic::border_replicate::*;
 use crate::demosaic::{BayerError, BayerRead, BayerResult, ColorFilterArray, RasterMut};
 use crate::traits::{get_mean, Enlargeable};
-use crate::{ImageData, Primitive};
+use crate::{ImageData, PixelStor};
 
 const PADDING: usize = 1;
 
@@ -28,7 +28,7 @@ pub fn run<T>(
     dst: &mut RasterMut<'_, T>,
 ) -> BayerResult<()>
 where
-    T: Primitive + Enlargeable,
+    T: PixelStor + Enlargeable,
 {
     if src.width < 2 || src.height < 2 {
         return Err(BayerError::WrongResolution);
@@ -98,7 +98,7 @@ macro_rules! apply_kernel_row {
 #[cfg(feature = "rayon")]
 fn debayer<T>(r: &[T], cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
 where
-    T: Primitive + Enlargeable,
+    T: PixelStor + Enlargeable,
 {
     let (w, h) = (dst.w, dst.h);
     let mut data = vec![T::zero(); (2 * PADDING + w) * (2 * PADDING + h)];
@@ -147,7 +147,7 @@ where
 #[cfg(not(feature = "rayon"))]
 fn debayer<T>(r: &[T], cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
 where
-    T: Primitive + Enlargeable,
+    T: PixelStor + Enlargeable,
 {
     let (w, h) = (dst.w, dst.h);
     let mut prev = vec![T::zero(); 2 * PADDING + w];

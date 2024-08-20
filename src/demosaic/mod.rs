@@ -18,10 +18,10 @@ pub use bayer::{BayerRead, ColorFilterArray};
 
 use crate::traits::Enlargeable;
 use crate::ImageData;
-use crate::Primitive;
+use crate::PixelStor;
 
 /// Mutable raster structure.
-pub(crate)struct RasterMut<'a, T: Primitive> {
+pub(crate)struct RasterMut<'a, T: PixelStor> {
     x: usize,
     y: usize,
     w: usize,
@@ -46,7 +46,7 @@ pub enum Demosaic {
 pub(crate) fn run_demosaic<T>(r: &ImageData<T>, cfa: ColorFilterArray, alg: Demosaic,
     dst: &mut RasterMut<'_, T>)
     -> BayerResult<()> 
-    where T: Primitive + Enlargeable {
+    where T: PixelStor + Enlargeable {
 match alg {
     Demosaic::None => crate::demosaic::none::run(r, cfa, dst),
     Demosaic::NearestNeighbour => crate::demosaic::nearestneighbour::run(r, cfa, dst),

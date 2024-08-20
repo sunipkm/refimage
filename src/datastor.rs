@@ -1,8 +1,8 @@
-use crate::Primitive;
+use crate::PixelStor;
 
 /// Enum to hold the data store.
 #[derive(Debug, PartialEq)]
-enum DataStorEnum<'a, T: Primitive> {
+enum DataStorEnum<'a, T: PixelStor> {
     /// A reference to a slice of data.
     Ref(&'a mut [T]),
     /// Owned data.
@@ -11,9 +11,9 @@ enum DataStorEnum<'a, T: Primitive> {
 
 /// Private struct to hold the data store.
 #[derive(Debug, PartialEq)]
-pub struct DataStor<'a, T: Primitive>(DataStorEnum<'a, T>);
+pub struct DataStor<'a, T: PixelStor>(DataStorEnum<'a, T>);
 
-impl<'a, T: Primitive> DataStor<'a, T> {
+impl<'a, T: PixelStor> DataStor<'a, T> {
     /// Create a new data store from owned data.
     pub fn from_mut_ref(data: &'a mut [T]) -> Self {
         DataStor(DataStorEnum::Ref(data))
@@ -103,14 +103,14 @@ impl<'a, T: Primitive> DataStor<'a, T> {
     }
 }
 
-impl<'a, T: Primitive> DataStor<'a, T> {
+impl<'a, T: PixelStor> DataStor<'a, T> {
     /// Convert to owned data.
     pub fn to_owned(&self) -> Self {
         self.clone()
     }
 }
 
-impl<'a, T: Primitive> Clone for DataStor<'a, T> {
+impl<'a, T: PixelStor> Clone for DataStor<'a, T> {
     fn clone(&self) -> Self {
         match &self.0 {
             DataStorEnum::Ref(data) => DataStor(DataStorEnum::Own(data.to_vec())),

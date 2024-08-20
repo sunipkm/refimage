@@ -1,13 +1,13 @@
 //! Demosaicing without any interpolation.
 use crate::demosaic::RasterMut;
 use crate::demosaic::{BayerError, BayerRead, BayerResult, ColorFilterArray};
-use crate::{ImageData, Primitive};
+use crate::{ImageData, PixelStor};
 
 use super::border_none::BorderNone;
 
 pub fn run<T>(src: &ImageData<'_, T>, cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
 where
-    T: Primitive,
+    T: PixelStor,
 {
     if src.width() < 2 || src.height() < 2 {
         return Err(BayerError::WrongResolution);
@@ -59,7 +59,7 @@ macro_rules! apply_kernel_g {
 
 fn debayer<T>(r: &[T], cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
 where
-    T: Primitive,
+    T: PixelStor,
 {
     let (w, h) = (dst.w, dst.h);
     let mut curr = vec![T::zero(); w];

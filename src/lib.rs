@@ -11,23 +11,23 @@ mod imagedata;
 mod dynamicimagedata;
 #[cfg(feature = "image")]
 pub mod dynamicimage_interop;
-#[cfg(feature = "serialize")]
 mod dynamicimagedata_serde;
+mod metadata;
+pub use metadata::{GenericImage, InsertValue, GenericLineItem, LineItem};
 
 pub(crate) use datastor::DataStor;
 use demosaic::ColorFilterArray;
 pub use demosaic::{BayerError, Demosaic};
-pub use traits::{Lerp, Primitive};
+pub use traits::PixelStor;
 
 #[cfg(feature = "image")]
 pub use image::DynamicImage; // Used for image interop
 
-#[cfg(feature = "serde")]
 pub use serde::{Deserializer, Serializer};
 
 /// Concrete type to hold image data.
 #[derive(Debug, PartialEq, Clone)]
-pub struct ImageData<'a, T: Primitive> {
+pub struct ImageData<'a, T: PixelStor> {
     data: DataStor<'a, T>,
     width: u16,
     height: u16,

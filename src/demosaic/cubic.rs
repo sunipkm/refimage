@@ -28,7 +28,7 @@ use crate::traits::{do_div_float, do_prod, get_mean, large_to_f64, Enlargeable};
 
 #[cfg(feature = "rayon")]
 use crate::demosaic::border_mirror::BorderMirror;
-use crate::{ImageData, Primitive};
+use crate::{ImageData, PixelStor};
 
 const PADDING: usize = 3;
 
@@ -38,7 +38,7 @@ pub fn run<T>(
     dst: &mut RasterMut<'_, T>,
 ) -> BayerResult<()>
 where
-    T: Primitive + Enlargeable,
+    T: PixelStor + Enlargeable,
 {
     if dst.w < 4 || dst.h < 4 {
         return Err(BayerError::WrongResolution);
@@ -169,7 +169,7 @@ macro_rules! apply_kernel_g {
 #[cfg(feature = "rayon")]
 fn debayer<T>(r: &[T], cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
 where
-    T: Primitive + Enlargeable,
+    T: PixelStor + Enlargeable,
 {
     let (w, h) = (dst.w, dst.h);
     let mut data = vec![T::zero(); (2 * PADDING + w) * (2 * PADDING + h)];
@@ -228,7 +228,7 @@ where
 #[allow(unused_parens)]
 fn debayer<T>(r: &[T], cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
 where
-    T: Primitive + Enlargeable,
+    T: PixelStor + Enlargeable,
 {
     use super::border_mirror::BorderMirror;
 
