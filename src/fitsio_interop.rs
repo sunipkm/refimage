@@ -6,11 +6,11 @@ use std::{
 
 use chrono::DateTime;
 use fitsio::{
-    errors::Error as FitsError,
     hdu::FitsHdu,
     images::{ImageDescription, ImageType, WriteImage},
     FitsFile,
 };
+pub use fitsio::errors::Error as FitsError;
 
 use crate::{
     metadata::{PrvGenLineItem, PrvLineItem, TIMESTAMP_KEY},
@@ -99,7 +99,20 @@ impl Display for FitsCompression {
     }
 }
 
-impl GenericImage<'_> {
+#[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
+/// Trait for writing objects to FITS files.
+pub trait FitsWrite {
+    #[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
+    /// Write an object to a FITS file specified by `path`.
+    fn write_fits(
+        &self,
+        path: &Path,
+        compress: FitsCompression,
+        overwrite: bool,
+    ) -> Result<PathBuf, FitsError>;
+}
+
+impl FitsWrite for GenericImage<'_> {
     #[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
     /// Write the image, with metadata, to a FITS file.
     ///
@@ -113,7 +126,7 @@ impl GenericImage<'_> {
     ///
     /// # Errors
     /// This function returns errors from the FITS library if the file could not be written.
-    pub fn write_fits(
+    fn write_fits(
         &self,
         path: &Path,
         compress: FitsCompression,
@@ -345,6 +358,7 @@ impl From<PixelType> for ImageType {
 mod test {
     #[test]
     fn test_fitsio() {
+        use crate::FitsWrite;
         let data = vec![1u8, 2, 3, 4, 5, 6];
         let img = crate::ImageData::from_owned(data, 3, 2, crate::ColorSpace::Gray)
             .expect("Failed to create ImageData");

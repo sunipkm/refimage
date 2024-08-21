@@ -58,7 +58,7 @@ mod dynamicimagedata_serde;
 mod fitsio_interop;
 #[cfg(feature = "fitsio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
-pub use fitsio_interop::FitsCompression;
+pub use fitsio_interop::{FitsCompression, FitsError, FitsWrite};
 
 mod metadata;
 pub use metadata::{GenericImage, GenericLineItem, CAMERANAME_KEY, PROGRAMNAME_KEY};

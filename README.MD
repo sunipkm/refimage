@@ -57,6 +57,12 @@ the user must keep track of the custom color space information.
 ## Loading and storing a `GenericImage`
 A `GenericImage` is intended to be loaded and stored in a standard format, e.g. [bincode](https://crates.io/crates/bincode) - which follows trivially from the serialization-
 deserialization of `GenericImage`. However, for more portable applications, with the `fitsio`
-feature, a `GenericImage` can be stored as a FITS file. The FITS file is stored using the
-[`fitsio`](https://crates.io/crates/fitsio) crate, which is a thin wrapper around the
-`cfitsio` library.
+feature, a `GenericImage` can be stored as a FITS file by importing the `FitsWrite` trait. 
+The FITS file is stored using the [`fitsio`](https://crates.io/crates/fitsio) crate, which is a thin wrapper around the `cfitsio` library.
+```rust,no_run
+use refimage::{FitsCompression, FitsWrite}; // we need the FitsWrite trait to be able to use the `write_fits` method.
+use std::path::Path;
+let img: GenericImage = { ... }; // obtain a GenericImage
+img.write_fits(Path::new("/path/to/fitsimage.fit", FitsCompression::None, true)) // no compression, overwrite
+    .expect("Could not write FITS file.");
+```
