@@ -1,1 +1,62 @@
 # `refimage`
+[![crates.io](https://img.shields.io/crates/v/refimage)](https://crates.io/crates/refimage)
+[![Documentation](https://docs.rs/refimage/badge.svg)](https://docs.rs/refimage)
+
+## A Serializable Image Container
+
+This crate provides a type-erased image container (`GenericImage`), backed by a contiguous
+slice (owned or referenced) of primitive (`u8`, `u16`, `f32`) pixels, with arbitrary
+color space (grayscale, Bayer pattern, RGB, ...) and color channels support (max. 255).
+Image sizes are limited to 65536 &times; 65536 for practical reasons.
+
+`GenericImage` is powerful, since it supports metadata in the form of (`key`, `value`) pairs,
+with optional comments. Valid metadata keys are case-insensitive, 80-character strings, and
+values are up to 64-bit integer types, 32- and 64-bitfloating point numbers, strings up-to 
+4096 characters, or `std::time::{SystemTime, Duration}`.
+
+`GenericImage` also supports serialization and deserialization, and, optionally can be saved
+in the open [Flexible Image Transport System (FITS)](https://fits.gsfc.nasa.gov/fits_standard.html)
+format by enabling the optional `fitsio` feature. FITS files support lossless compression,
+and saving of arbitrary metadata.
+
+## The path to a `GenericImage`
+
+A `GenericImage` can be obtained in a couple of ways. In the first case, the Rust program
+itself generates the image. In that case, a `ImageData` object is first created with the
+appropriate, contiguous, backing storage and image format:
+```rust
+use refimage::{ColorSpace, ImageData, Demosaic, DynamicImageData, GenericImage};
+use std::time::SystemTime;
+
+let mut data = vec![0u8; 256]; // this is the backing store
+// acquire(&mut data); // this function populates the backing store with the image pixels
+let img = ImageData::from_mut_ref(&mut data, 16, 16, ColorSpace::Grbg).unwrap(); // Create a 4x4 image backed by the vector
+let img = DynamicImageData::from(img); // convert the `ImageData` object to `DynamicImageData`
+let img = img.debayer(Demosaic::Nearest).expect("Could not debayer"); // debayer the image using nearest neighbor method
+let mut img = GenericImage::new(SystemTime::now(), img); // Convert to a GenericImage
+// insert the camera information as metadata
+img.insert_key("CAMERA", ("Rust Test Program", "Name of the camera used to capture the image"));
+let json = serde_json::to_string(&img).unwrap(); // serialize the image to JSON
+let rimg: GenericImage = serde_json::from_str(&json).unwrap(); // deserialize to GenericImage
+assert_eq!(&img, &rimg); // Confirm that deserialized image matches the original
+```
+
+In the second case, an image can be loaded with the [`image`](https://crates.io/crates/image) from disk, by enabling the `image` feature:
+```rust,no_run
+use refimage::DynamicImageData;
+use image::open;
+
+let img = open("/path/to/image.png").expect("Could not load image");
+let img = DynamicImageData::try_from(img).expect("Could not convert image");
+```
+Note, that the image being loaded must not contain an alpha channel for the conversion to be
+successful in the current implementation. However, the `image` crate provides methods to
+remove the alpha channel. A custom color space can be used for such an image, however,
+the user must keep track of the custom color space information.
+
+## Loading and storing a `GenericImage`
+A `GenericImage` is intended to be loaded and stored in a standard format, e.g. [bincode](https://crates.io/crates/bincode) - which follows trivially from the serialization-
+deserialization of `GenericImage`. However, for more portable applications, with the `fitsio`
+feature, a `GenericImage` can be stored as a FITS file. The FITS file is stored using the
+[`fitsio`](https://crates.io/crates/fitsio) crate, which is a thin wrapper around the
+`cfitsio` library.

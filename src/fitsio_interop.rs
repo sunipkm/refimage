@@ -69,6 +69,7 @@ impl Display for FitsCompression {
 }
 
 impl GenericImage<'_> {
+    #[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
     /// Write the image, with metadata, to a FITS file.
     /// 
     /// # Arguments
@@ -295,5 +296,16 @@ impl From<PixelType> for ImageType {
             PixelType::U16 => ImageType::UnsignedShort,
             PixelType::F32 => ImageType::Float,
         }
+    }
+}
+
+mod test {
+    #[test]
+    fn test_fitsio() {
+        let data = vec![1u8, 2, 3, 4, 5, 6];
+        let img = crate::ImageData::from_owned(data, 3, 2, crate::ColorSpace::Gray).expect("Failed to create ImageData");
+        let img = crate::DynamicImageData::from(img);
+        let img = crate::GenericImage::new(std::time::SystemTime::now(), img);
+        img.write_fits(std::path::Path::new("test.fits"), crate::FitsCompression::None, true).expect("Could not write FITS file");
     }
 }

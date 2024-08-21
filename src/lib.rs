@@ -1,4 +1,5 @@
 #![deny(missing_docs)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 // #![deny(exported_private_dependencies)]
 
 //! Crate to handle image data backed either by a contiguous slice or a vector.
@@ -56,6 +57,7 @@ mod dynamicimagedata_serde;
 #[cfg(feature = "fitsio")]
 mod fitsio_interop;
 #[cfg(feature = "fitsio")]
+#[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
 pub use fitsio_interop::FitsCompression;
 
 mod metadata;
@@ -67,6 +69,7 @@ pub use demosaic::{BayerError, Demosaic};
 pub use traits::PixelStor;
 
 #[cfg(feature = "image")]
+#[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub use image::DynamicImage; // Used for image interop
 
 pub use serde::{Deserializer, Serializer};
@@ -130,6 +133,8 @@ pub enum ColorSpace {
     Rggb = 0xa4,
     /// RGB image.
     Rgb = 0xb0,
+    /// Custom color space.
+    Custom = 0xff,
 }
 
 impl TryFrom<u8> for ColorSpace {
@@ -143,6 +148,7 @@ impl TryFrom<u8> for ColorSpace {
             0xa3 => Ok(Self::Grbg),
             0xa4 => Ok(Self::Rggb),
             0xb0 => Ok(Self::Rgb),
+            0xff => Ok(Self::Custom),
             _ => Err("Invalid value for ColorSpace"),
         }
     }
@@ -242,3 +248,22 @@ mod test {
         assert_eq!(_d.width(), 128);
     }
 }
+
+// Can't use the macro-call itself within the `doc` attribute. So force it to eval it as part of
+// the macro invocation.
+//
+// The inspiration for the macro and implementation is from
+// <https://github.com/GuillaumeGomez/doc-comment>
+//
+// MIT License
+//
+// Copyright (c) 2018 Guillaume Gomez
+macro_rules! insert_as_doc {
+    { $content:expr } => {
+        #[allow(unused_doc_comments)]
+        #[doc = $content] extern { }
+    }
+}
+
+// Provides the README.md as doc, to ensure the example works!
+insert_as_doc!(include_str!("../README.md"));

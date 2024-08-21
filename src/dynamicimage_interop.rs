@@ -3,6 +3,7 @@ use image::ImageBuffer;
 
 use crate::{ColorSpace, DataStor, DynamicImage, DynamicImageData, ImageData};
 
+#[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 impl TryFrom<DynamicImage> for DynamicImageData<'_> {
     type Error = &'static str;
 
@@ -60,6 +61,7 @@ impl TryFrom<DynamicImage> for DynamicImageData<'_> {
     }
 }
 
+#[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 impl<'a> TryFrom<DynamicImageData<'a>> for DynamicImage {
     type Error = &'static str;
 
