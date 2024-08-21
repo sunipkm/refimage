@@ -1,5 +1,7 @@
 use std::{
-    fmt::Display, path::{Path, PathBuf}, time::{Duration, SystemTime, UNIX_EPOCH}
+    fmt::Display,
+    path::{Path, PathBuf},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use chrono::DateTime;
@@ -11,10 +13,12 @@ use fitsio::{
 };
 
 use crate::{
-    metadata::{PrvLineItem, TIMESTAMP_KEY, PrvGenLineItem}, DynamicImageData, GenericImage, GenericLineItem, ImageData, PixelStor, PixelType
+    metadata::{PrvGenLineItem, PrvLineItem, TIMESTAMP_KEY},
+    DynamicImageData, GenericImage, GenericLineItem, ImageData, PixelStor, PixelType,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Hash)]
+#[non_exhaustive]
 /// Compression algorithms used in FITS files.
 pub enum FitsCompression {
     /// No compression.
@@ -31,18 +35,44 @@ pub enum FitsCompression {
     Bzip2,
     /// PLIO compression.
     Plio,
+    /// Custom compression algorithm.
+    /// 
+    /// The custom settings are passed as a string.
+    /// 
+    /// For more information, visit the [relevant FITSIO documentation page](https://heasarc.gsfc.nasa.gov/fitsio/c/c_user/node41.html).
+    /// 
+    /// # Format
+    /// `[compress NAME T1,T2; q[z] QLEVEL, s HSCALE]`, where
+    /// - `NAME`: Algorithm name:  GZIP, Rice, HCOMPRESS, HSCOMPRSS or PLIO
+    /// may be abbreviated to the first letter (or HS for HSCOMPRESS).
+    /// - `T1, T2`: Tile dimension (e.g. 100,100 for square tiles 100 pixels wide).
+    /// - `QLEVEL`: Quantization level for floating point FITS images.
+    /// - `HSCALE`: `HCOMPRESS` scale factor; default = 0 which is lossless.
+    /// 
+    /// # Example
+    /// - `[compress]`: Use the default compression algorithm (Rice) 
+    /// and the default tile size (row by row).
+    /// - `[compress G|R|P|H]`: Use the specified compression algorithm; only the first letter 
+    /// of the algorithm should be given.
+    /// - `[compress R 100,100]`: Use Rice and 100 x 100 pixel tiles.
+    /// - `[compress R; q 10.0]`: Quantization level = `(RMS - noise) / 10`.
+    /// - `[compress R; qz 10.0]`: Quantization level = `(RMS - noise) / 10`, using the
+    /// `SUBTRACTIVE_DITHER_2` quantization method.
+    /// - `[compress HS; s 2.0]`: `HSCOMPRESS` (with smoothing) and scale = `(2.0 * RMS) - noise`.
+    Custom(String),
 }
 
 impl FitsCompression {
-    fn extension(&self) -> &str {
+    fn extension(&self) -> String {
         match self {
-            FitsCompression::None => "fits",
-            FitsCompression::Gzip => "fits[compress G]",
-            FitsCompression::Rice => "fits[compress R]",
-            FitsCompression::Hcompress => "fits[compress H]",
-            FitsCompression::Hsmooth => "fits[compress HS]",
-            FitsCompression::Bzip2 => "fits[compress B]",
-            FitsCompression::Plio => "fits[compress P]",
+            FitsCompression::None => "fits".into(),
+            FitsCompression::Gzip => "fits[compress G]".into(),
+            FitsCompression::Rice => "fits[compress R]".into(),
+            FitsCompression::Hcompress => "fits[compress H]".into(),
+            FitsCompression::Hsmooth => "fits[compress HS]".into(),
+            FitsCompression::Bzip2 => "fits[compress B]".into(),
+            FitsCompression::Plio => "fits[compress P]".into(),
+            FitsCompression::Custom(val) => format!("fits{}", val),
         }
     }
 }
@@ -56,13 +86,14 @@ impl From<Option<FitsCompression>> for FitsCompression {
 impl Display for FitsCompression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FitsCompression::None => "uncomp",
-            FitsCompression::Gzip => "gzip",
-            FitsCompression::Rice => "rice",
-            FitsCompression::Hcompress => "hcompress",
-            FitsCompression::Hsmooth => "hscompress",
-            FitsCompression::Bzip2 => "bzip2",
-            FitsCompression::Plio => "plio",
+            FitsCompression::None => "uncomp".into(),
+            FitsCompression::Gzip => "gzip".into(),
+            FitsCompression::Rice => "rice".into(),
+            FitsCompression::Hcompress => "hcompress".into(),
+            FitsCompression::Hsmooth => "hscompress".into(),
+            FitsCompression::Bzip2 => "bzip2".into(),
+            FitsCompression::Plio => "plio".into(),
+            FitsCompression::Custom(val) => val.clone(),
         }
         .fmt(f)
     }
@@ -71,15 +102,15 @@ impl Display for FitsCompression {
 impl GenericImage<'_> {
     #[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
     /// Write the image, with metadata, to a FITS file.
-    /// 
+    ///
     /// # Arguments
     /// - `path`: The path to write the FITS file to.
     /// - `compress`: The compression algorithm to use ([`FitsCompression`]).
     /// - `overwrite`: Whether to overwrite the file if it already exists.
-    /// 
+    ///
     /// # Returns
     /// The path to the written FITS file.
-    /// 
+    ///
     /// # Errors
     /// This function returns errors from the FITS library if the file could not be written.
     pub fn write_fits(
@@ -172,9 +203,9 @@ impl<'a, T: PixelStor + WriteImage> ImageData<'a, T> {
                 &[self.height() as _, self.width() as _]
             },
         };
-        
+
         let mut fptr = FitsFile::create(path);
-        
+
         if compress == FitsCompression::None {
             fptr = fptr.with_custom_primary(&desc);
         }
@@ -265,26 +296,38 @@ impl WriteKey for PrvLineItem<SystemTime> {
                 err
             ))
         })?;
+        let timestamp_secs = timestamp.as_secs();
+        let timestamp_usecs = timestamp.subsec_micros();
         match &self.comment {
-            Some(cmt) => hdu.write_key(
-                fptr,
-                &self.name,
-                (timestamp.as_micros() as u64, cmt.as_str()),
-            ),
-            None => hdu.write_key(fptr, &self.name, timestamp.as_micros() as u64),
+            Some(cmt) => {
+                let cmt_ = format!("{} (s from EPOCH)", cmt);
+                hdu.write_key(fptr, &self.name, (timestamp_secs, cmt_.as_str()))?;
+                let cmt_ = format!("{} (us from EPOCH)", cmt);
+                hdu.write_key(fptr, &self.name, (timestamp_usecs, cmt_.as_str()))
+            }
+            None => {
+                hdu.write_key(fptr, &self.name, timestamp_secs)?;
+                hdu.write_key(fptr, &self.name, timestamp_usecs)
+            }
         }
     }
 }
 
 impl WriteKey for PrvLineItem<Duration> {
     fn write_key(&self, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError> {
+        let timestamp_secs = self.value.as_secs();
+        let timestamp_usecs = self.value.subsec_micros();
         match &self.comment {
-            Some(cmt) => hdu.write_key(
-                fptr,
-                &self.name,
-                (self.value.as_micros() as u64, cmt.as_str()),
-            ),
-            None => hdu.write_key(fptr, &self.name, self.value.as_micros() as u64),
+            Some(cmt) => {
+                let cmt_ = format!("{} (s)", cmt);
+                hdu.write_key(fptr, &self.name, (timestamp_secs, cmt_.as_str()))?;
+                let cmt_ = format!("{} (us)", cmt);
+                hdu.write_key(fptr, &self.name, (timestamp_usecs, cmt_.as_str()))
+            }
+            None => {
+                hdu.write_key(fptr, &self.name, timestamp_secs)?;
+                hdu.write_key(fptr, &self.name, timestamp_usecs)
+            }
         }
     }
 }
@@ -303,9 +346,15 @@ mod test {
     #[test]
     fn test_fitsio() {
         let data = vec![1u8, 2, 3, 4, 5, 6];
-        let img = crate::ImageData::from_owned(data, 3, 2, crate::ColorSpace::Gray).expect("Failed to create ImageData");
+        let img = crate::ImageData::from_owned(data, 3, 2, crate::ColorSpace::Gray)
+            .expect("Failed to create ImageData");
         let img = crate::DynamicImageData::from(img);
         let img = crate::GenericImage::new(std::time::SystemTime::now(), img);
-        img.write_fits(std::path::Path::new("test.fits"), crate::FitsCompression::None, true).expect("Could not write FITS file");
+        img.write_fits(
+            std::path::Path::new("test.fits"),
+            crate::FitsCompression::Custom("[compress R 2,3]".into()),
+            true,
+        )
+        .expect("Could not write FITS file");
     }
 }

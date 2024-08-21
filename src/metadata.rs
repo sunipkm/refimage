@@ -23,11 +23,18 @@ pub const PROGRAMNAME_KEY: &str = "PROGNAME";
 ///
 /// # Valid Types
 /// The valid types for the metadata value are:
-/// - `u8` | `u16` | `u32` | `u64`
-/// - `i8` | `i16` | `i32` | `i64`
-/// - `f32` | `f64`
-/// - `std::time::Duration` | `std::time::SystemTime`
-/// - `String` | `&str`
+/// - [`u8`] | [`u16`] | [`u32`] | [`u64`]
+/// - [`i8`] | [`i16`] | [`i32`] | [`i64`]
+/// - [`f32`] | [`f64`]
+/// - [`std::time::Duration`] | [`std::time::SystemTime`]
+/// - [`String`] | [`&str`]
+///
+/// # Note
+/// - The metadata key is case-insensitive and is stored as an uppercase string.
+/// - When saving to a FITS file, the metadata comment may be truncated.
+/// - Metadata of type [`std::time::Duration`] or [`std::time::SystemTime`] is split
+/// and stored as two consecutive metadata items, with the same key, split into
+/// seconds ([`u64`]) and microseconds ([`u32`]).
 ///
 pub struct GenericLineItem(pub(crate) PrvGenLineItem);
 
@@ -165,6 +172,20 @@ impl<'a> GenericImage<'a> {
     /// # Arguments
     /// - `name`: The name of the metadata value. The name must be non-empty and less than 80 characters.
     /// - `value`: The value to insert. The value is either a primitive type, a `String`, or a `std::time::Duration` or `std::time::SystemTime` or a tuple of a primitive type and a comment ().
+    /// # Valid Types
+    /// The valid types for the metadata value are:
+    /// - [`u8`] | [`u16`] | [`u32`] | [`u64`]
+    /// - [`i8`] | [`i16`] | [`i32`] | [`i64`]
+    /// - [`f32`] | [`f64`]
+    /// - [`std::time::Duration`] | [`std::time::SystemTime`]
+    /// - [`String`] | [`&str`]
+    ///
+    /// # Note
+    /// - The metadata key is case-insensitive and is stored as an uppercase string.
+    /// - When saving to a FITS file, the metadata comment may be truncated.
+    /// - Metadata of type [`std::time::Duration`] or [`std::time::SystemTime`] is split
+    /// and stored as two consecutive metadata items, with the same key, split into
+    /// seconds ([`u64`]) and microseconds ([`u32`]).
     pub fn insert_key<T: InsertValue>(&mut self, name: &str, value: T) -> Result<(), &'static str> {
         T::insert_key(self, name, value)
     }
@@ -253,15 +274,15 @@ impl<'a: 'b, 'b> Debayer<'a, 'b> for GenericImage<'b> {
 
 impl<'a: 'b, 'b> GenericImage<'a> {
     /// Apply a function to the image data.
-    /// 
+    ///
     /// This function allows replacing the underlying image data with a new image data.
-    /// 
+    ///
     /// # Arguments
     /// - `f`: The function to apply to the image data.
     /// The function must take a [`DynamicImageData`] and return a [`DynamicImageData`].
     pub fn operate<F>(self, f: F) -> Result<GenericImage<'b>, &'static str>
     where
-        F: Fn(DynamicImageData<'b>) -> Result<DynamicImageData<'b>, &'static str>
+        F: Fn(DynamicImageData<'b>) -> Result<DynamicImageData<'b>, &'static str>,
     {
         let img = f(self.image)?;
         Ok(GenericImage {
