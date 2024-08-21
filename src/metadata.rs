@@ -8,7 +8,7 @@ use crate::{BayerError, Debayer, DemosaicMethod, DynamicImageData};
 pub const TIMESTAMP_KEY: &str = "TIMESTAMP";
 /// Key for the camera name metadata.
 pub const CAMERANAME_KEY: &str = "CAMERA";
-/// Key for the program name
+/// Key for the name of the program that generated this object.
 pub const PROGRAMNAME_KEY: &str = "PROGNAME";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

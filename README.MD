@@ -60,9 +60,9 @@ deserialization of `GenericImage`. However, for more portable applications, with
 feature, a `GenericImage` can be stored as a FITS file by importing the `FitsWrite` trait. 
 The FITS file is stored using the [`fitsio`](https://crates.io/crates/fitsio) crate, which is a thin wrapper around the `cfitsio` library.
 ```rust,no_run
-use refimage::{FitsCompression, FitsWrite}; // we need the FitsWrite trait to be able to use the `write_fits` method.
+use refimage::{FitsCompression, FitsWrite, GenericImage}; // we need the FitsWrite trait to be able to use the `write_fits` method.
 use std::path::Path;
-let img: GenericImage = { ... }; // obtain a GenericImage
-img.write_fits(Path::new("/path/to/fitsimage.fit", FitsCompression::None, true)) // no compression, overwrite
+let img: GenericImage = { todo!() }; // obtain a GenericImage
+img.write_fits(Path::new("/path/to/fitsimage.fit"), FitsCompression::None, true) // no compression, overwrite
     .expect("Could not write FITS file.");
 ```
