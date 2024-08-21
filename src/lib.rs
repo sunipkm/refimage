@@ -1,6 +1,48 @@
 #![deny(missing_docs)]
 // #![deny(exported_private_dependencies)]
-//! Crate to contain image data with a reference to a backing storage.
+
+//! Crate to handle image data backed either by a contiguous slice or a vector.
+//! 
+//! The image data is stored in a row-major order and can be of different pixel 
+//! types - `u8`, `u16`, and `f32`. The image data supports arbitrary color spaces
+//! and number of channels, but the number of channels must be consistent across the
+//! image. The image size is limited to 65535 x 65535 pixels. In case the image is a
+//! mosaic image, the crate supports debayering of the image data.
+//! 
+//! The crate additionally supports serialization and deserialization of the image
+//! data using the `serde` framework. The crate, by default, compiles with the [`flate2`]
+//! crate to compress the data before serialization. The compression can be disabled
+//! by setting the `serde_flate` feature to `false`.
+//! 
+//! The crate provides a concrete type [`ImageData`] to store image data and a type-erased
+//! version [`DynamicImageData`] to store image data with different pixel types. 
+//! Additionally, the crate provides a [`GenericImage`] type to store a [`DynamicImageData`]
+//! with additional metadata, such as the image creation timestamp, and many more. The 
+//! metadata keys must be 80 characters or less. Uniqueness of the keys is not enforced,
+//! but is strongly recommended; the keys are case-insensitive.
+//! 
+//! The crate, with the optional `image` feature, provides can convert between 
+//! [`DynamicImageData`] and [`DynamicImage`] from the [`image`] crate.
+//! With the optional `fitsio` feature, the crate can write a [`GenericImage`], with
+//! all associated metadata, to a [FITS](https://fits.gsfc.nasa.gov/fits_primer.html) file.
+//! 
+//! # Usage
+//! ```
+//! use refimage::{ImageData, ColorSpace, DynamicImageData, GenericImage};
+//! use std::time::SystemTime;
+//! use std::path::Path;
+//! 
+//! let data = vec![1u8, 2, 3, 4, 5, 6]; // 3x2 grayscale image
+//! let img = ImageData::from_owned(data, 3, 2, ColorSpace::Gray).unwrap(); // Create ImageData
+//! let img = DynamicImageData::from(img); // Convert to DynamicImageData
+//! let mut img = GenericImage::new(SystemTime::now(), img); // Create GenericImage with creation time info
+//! img.insert_key("CAMERANAME", "Canon EOS 5D Mark IV".to_string()).unwrap(); // Insert metadata
+//! let serialized = bincode::serialize(&img).unwrap(); // Serialize the image
+//! let deserialized: GenericImage = bincode::deserialize(&serialized).unwrap(); // Deserialize the image
+//! deserialized.write_fits(Path::new("test.fits"), refimage::FitsCompression::None, true).unwrap(); // Save to FITS file
+//! ```
+//! 
+//! 
 
 mod traits;
 #[macro_use]
