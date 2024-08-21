@@ -30,7 +30,6 @@ serde-generate = "0.26"
 serde-reflection = "0.4"
 
 [features]
-default = ["rayon", "image", "serde_flate", "fitsio"]
-fitsio = ["dep:fitsio"]
+default = ["fitsio", "image", "rayon", "serde_flate"]
 # rkyv = ["serialize", "dep:rkyv"]
 serde_flate = ["dep:flate2"]

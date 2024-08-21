@@ -39,7 +39,6 @@
 //! img.insert_key("CAMERANAME", "Canon EOS 5D Mark IV".to_string()).unwrap(); // Insert metadata
 //! let serialized = bincode::serialize(&img).unwrap(); // Serialize the image
 //! let deserialized: GenericImage = bincode::deserialize(&serialized).unwrap(); // Deserialize the image
-//! deserialized.write_fits(Path::new("test.fits"), refimage::FitsCompression::None, true).unwrap(); // Save to FITS file
 //! ```
 //! 
 //! 
