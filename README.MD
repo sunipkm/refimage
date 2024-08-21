@@ -11,7 +11,7 @@ Image sizes are limited to 65536 &times; 65536 for practical reasons.
 
 `GenericImage` is powerful, since it supports metadata in the form of (`key`, `value`) pairs,
 with optional comments. Valid metadata keys are case-insensitive, 80-character strings, and
-values are up to 64-bit integer types, 32- and 64-bitfloating point numbers, strings up-to 
+values are up to 64-bit integer types, 32- and 64-bit floating point numbers, strings up-to 
 4096 characters, or `std::time::{SystemTime, Duration}`.
 
 `GenericImage` also supports serialization and deserialization, and, optionally can be saved
@@ -25,14 +25,14 @@ A `GenericImage` can be obtained in a couple of ways. In the first case, the Rus
 itself generates the image. In that case, a `ImageData` object is first created with the
 appropriate, contiguous, backing storage and image format:
 ```rust
-use refimage::{ColorSpace, ImageData, Demosaic, DynamicImageData, GenericImage};
+use refimage::{ColorSpace, ImageData, Debayer, DemosaicMethod, DynamicImageData, GenericImage};
 use std::time::SystemTime;
 
 let mut data = vec![0u8; 256]; // this is the backing store
 // acquire(&mut data); // this function populates the backing store with the image pixels
 let img = ImageData::from_mut_ref(&mut data, 16, 16, ColorSpace::Grbg).unwrap(); // Create a 4x4 image backed by the vector
 let img = DynamicImageData::from(img); // convert the `ImageData` object to `DynamicImageData`
-let img = img.debayer(Demosaic::Nearest).expect("Could not debayer"); // debayer the image using nearest neighbor method
+let img = img.debayer(DemosaicMethod::Nearest).expect("Could not debayer"); // debayer the image using nearest neighbor method
 let mut img = GenericImage::new(SystemTime::now(), img); // Convert to a GenericImage
 // insert the camera information as metadata
 img.insert_key("CAMERA", ("Rust Test Program", "Name of the camera used to capture the image"));

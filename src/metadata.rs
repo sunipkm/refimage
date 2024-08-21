@@ -2,7 +2,7 @@ use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
 
-use crate::DynamicImageData;
+use crate::{BayerError, Debayer, DemosaicMethod, DynamicImageData};
 
 /// Key for the timestamp metadata.
 pub const TIMESTAMP_KEY: &str = "TIMESTAMP";
@@ -170,10 +170,10 @@ impl<'a> GenericImage<'a> {
     }
 
     /// Remove a metadata value from the [`GenericImage`].
-    /// 
+    ///
     /// # Arguments
     /// - `name`: The name of the metadata value to remove.
-    /// 
+    ///
     /// # Returns
     /// - `Ok(())` if the key was removed successfully.
     /// - `Err("Key not found")` if the key was not found.
@@ -195,15 +195,15 @@ impl<'a> GenericImage<'a> {
     }
 
     /// Replace a metadata value in the [`GenericImage`].
-    /// 
+    ///
     /// # Arguments
     /// - `name`: The name of the metadata value to replace.
     /// - `value`: The new value to insert. The value is either a primitive type, a `String`, or a `std::time::Duration` or `std::time::SystemTime` or a tuple of a value type and a comment.
-    /// 
+    ///
     /// # Returns
     /// - `Ok(())` if the key was replaced successfully.
     /// - `Err("Key not found")` if the key was not found.
-    /// 
+    ///
     pub fn replace_key<T: InsertValue>(
         &mut self,
         name: &str,
@@ -213,7 +213,7 @@ impl<'a> GenericImage<'a> {
     }
 
     /// Get the underlying [`DynamicImageData`].
-    /// 
+    ///
     /// # Returns
     /// The underlying [`DynamicImageData`] of the [`GenericImage`].
     pub fn get_image(&self) -> &DynamicImageData<'a> {
@@ -221,7 +221,7 @@ impl<'a> GenericImage<'a> {
     }
 
     /// Get the contained metadata as a slice of [`GenericLineItem`]s.
-    /// 
+    ///
     /// # Returns
     /// A slice of [`GenericLineItem`]s containing the metadata.
     pub fn get_metadata(&self) -> &[GenericLineItem] {
@@ -237,6 +237,37 @@ impl<'a> GenericImage<'a> {
     pub fn get_key(&self, name: &str) -> Option<&GenericLineItem> {
         name_check(name).ok()?;
         self.metadata.iter().find(|x| x.name() == name)
+    }
+}
+
+impl<'a: 'b, 'b> Debayer<'a, 'b> for GenericImage<'b> {
+    fn debayer(&'b self, method: DemosaicMethod) -> Result<Self, BayerError> {
+        let img = self.image.debayer(method)?;
+        let meta = self.metadata.clone();
+        Ok(GenericImage {
+            metadata: meta,
+            image: img,
+        })
+    }
+}
+
+impl<'a: 'b, 'b> GenericImage<'a> {
+    /// Apply a function to the image data.
+    /// 
+    /// This function allows replacing the underlying image data with a new image data.
+    /// 
+    /// # Arguments
+    /// - `f`: The function to apply to the image data.
+    /// The function must take a [`DynamicImageData`] and return a [`DynamicImageData`].
+    pub fn operate<F>(self, f: F) -> Result<GenericImage<'b>, &'static str>
+    where
+        F: Fn(DynamicImageData<'b>) -> Result<DynamicImageData<'b>, &'static str>
+    {
+        let img = f(self.image)?;
+        Ok(GenericImage {
+            metadata: self.metadata,
+            image: img,
+        })
     }
 }
 
@@ -608,5 +639,23 @@ impl PrvGenLineItem {
             PrvGenLineItem::String(x) => Some(&x.value),
             _ => None,
         }
+    }
+}
+
+mod test {
+    #[test]
+    fn test_operate() {
+        use crate::{ColorSpace, DynamicImageData, GenericImage, ImageData};
+        use std::time::SystemTime;
+
+        let data = vec![1u8, 2, 3, 4, 5, 6];
+        let img = ImageData::from_owned(data, 3, 2, ColorSpace::Gray).unwrap();
+        let img = DynamicImageData::from(img);
+        let mut img = GenericImage::new(SystemTime::now(), img);
+
+        img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
+
+        let img2 = img.clone().operate(|x| Ok(x)).unwrap();
+        assert_eq!(img, img2);
     }
 }

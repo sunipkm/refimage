@@ -1,4 +1,4 @@
-use refimage::{ColorSpace, Demosaic, ImageData};
+use refimage::{ColorSpace, Debayer, DemosaicMethod, ImageData};
 
 fn main() {
     // color_backtrace::install();
@@ -15,7 +15,7 @@ fn main() {
         4,
         crate::ColorSpace::Rggb,
     ).expect("Failed to create ImageData");
-    let a = img.debayer(Demosaic::None);
+    let a = img.debayer(DemosaicMethod::None);
     assert!(a.is_ok());
     let a = a.unwrap(); // at this point, a is an ImageData struct
     assert!(a.channels() == 3);

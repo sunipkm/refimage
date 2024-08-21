@@ -105,6 +105,7 @@ impl<'a, T: PixelStor> DataStor<'a, T> {
 
 impl<'a, T: PixelStor> DataStor<'a, T> {
     /// Convert to owned data.
+    #[allow(dead_code)]
     pub fn to_owned(&self) -> Self {
         self.clone()
     }

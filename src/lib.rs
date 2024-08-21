@@ -65,7 +65,7 @@ pub use metadata::{GenericImage, GenericLineItem, CAMERANAME_KEY, PROGRAMNAME_KE
 
 pub(crate) use datastor::DataStor;
 use demosaic::ColorFilterArray;
-pub use demosaic::{BayerError, Demosaic};
+pub use demosaic::{BayerError, DemosaicMethod, Debayer};
 pub use traits::PixelStor;
 
 #[cfg(feature = "image")]
@@ -205,6 +205,7 @@ mod test {
 
     #[test]
     fn test_debayer() {
+        use crate::demosaic::Debayer;
         // color_backtrace::install();
         let src = [
             229, 67, 95, 146, 232, 51, 229, 241, 169, 161, 15, 52, 45, 175, 98, 197,
@@ -220,7 +221,7 @@ mod test {
             crate::ColorSpace::Rggb,
         )
         .expect("Failed to create ImageData");
-        let a = img.debayer(crate::Demosaic::None);
+        let a = img.debayer(crate::DemosaicMethod::None);
         assert!(a.is_ok());
         let a = a.unwrap(); // at this point, a is an ImageData struct
         assert!(a.channels() == 3);

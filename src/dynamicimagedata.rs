@@ -1,4 +1,5 @@
-use crate::{BayerError, ColorSpace, Demosaic, DynamicImageData, ImageData, PixelType};
+use crate::{BayerError, ColorSpace, DemosaicMethod, DynamicImageData, ImageData, PixelType};
+use crate::Debayer;
 
 macro_rules! dynamic_map(
     ($dynimage: expr, $image: pat => $action: expr) => ({
@@ -39,9 +40,10 @@ impl<'a> DynamicImageData<'a> {
     pub fn color_space(&self) -> ColorSpace {
         dynamic_map!(self, ref image, { image.color_space() })
     }
+}
 
-    /// Debayer the image.
-    pub fn debayer(&self, alg: Demosaic) -> Result<DynamicImageData, BayerError> {
+impl<'a: 'b, 'b> Debayer <'a, 'b> for DynamicImageData<'b> {
+    fn debayer(&'b self, alg: DemosaicMethod) -> Result<Self, BayerError> {
         use DynamicImageData::*;
         match self {
             U8(image) => Ok(U8(image.debayer(alg)?)),

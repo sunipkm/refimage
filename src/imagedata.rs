@@ -1,27 +1,27 @@
 use crate::{
-    demosaic::{run_demosaic, RasterMut},
+    demosaic::{run_demosaic, Debayer, RasterMut},
     traits::Enlargeable,
-    BayerError, ColorSpace, DataStor, Demosaic, PixelStor,
+    BayerError, ColorSpace, DataStor, DemosaicMethod, PixelStor,
 };
 use num_traits::CheckedEuclid;
 
 /// A structure that holds image data backed by a slice or a vector.
-/// 
+///
 /// This represents a _matrix_ of _pixels_ which are composed of primitive and common
 /// types, i.e. `u8`, `u16`, and `f32`. The matrix is stored in a _row-major_ order.
-/// 
+///
 /// [`ImageData`] supports arbitrary color spaces and number of channels, but the number
 /// of channels must be consistent across the image. The data is stored in a single
 /// contiguous buffer.
-/// 
+///
 /// # Note
 /// Alpha channels are not trivially supported. They can be added by using a custom
 /// color space.
-/// 
+///
 /// # Usage
 /// ```
 /// use refimage::{ImageData, ColorSpace};
-/// 
+///
 /// let data = vec![1u8, 2, 3, 4, 5, 6];
 /// let img = ImageData::from_owned(data, 3, 2, ColorSpace::Gray).unwrap();
 /// ```
@@ -54,9 +54,7 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
             return Err("Height is zero");
         }
         let len = data.len();
-        let tot = width
-            .checked_mul(height)
-            .ok_or("Image too large.")?;
+        let tot = width.checked_mul(height).ok_or("Image too large.")?;
         let (channels, rem) = len
             .checked_div_rem_euclid(&tot)
             .ok_or("Could not determine number of channels.")?;
@@ -82,15 +80,15 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
     }
 
     /// Create a new image data struct from a mutable slice of owned data.
-    /// 
+    ///
     /// Images can not be larger than 65535x65535 pixels.
-    /// 
+    ///
     /// # Arguments
     /// - `data`: The data slice.
-    /// - `width`: The width of the image. 
+    /// - `width`: The width of the image.
     /// - `height`: The height of the image.
     /// - `cspace`: The color space of the image ([`ColorSpace`]).
-    /// 
+    ///
     /// # Errors
     /// - If the image is too large.
     /// - If the data is empty.
@@ -109,15 +107,15 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
     }
 
     /// Create a new image data struct from owned data.
-    /// 
+    ///
     /// Images can not be larger than 65535x65535 pixels.
-    /// 
+    ///
     /// # Arguments
     /// - `data`: Owned data ([`Vec`]).
     /// - `width`: The width of the image.
     /// - `height`: The height of the image.
     /// - `cspace`: The color space of the image ([`ColorSpace`]).
-    /// 
+    ///
     /// # Errors
     /// - If the image is too large.
     /// - If the data is empty.
@@ -146,7 +144,7 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
     }
 
     /// Get the underlying data as a vector.
-    /// 
+    ///
     /// If the data is owned, this will return the owned data. If the data is a reference,
     /// this will return a copy of the data.
     pub fn into_vec(self) -> Vec<T> {
@@ -174,10 +172,10 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
     }
 
     /// Get a u8 slice of the data.
-    /// 
+    ///
     /// # Safety
     /// This function uses [`bytemuck::cast_slice`] to cast the data to a slice of u8.
-    /// As such, it is unsafe, but it is safe to use since the data is vector of 
+    /// As such, it is unsafe, but it is safe to use since the data is vector of
     /// primitive types.
     pub fn as_u8_slice(&self) -> &[u8] {
         self.data.as_u8_slice()
@@ -219,24 +217,24 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
     }
 }
 
-impl<'a, T: PixelStor + Enlargeable> ImageData<'a, T> {
+impl<'a: 'b, 'b, T: PixelStor + Enlargeable> Debayer<'a, 'b> for ImageData<'b, T> {
     /// Debayer the image.
-    /// 
+    ///
     /// This function returns an error if the image is not a Bayer pattern image.
-    /// 
+    ///
     /// # Arguments
     /// - `alg`: The demosaicing algorithm to use.
-    /// 
+    ///
     /// Possible algorithms are:
-    /// - [`Demosaic::None`]: No interpolation.
-    /// - [`Demosaic::Nearest`]: Nearest neighbour interpolation.
-    /// - [`Demosaic::Linear`]: Linear interpolation.
-    /// - [`Demosaic::Cubic`]: Cubic interpolation.
-    /// 
+    /// - [`DemosaicMethod::None`]: No interpolation.
+    /// - [`DemosaicMethod::Nearest`]: Nearest neighbour interpolation.
+    /// - [`DemosaicMethod::Linear`]: Linear interpolation.
+    /// - [`DemosaicMethod::Cubic`]: Cubic interpolation.
+    ///
     /// # Errors
     /// - If the image is not a Bayer pattern image.
     /// - If the image is not a single channel image.
-    pub fn debayer(&self, alg: Demosaic) -> Result<ImageData<T>, BayerError> {
+    fn debayer(&self, alg: DemosaicMethod) -> Result<ImageData<T>, BayerError> {
         let cfa = self.cspace.try_into().map_err(|_| BayerError::NoGood)?;
         if self.channels > 1 || self.cspace == ColorSpace::Gray || self.cspace == ColorSpace::Rgb {
             return Err(BayerError::WrongDepth);
