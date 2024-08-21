@@ -30,13 +30,13 @@ pub(crate)struct RasterMut<'a, T: PixelStor> {
     buf: &'a mut [T],
 }
 
-/// The demosaicing algorithm to use to fill in the missing data.
+/// The demosaicing algorithm to use to fill in the missing color channels.
 #[derive(Clone,Copy,Debug,Eq,PartialEq)]
 pub enum Demosaic {
     /// No interpolation.
     None,
     /// Nearest neighbour interpolation.
-    NearestNeighbour,
+    Nearest,
     /// Linear interpolation.
     Linear,
     /// Cubic interpolation.
@@ -49,7 +49,7 @@ pub(crate) fn run_demosaic<T>(r: &ImageData<T>, cfa: ColorFilterArray, alg: Demo
     where T: PixelStor + Enlargeable {
 match alg {
     Demosaic::None => crate::demosaic::none::run(r, cfa, dst),
-    Demosaic::NearestNeighbour => crate::demosaic::nearestneighbour::run(r, cfa, dst),
+    Demosaic::Nearest => crate::demosaic::nearestneighbour::run(r, cfa, dst),
     Demosaic::Linear => crate::demosaic::linear::run(r, cfa, dst),
     Demosaic::Cubic => crate::demosaic::cubic::run(r, cfa, dst),
 }

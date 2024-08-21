@@ -61,56 +61,39 @@ impl<'a> From<&DynamicImageData<'a>> for PixelType {
     }
 }
 
-impl<'a> From<ImageData<'a, u8>> for DynamicImageData<'a> {
-    fn from(data: ImageData<'a, u8>) -> Self {
-        DynamicImageData::U8(data)
-    }
-}
 
-impl<'a> TryFrom<DynamicImageData<'a>> for ImageData<'a, u8> {
-    type Error = &'static str;
-
-    fn try_from(data: DynamicImageData<'a>) -> Result<Self, Self::Error> {
-        match data {
-            DynamicImageData::U8(data) => Ok(data),
-            _ => Err("Data is not of type u8"),
+macro_rules! tryfrom_dynimgdata_imgdata {
+    ($type:ty, $variant:path) => {
+        impl<'a> TryFrom<DynamicImageData<'a>> for ImageData<'a, $type> {
+            type Error = &'static str;
+            
+            fn try_from(data: DynamicImageData<'a>) -> Result<Self, Self::Error> {
+                match data {
+                    $variant(data) => Ok(data),
+                    _ => Err("Data is not of type u8"),
+                }
+            }
         }
-    }
+    };
 }
 
-impl<'a> TryFrom<DynamicImageData<'a>> for ImageData<'a, u16> {
-    type Error = &'static str;
+tryfrom_dynimgdata_imgdata!(u8, DynamicImageData::U8);
+tryfrom_dynimgdata_imgdata!(u16, DynamicImageData::U16);
+tryfrom_dynimgdata_imgdata!(f32, DynamicImageData::F32);
 
-    fn try_from(data: DynamicImageData<'a>) -> Result<Self, Self::Error> {
-        match data {
-            DynamicImageData::U16(data) => Ok(data),
-            _ => Err("Data is not of type u16"),
+macro_rules! from_imgdata_dynimg {
+    ($type:ty, $variant:path) => {
+        impl<'a> From<ImageData<'a, $type>> for DynamicImageData<'a> {
+            fn from(data: ImageData<'a, $type>) -> Self {
+                $variant(data)
+            }
         }
-    }
+    };
 }
 
-impl<'a> TryFrom<DynamicImageData<'a>> for ImageData<'a, f32> {
-    type Error = &'static str;
-
-    fn try_from(data: DynamicImageData<'a>) -> Result<Self, Self::Error> {
-        match data {
-            DynamicImageData::F32(data) => Ok(data),
-            _ => Err("Data is not of type f32"),
-        }
-    }
-}
-
-impl<'a> From<ImageData<'a, u16>> for DynamicImageData<'a> {
-    fn from(data: ImageData<'a, u16>) -> Self {
-        DynamicImageData::U16(data)
-    }
-}
-
-impl<'a> From<ImageData<'a, f32>> for DynamicImageData<'a> {
-    fn from(data: ImageData<'a, f32>) -> Self {
-        DynamicImageData::F32(data)
-    }
-}
+from_imgdata_dynimg!(u8, DynamicImageData::U8);
+from_imgdata_dynimg!(u16, DynamicImageData::U16);
+from_imgdata_dynimg!(f32, DynamicImageData::F32);
 
 impl<'a> DynamicImageData<'a> {
     /// Get the data as a slice of `u8`, regardless of the underlying type.

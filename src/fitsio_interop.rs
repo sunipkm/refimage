@@ -11,8 +11,7 @@ use fitsio::{
 };
 
 use crate::{
-    metadata::{LineItem, TIMESTAMP_KEY},
-    DynamicImageData, GenericImage, GenericLineItem, ImageData, PixelStor, PixelType,
+    metadata::{PrvLineItem, TIMESTAMP_KEY, PrvGenLineItem}, DynamicImageData, GenericImage, GenericLineItem, ImageData, PixelStor, PixelType
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Hash)]
@@ -70,7 +69,18 @@ impl Display for FitsCompression {
 }
 
 impl GenericImage<'_> {
-    /// Write the image data to a FITS file.
+    /// Write the image, with metadata, to a FITS file.
+    /// 
+    /// # Arguments
+    /// - `path`: The path to write the FITS file to.
+    /// - `compress`: The compression algorithm to use ([`FitsCompression`]).
+    /// - `overwrite`: Whether to overwrite the file if it already exists.
+    /// 
+    /// # Returns
+    /// The path to the written FITS file.
+    /// 
+    /// # Errors
+    /// This function returns errors from the FITS library if the file could not be written.
     pub fn write_fits(
         &self,
         path: &Path,
@@ -101,11 +111,6 @@ impl GenericImage<'_> {
                 .as_millis(),
         };
 
-        // let cameraname = match self.get_key(CAMERANAME_KEY) {
-        //     Some(val) => val.get_value_string().unwrap_or_default(),
-        //     None => "",
-        // };
-
         let datestamp = DateTime::from_timestamp_millis(timestamp as i64).ok_or(
             FitsError::Message("Could not convert timestamp to NaiveDateTime".to_owned()),
         )?;
@@ -122,7 +127,7 @@ impl GenericImage<'_> {
         path.set_extension(compress.extension());
 
         let (hdu, mut fptr) = self.get_image().write_fits(path, compress)?;
-        let lineitem = LineItem {
+        let lineitem = PrvLineItem {
             name: "DATE-OBS".to_string(),
             value: datestamp,
             comment: Some("Date and time of FITS file data".to_string()),
@@ -188,23 +193,29 @@ impl<'a, T: PixelStor + WriteImage> ImageData<'a, T> {
     }
 }
 
-impl GenericLineItem {
+impl PrvGenLineItem {
     fn write_key(&self, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError> {
         match self {
-            GenericLineItem::U8(item) => item.write_key(hdu, fptr),
-            GenericLineItem::U16(item) => item.write_key(hdu, fptr),
-            GenericLineItem::U32(item) => item.write_key(hdu, fptr),
-            GenericLineItem::U64(item) => item.write_key(hdu, fptr),
-            GenericLineItem::I8(item) => item.write_key(hdu, fptr),
-            GenericLineItem::I16(item) => item.write_key(hdu, fptr),
-            GenericLineItem::I32(item) => item.write_key(hdu, fptr),
-            GenericLineItem::I64(item) => item.write_key(hdu, fptr),
-            GenericLineItem::F32(item) => item.write_key(hdu, fptr),
-            GenericLineItem::F64(item) => item.write_key(hdu, fptr),
-            GenericLineItem::String(item) => item.write_key(hdu, fptr),
-            GenericLineItem::SystemTime(item) => item.write_key(hdu, fptr),
-            GenericLineItem::Duration(item) => item.write_key(hdu, fptr),
+            PrvGenLineItem::U8(item) => item.write_key(hdu, fptr),
+            PrvGenLineItem::U16(item) => item.write_key(hdu, fptr),
+            PrvGenLineItem::U32(item) => item.write_key(hdu, fptr),
+            PrvGenLineItem::U64(item) => item.write_key(hdu, fptr),
+            PrvGenLineItem::I8(item) => item.write_key(hdu, fptr),
+            PrvGenLineItem::I16(item) => item.write_key(hdu, fptr),
+            PrvGenLineItem::I32(item) => item.write_key(hdu, fptr),
+            PrvGenLineItem::I64(item) => item.write_key(hdu, fptr),
+            PrvGenLineItem::F32(item) => item.write_key(hdu, fptr),
+            PrvGenLineItem::F64(item) => item.write_key(hdu, fptr),
+            PrvGenLineItem::String(item) => item.write_key(hdu, fptr),
+            PrvGenLineItem::SystemTime(item) => item.write_key(hdu, fptr),
+            PrvGenLineItem::Duration(item) => item.write_key(hdu, fptr),
         }
+    }
+}
+
+impl GenericLineItem {
+    fn write_key(&self, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError> {
+        self.0.write_key(hdu, fptr)
     }
 }
 
@@ -212,9 +223,9 @@ pub(crate) trait WriteKey {
     fn write_key(&self, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError>;
 }
 
-macro_rules! write_int_key_impl {
+macro_rules! write_num_key_impl {
     ($type:ty) => {
-        impl WriteKey for LineItem<$type> {
+        impl WriteKey for PrvLineItem<$type> {
             fn write_key(&self, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError> {
                 match &self.comment {
                     Some(cmt) => hdu.write_key(fptr, &self.name, (self.value, cmt.as_str())),
@@ -225,18 +236,18 @@ macro_rules! write_int_key_impl {
     };
 }
 
-write_int_key_impl!(u8);
-write_int_key_impl!(u16);
-write_int_key_impl!(u32);
-write_int_key_impl!(u64);
-write_int_key_impl!(i8);
-write_int_key_impl!(i16);
-write_int_key_impl!(i32);
-write_int_key_impl!(i64);
-write_int_key_impl!(f32);
-write_int_key_impl!(f64);
+write_num_key_impl!(u8);
+write_num_key_impl!(u16);
+write_num_key_impl!(u32);
+write_num_key_impl!(u64);
+write_num_key_impl!(i8);
+write_num_key_impl!(i16);
+write_num_key_impl!(i32);
+write_num_key_impl!(i64);
+write_num_key_impl!(f32);
+write_num_key_impl!(f64);
 
-impl WriteKey for LineItem<String> {
+impl WriteKey for PrvLineItem<String> {
     fn write_key(&self, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError> {
         match &self.comment {
             Some(cmt) => hdu.write_key(fptr, &self.name, (self.value.as_str(), cmt.as_str())),
@@ -245,7 +256,7 @@ impl WriteKey for LineItem<String> {
     }
 }
 
-impl WriteKey for LineItem<SystemTime> {
+impl WriteKey for PrvLineItem<SystemTime> {
     fn write_key(&self, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError> {
         let timestamp = self.value.duration_since(UNIX_EPOCH).map_err(|err| {
             FitsError::Message(format!(
@@ -264,7 +275,7 @@ impl WriteKey for LineItem<SystemTime> {
     }
 }
 
-impl WriteKey for LineItem<Duration> {
+impl WriteKey for PrvLineItem<Duration> {
     fn write_key(&self, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError> {
         match &self.comment {
             Some(cmt) => hdu.write_key(

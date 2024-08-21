@@ -18,70 +18,6 @@ struct SerialImage {
     crc: u32,
 }
 
-enum DtypeContainer<'a, T> {
-    Slice(&'a [T]),
-    Vec(Vec<T>),
-}
-
-impl<T> DtypeContainer<'_, T> {
-    fn as_slice(&self) -> &[T] {
-        match self {
-            DtypeContainer::Slice(slice) => slice,
-            DtypeContainer::Vec(vec) => vec,
-        }
-    }
-}
-
-type ByteResult<T> = Result<T, String>;
-
-fn u8_slice_as_f32(buf: &[u8]) -> ByteResult<DtypeContainer<f32>> {
-    let res = bytemuck::try_cast_slice(buf);
-    match res {
-        Ok(slc) => Ok(DtypeContainer::<'_, f32>::Slice(slc)),
-        Err(err) => {
-            match err {
-                bytemuck::PodCastError::TargetAlignmentGreaterAndInputNotAligned => {
-                    // If the buffer is not aligned for a f32 slice, copy the buffer into a new Vec<f32>
-                    let mut vec = vec![0.0; buf.len() / 4];
-                    for (i, chunk) in buf.chunks_exact(4).enumerate() {
-                        let f32_val = f32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-                        vec[i] = f32_val;
-                    }
-                    Ok(DtypeContainer::Vec(vec))
-                }
-                _ => {
-                    // If the buffer is not the correct length for a f32 slice, err.
-                    Err(err.to_string())
-                }
-            }
-        }
-    }
-}
-
-fn u8_slice_as_u16(buf: &[u8]) -> ByteResult<DtypeContainer<u16>> {
-    let res = bytemuck::try_cast_slice(buf);
-    match res {
-        Ok(slc) => Ok(DtypeContainer::<u16>::Slice(slc)),
-        Err(err) => {
-            match err {
-                bytemuck::PodCastError::TargetAlignmentGreaterAndInputNotAligned => {
-                    // If the buffer is not aligned for a f32 slice, copy the buffer into a new Vec<f32>
-                    let mut vec = vec![0; buf.len() / 2];
-                    for (i, chunk) in buf.chunks_exact(2).enumerate() {
-                        let u16_val = u16::from_ne_bytes([chunk[0], chunk[1]]);
-                        vec[i] = u16_val;
-                    }
-                    Ok(DtypeContainer::Vec(vec))
-                }
-                _ => {
-                    // If the buffer is not the correct length for a f32 slice, err.
-                    Err(err.to_string())
-                }
-            }
-        }
-    }
-}
-
 impl<'a> TryFrom<&'a DynamicImageData<'a>> for SerialImage {
     type Error = &'static str;
 
@@ -226,6 +162,70 @@ impl<'de: 'a, 'a> Deserialize<'de> for DynamicImageData<'a> {
             DynamicImageData::try_from(img)
                 .map_err(|_| serde::de::Error::custom("Could not deserialize DynamicImageData"))
         })
+    }
+}
+
+enum DtypeContainer<'a, T> {
+    Slice(&'a [T]),
+    Vec(Vec<T>),
+}
+
+impl<T> DtypeContainer<'_, T> {
+    fn as_slice(&self) -> &[T] {
+        match self {
+            DtypeContainer::Slice(slice) => slice,
+            DtypeContainer::Vec(vec) => vec,
+        }
+    }
+}
+
+type ByteResult<T> = Result<T, String>;
+
+fn u8_slice_as_f32(buf: &[u8]) -> ByteResult<DtypeContainer<f32>> {
+    let res = bytemuck::try_cast_slice(buf);
+    match res {
+        Ok(slc) => Ok(DtypeContainer::<'_, f32>::Slice(slc)),
+        Err(err) => {
+            match err {
+                bytemuck::PodCastError::TargetAlignmentGreaterAndInputNotAligned => {
+                    // If the buffer is not aligned for a f32 slice, copy the buffer into a new Vec<f32>
+                    let mut vec = vec![0.0; buf.len() / 4];
+                    for (i, chunk) in buf.chunks_exact(4).enumerate() {
+                        let f32_val = f32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+                        vec[i] = f32_val;
+                    }
+                    Ok(DtypeContainer::Vec(vec))
+                }
+                _ => {
+                    // If the buffer is not the correct length for a f32 slice, err.
+                    Err(err.to_string())
+                }
+            }
+        }
+    }
+}
+
+fn u8_slice_as_u16(buf: &[u8]) -> ByteResult<DtypeContainer<u16>> {
+    let res = bytemuck::try_cast_slice(buf);
+    match res {
+        Ok(slc) => Ok(DtypeContainer::<u16>::Slice(slc)),
+        Err(err) => {
+            match err {
+                bytemuck::PodCastError::TargetAlignmentGreaterAndInputNotAligned => {
+                    // If the buffer is not aligned for a f32 slice, copy the buffer into a new Vec<f32>
+                    let mut vec = vec![0; buf.len() / 2];
+                    for (i, chunk) in buf.chunks_exact(2).enumerate() {
+                        let u16_val = u16::from_ne_bytes([chunk[0], chunk[1]]);
+                        vec[i] = u16_val;
+                    }
+                    Ok(DtypeContainer::Vec(vec))
+                }
+                _ => {
+                    // If the buffer is not the correct length for a f32 slice, err.
+                    Err(err.to_string())
+                }
+            }
+        }
     }
 }
 
