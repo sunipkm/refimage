@@ -1,4 +1,10 @@
 # Changelog for `refimage`
+
+### Check documentation
+```sh
+$ RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --all-features
+```
+
 ### 0.1.1 (2024-08-20)
 - Updated documentation.
 
