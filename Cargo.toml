@@ -20,6 +20,7 @@ include = [
     "/LICENSE-MIT",
     "/README.MD",
     "/src/",
+    "/examples/",
 ]
 
 [dependencies]
