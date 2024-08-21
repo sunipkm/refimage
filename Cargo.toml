@@ -13,7 +13,7 @@ readme = "README.MD"
 documentation = "https://docs.rs/refimage"
 repository = "https://github.com/sunipkm/refimage"
 homepage = "https://github.com/sunipkm/refimage"
-categories = ["multimedia::images", "multimedia::encoding", "encoding", "fitsio"]
+categories = ["multimedia::images", "multimedia::encoding", "encoding"]
 
 include = [
     "/LICENSE-APACHE",
