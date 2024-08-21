@@ -1,6 +1,24 @@
 # Changelog for `refimage`
 
 ### Check documentation
+First you add this to your Cargo.toml:
+
+```toml
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+```
+This will make docs.rs compile your documentation with `RUSTFLAGS="--cfg docsrs"` set. We can use this to conditionally enable nightly features when building documentation, but not when building it normally.
+
+Now you add this to your `lib.rs` file:
+
+`#![cfg_attr(docsrs, feature(doc_cfg))]`
+Then, on anything that needs such an annotation, you add the following
+
+`#[cfg_attr(docsrs, doc(cfg(feature = "rt")))]`
+This supports all of the syntax that `#[cfg(...)]` does, including stuff like platform-specifiers and any/all. Tokio often sets this annotation using the macros in [`src/macros/cfg.rs`](https://github.com/tokio-rs/tokio/blob/master/tokio/src/macros/cfg.rs). Note that the annotation works recursively, so putting it on a module also affects the stuff inside (sometimes, it's a bit flaky).
+
+Finally, when building the documentation locally, you run the following command:
 ```sh
 $ RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --all-features
 ```
