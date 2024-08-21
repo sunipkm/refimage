@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{BayerError, Debayer, DemosaicMethod, DynamicImageData};
 
 /// Key for the timestamp metadata.
+/// This key is inserted by default when creating a new [`GenericImage`].
 pub const TIMESTAMP_KEY: &str = "TIMESTAMP";
 /// Key for the camera name metadata.
 pub const CAMERANAME_KEY: &str = "CAMERA";
@@ -33,8 +34,8 @@ pub const PROGRAMNAME_KEY: &str = "PROGNAME";
 /// - The metadata key is case-insensitive and is stored as an uppercase string.
 /// - When saving to a FITS file, the metadata comment may be truncated.
 /// - Metadata of type [`std::time::Duration`] or [`std::time::SystemTime`] is split
-/// and stored as two consecutive metadata items, with the same key, split into
-/// seconds ([`u64`]) and microseconds ([`u32`]).
+///   and stored as two consecutive metadata items, with the same key, split into
+///   seconds ([`u64`]) and microseconds ([`u32`]).
 ///
 pub struct GenericLineItem(pub(crate) PrvGenLineItem);
 
@@ -65,78 +66,6 @@ pub struct GenericImage<'a> {
     metadata: Vec<GenericLineItem>,
     #[serde(borrow)]
     image: DynamicImageData<'a>,
-}
-
-macro_rules! impl_functions {
-    ($(#[$attr:meta])* => $name: ident, $type: ty) => {
-        $(#[$attr])*
-        pub fn $name(&self) -> $type {
-            self.0.$name()
-        }
-    };
-}
-
-impl GenericLineItem {
-    impl_functions! {
-        /// Get the name of the metadata value.
-        => name, &str
-    }
-    impl_functions! {
-        /// Get the comment of the metadata value.
-        => get_comment, Option<&str>
-    }
-    impl_functions! {
-        /// Get the `u8` metadata value.
-        => get_value_u8, Option<u8>
-    }
-    impl_functions! {
-        /// Get the `u16` metadata value.
-        => get_value_u16, Option<u16>
-    }
-    impl_functions! {
-        /// Get the `u32` metadata value.
-        => get_value_u32, Option<u32>
-    }
-    impl_functions! {
-        /// Get the `u64` metadata value.
-        => get_value_u64, Option<u64>
-    }
-    impl_functions! {
-        /// Get the `i8` metadata value.
-        => get_value_i8, Option<i8>
-    }
-    impl_functions! {
-        /// Get the `i16` metadata value.
-        => get_value_i16, Option<i16>
-    }
-    impl_functions! {
-        /// Get the `i32` metadata value.
-        => get_value_i32, Option<i32>
-    }
-    impl_functions! {
-        /// Get the `i64` metadata value.
-        => get_value_i64, Option<i64>
-    }
-    impl_functions! {
-        /// Get the `f32` metadata value.
-        => get_value_f32, Option<f32>
-    }
-    impl_functions! {
-        /// Get the `f64` metadata value.
-        => get_value_f64, Option<f64>
-    }
-    impl_functions! {
-        /// Get the `std::time::Duration` metadata value.
-        => get_value_duration, Option<Duration>
-    }
-    impl_functions! {
-        /// Get the `std::time::SystemTime` metadata value.
-        => get_value_systemtime, Option<SystemTime>
-    }
-    impl_functions! {
-        /// Get the `String` metadata value.
-        => get_value_string, Option<&str>
-    }
 }
 
 impl<'a> GenericImage<'a> {
@@ -184,8 +113,8 @@ impl<'a> GenericImage<'a> {
     /// - The metadata key is case-insensitive and is stored as an uppercase string.
     /// - When saving to a FITS file, the metadata comment may be truncated.
     /// - Metadata of type [`std::time::Duration`] or [`std::time::SystemTime`] is split
-    /// and stored as two consecutive metadata items, with the same key, split into
-    /// seconds ([`u64`]) and microseconds ([`u32`]).
+    ///   and stored as two consecutive metadata items, with the same key, split into
+    ///   seconds ([`u64`]) and microseconds ([`u32`]).
     pub fn insert_key<T: InsertValue>(&mut self, name: &str, value: T) -> Result<(), &'static str> {
         T::insert_key(self, name, value)
     }
@@ -279,16 +208,88 @@ impl<'a: 'b, 'b> GenericImage<'a> {
     ///
     /// # Arguments
     /// - `f`: The function to apply to the image data.
-    /// The function must take a [`DynamicImageData`] and return a [`DynamicImageData`].
+    ///   The function must take a [`DynamicImageData`] and return a [`DynamicImageData`].
     pub fn operate<F>(self, f: F) -> Result<GenericImage<'b>, &'static str>
     where
-        F: Fn(DynamicImageData<'b>) -> Result<DynamicImageData<'b>, &'static str>,
+        F: FnOnce(DynamicImageData<'b>) -> Result<DynamicImageData<'b>, &'static str>,
     {
         let img = f(self.image)?;
         Ok(GenericImage {
             metadata: self.metadata,
             image: img,
         })
+    }
+}
+
+macro_rules! impl_functions {
+    ($(#[$attr:meta])* => $name: ident, $type: ty) => {
+        $(#[$attr])*
+        pub fn $name(&self) -> $type {
+            self.0.$name()
+        }
+    };
+}
+
+impl GenericLineItem {
+    impl_functions! {
+        /// Get the name of the metadata value.
+        => name, &str
+    }
+    impl_functions! {
+        /// Get the comment of the metadata value.
+        => get_comment, Option<&str>
+    }
+    impl_functions! {
+        /// Get the `u8` metadata value.
+        => get_value_u8, Option<u8>
+    }
+    impl_functions! {
+        /// Get the `u16` metadata value.
+        => get_value_u16, Option<u16>
+    }
+    impl_functions! {
+        /// Get the `u32` metadata value.
+        => get_value_u32, Option<u32>
+    }
+    impl_functions! {
+        /// Get the `u64` metadata value.
+        => get_value_u64, Option<u64>
+    }
+    impl_functions! {
+        /// Get the `i8` metadata value.
+        => get_value_i8, Option<i8>
+    }
+    impl_functions! {
+        /// Get the `i16` metadata value.
+        => get_value_i16, Option<i16>
+    }
+    impl_functions! {
+        /// Get the `i32` metadata value.
+        => get_value_i32, Option<i32>
+    }
+    impl_functions! {
+        /// Get the `i64` metadata value.
+        => get_value_i64, Option<i64>
+    }
+    impl_functions! {
+        /// Get the `f32` metadata value.
+        => get_value_f32, Option<f32>
+    }
+    impl_functions! {
+        /// Get the `f64` metadata value.
+        => get_value_f64, Option<f64>
+    }
+    impl_functions! {
+        /// Get the `std::time::Duration` metadata value.
+        => get_value_duration, Option<Duration>
+    }
+    impl_functions! {
+        /// Get the `std::time::SystemTime` metadata value.
+        => get_value_systemtime, Option<SystemTime>
+    }
+    impl_functions! {
+        /// Get the `String` metadata value.
+        => get_value_string, Option<&str>
     }
 }
 

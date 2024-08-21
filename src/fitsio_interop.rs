@@ -5,12 +5,12 @@ use std::{
 };
 
 use chrono::DateTime;
+pub use fitsio::errors::Error as FitsError;
 use fitsio::{
     hdu::FitsHdu,
     images::{ImageDescription, ImageType, WriteImage},
     FitsFile,
 };
-pub use fitsio::errors::Error as FitsError;
 
 use crate::{
     metadata::{PrvGenLineItem, PrvLineItem, TIMESTAMP_KEY},
@@ -36,28 +36,28 @@ pub enum FitsCompression {
     /// PLIO compression.
     Plio,
     /// Custom compression algorithm.
-    /// 
+    ///
     /// The custom settings are passed as a string.
-    /// 
+    ///
     /// For more information, visit the [relevant FITSIO documentation page](https://heasarc.gsfc.nasa.gov/fitsio/c/c_user/node41.html).
-    /// 
+    ///
     /// # Format
     /// `[compress NAME T1,T2; q[z] QLEVEL, s HSCALE]`, where
     /// - `NAME`: Algorithm name:  GZIP, Rice, HCOMPRESS, HSCOMPRSS or PLIO
-    /// may be abbreviated to the first letter (or HS for HSCOMPRESS).
+    ///   may be abbreviated to the first letter (or HS for HSCOMPRESS).
     /// - `T1, T2`: Tile dimension (e.g. 100,100 for square tiles 100 pixels wide).
     /// - `QLEVEL`: Quantization level for floating point FITS images.
     /// - `HSCALE`: `HCOMPRESS` scale factor; default = 0 which is lossless.
-    /// 
+    ///
     /// # Example
-    /// - `[compress]`: Use the default compression algorithm (Rice) 
-    /// and the default tile size (row by row).
-    /// - `[compress G|R|P|H]`: Use the specified compression algorithm; only the first letter 
-    /// of the algorithm should be given.
+    /// - `[compress]`: Use the default compression algorithm (Rice)
+    ///   and the default tile size (row by row).
+    /// - `[compress G|R|P|H]`: Use the specified compression algorithm; only the first letter
+    ///   of the algorithm should be given.
     /// - `[compress R 100,100]`: Use Rice and 100 x 100 pixel tiles.
     /// - `[compress R; q 10.0]`: Quantization level = `(RMS - noise) / 10`.
     /// - `[compress R; qz 10.0]`: Quantization level = `(RMS - noise) / 10`, using the
-    /// `SUBTRACTIVE_DITHER_2` quantization method.
+    ///   `SUBTRACTIVE_DITHER_2` quantization method.
     /// - `[compress HS; s 2.0]`: `HSCOMPRESS` (with smoothing) and scale = `(2.0 * RMS) - noise`.
     Custom(String),
 }

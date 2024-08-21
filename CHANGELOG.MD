@@ -1,5 +1,23 @@
 # Changelog for `refimage`
 
+## Changes
+
+### 0.2.0 (2024-08-21)
+- Moved the `debayer` method to its own trait, and removed public `debayer` methods
+from `DynamicImageData` and `ImageData`.
+- Renamed enum `Demosaic` to `DemosaicMethod`.
+- Implemented `Debayer::debayer` for `GenericImage`.
+- Implemented `GenericImage::operate()` that allows replacement of the underlying
+image while conserving the metadata.
+- Moved the `GenericImage::write_fits` function (enabled with `fitsio` feature) to the `FitsWrite` trait.
+- Added custom FITS compression support through `FitsCompression::Custom`.
+- Formatted all files and documentation.
+- Added this change log.
+
+### 0.1.1 (2024-08-20)
+- Updated documentation.
+
+## Pre-publish steps
 ### Check documentation
 First you add this to your Cargo.toml:
 
@@ -22,15 +40,9 @@ Finally, when building the documentation locally, you run the following command:
 ```sh
 $ RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --all-features
 ```
+### Run `cargo clippy`
+```sh
+$ cargo clippy --all-features
+```
 
-### 0.1.1 (2024-08-20)
-- Updated documentation.
-
-### 0.2.0 (2024-08-21)
-- Moved the `debayer` method to its own trait, and removed public `debayer` methods
-from `DynamicImageData` and `ImageData`.
-- Renamed enum `Demosaic` to `DemosaicMethod`.
-- Implemented `Debayer::debayer` for `GenericImage`.
-- Implemented `GenericImage::operate()` that allows replacement of the underlying
-image while conserving the metadata.
-- Added this change log.
+### Run `cargo fmt`

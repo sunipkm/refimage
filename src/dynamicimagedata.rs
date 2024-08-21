@@ -1,5 +1,5 @@
-use crate::{BayerError, ColorSpace, DemosaicMethod, DynamicImageData, ImageData, PixelType};
 use crate::Debayer;
+use crate::{BayerError, ColorSpace, DemosaicMethod, DynamicImageData, ImageData, PixelType};
 
 macro_rules! dynamic_map(
     ($dynimage: expr, $image: pat => $action: expr) => ({
@@ -42,7 +42,7 @@ impl<'a> DynamicImageData<'a> {
     }
 }
 
-impl<'a: 'b, 'b> Debayer <'a, 'b> for DynamicImageData<'b> {
+impl<'a: 'b, 'b> Debayer<'a, 'b> for DynamicImageData<'b> {
     fn debayer(&'b self, alg: DemosaicMethod) -> Result<Self, BayerError> {
         use DynamicImageData::*;
         match self {
@@ -63,12 +63,11 @@ impl<'a> From<&DynamicImageData<'a>> for PixelType {
     }
 }
 
-
 macro_rules! tryfrom_dynimgdata_imgdata {
     ($type:ty, $variant:path) => {
         impl<'a> TryFrom<DynamicImageData<'a>> for ImageData<'a, $type> {
             type Error = &'static str;
-            
+
             fn try_from(data: DynamicImageData<'a>) -> Result<Self, Self::Error> {
                 match data {
                     $variant(data) => Ok(data),

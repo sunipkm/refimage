@@ -14,9 +14,8 @@ impl BorderNone {
     }
 }
 
-impl <T: Copy> BayerRead<T> for BorderNone {
-    fn read_row(&self, r: &[T], dst: &mut [T])
-            -> BayerResult<()> {
+impl<T: Copy> BayerRead<T> for BorderNone {
+    fn read_row(&self, r: &[T], dst: &mut [T]) -> BayerResult<()> {
         let len = dst.len();
         let start = *self.0.borrow();
         let end = start.checked_add(len).expect("overflow");

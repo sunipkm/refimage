@@ -6,7 +6,7 @@ use crate::demosaic::BayerResult;
 /// The sequence of R, G, B describe the colours of the top-left,
 /// top-right, bottom-left, and bottom-right pixels in the 2x2 block,
 /// in that order.
-#[derive(Clone,Copy,Debug,Eq,PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ColorFilterArray {
     Bggr,
     Gbrg,

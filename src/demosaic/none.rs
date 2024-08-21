@@ -5,7 +5,11 @@ use crate::{ImageData, PixelStor};
 
 use super::border_none::BorderNone;
 
-pub fn run<T>(src: &ImageData<'_, T>, cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
+pub fn run<T>(
+    src: &ImageData<'_, T>,
+    cfa: ColorFilterArray,
+    dst: &mut RasterMut<'_, T>,
+) -> BayerResult<()>
 where
     T: PixelStor,
 {
@@ -80,7 +84,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::debayer;
-    use crate::demosaic::{RasterMut, ColorFilterArray};
+    use crate::demosaic::{ColorFilterArray, RasterMut};
 
     #[test]
     fn test_even() {
@@ -98,7 +102,11 @@ mod tests {
         const IMG_H: usize = 4;
         let mut buf = [0u8; 3 * IMG_W * IMG_H];
 
-        let res = debayer(&src, ColorFilterArray::Rggb, &mut RasterMut::new(IMG_W, IMG_H, &mut buf));
+        let res = debayer(
+            &src,
+            ColorFilterArray::Rggb,
+            &mut RasterMut::new(IMG_W, IMG_H, &mut buf),
+        );
         assert!(res.is_ok());
         assert_eq!(&buf[..], &expected[..]);
     }

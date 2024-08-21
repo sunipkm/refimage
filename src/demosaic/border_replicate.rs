@@ -54,7 +54,7 @@ macro_rules! fill_row {
         if i == $x3 - 1 {
             $dst[i] = r0;
         }
-    }}
+    }};
 }
 
 impl BorderReplicate {
@@ -79,8 +79,7 @@ impl BorderReplicate {
 }
 
 impl<T: Copy> BayerRead<T> for BorderReplicate {
-    fn read_row(&self, r: &[T], dst: &mut [T])
-            -> BayerResult<()> {
+    fn read_row(&self, r: &[T], dst: &mut [T]) -> BayerResult<()> {
         let (x1, x2, x3, width, start) = self.unpack();
         let end = start.checked_add(width).expect("overflow");
         dst[x1..x2].copy_from_slice(&r[start..end]);
@@ -92,18 +91,16 @@ impl<T: Copy> BayerRead<T> for BorderReplicate {
 
 #[cfg(test)]
 mod tests {
-    use crate::demosaic::border_replicate::BayerRead;
     use super::BorderReplicate;
+    use crate::demosaic::border_replicate::BayerRead;
 
     #[test]
     fn test_replicate_even() {
-        let src = [
-            1,2, 3,4, 5,6 ];
+        let src = [1, 2, 3, 4, 5, 6];
 
         let expected = [
-            1,2, 1,2,
-            /*-----*/ 1,2, 3,4, 5,6,
-            /*--------------------*/ 5,6, 5,6 ];
+            1, 2, 1, 2, /*-----*/ 1, 2, 3, 4, 5, 6, /*--------------------*/ 5, 6, 5, 6,
+        ];
 
         let rdr = BorderReplicate::new(6, 4);
         let mut buf = [0u8; 4 + 6 + 4];
@@ -115,13 +112,11 @@ mod tests {
 
     #[test]
     fn test_replicate_odd() {
-        let src = [
-            1,2, 3,4, 5, ];
+        let src = [1, 2, 3, 4, 5];
 
         let expected = [
-            2, 1,2,
-            /*---*/ 1,2, 3,4, 5,
-            /*---------------*/ 4, 5,4 ];
+            2, 1, 2, /*---*/ 1, 2, 3, 4, 5, /*---------------*/ 4, 5, 4,
+        ];
 
         let rdr = BorderReplicate::new(5, 3);
         let mut buf = [0u8; 3 + 5 + 3];

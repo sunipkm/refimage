@@ -5,8 +5,7 @@ use super::RasterMut;
 
 impl<'a, T: PixelStor> RasterMut<'a, T> {
     /// Allocate a new raster for the given destination buffer slice.
-    pub fn new(w: usize, h: usize, buf: &'a mut [T])
-            -> Self {
+    pub fn new(w: usize, h: usize, buf: &'a mut [T]) -> Self {
         let stride = w.checked_mul(3).expect("overflow");
         Self::with_offset(0, 0, w, h, stride, buf)
     }
@@ -14,8 +13,13 @@ impl<'a, T: PixelStor> RasterMut<'a, T> {
     /// Allocate a new raster for the given destination buffer slice.
     /// Stride is in number of bytes.
     pub fn with_offset(
-            x: usize, y: usize, w: usize, h: usize, stride: usize, buf: &'a mut [T])
-            -> Self {
+        x: usize,
+        y: usize,
+        w: usize,
+        h: usize,
+        stride: usize,
+        buf: &'a mut [T],
+    ) -> Self {
         let x1 = x.checked_add(w).expect("overflow");
         let y1 = y.checked_add(h).expect("overflow");
         assert!(x < x1 && x1.checked_mul(3).expect("overflow") <= stride && h > 0);
@@ -23,7 +27,12 @@ impl<'a, T: PixelStor> RasterMut<'a, T> {
         assert_eq!(stride % 3, 0);
 
         RasterMut {
-            x, y, w, h, stride, buf,
+            x,
+            y,
+            w,
+            h,
+            stride,
+            buf,
         }
     }
 
@@ -32,8 +41,7 @@ impl<'a, T: PixelStor> RasterMut<'a, T> {
     /// # Panics
     ///
     /// Panics if the raster is not 8-bpp.
-    pub fn borrow_row_mut(&mut self, y: usize)
-            -> &mut [T] {
+    pub fn borrow_row_mut(&mut self, y: usize) -> &mut [T] {
         assert!(y < self.h);
 
         let bytes_per_pixel = 3;
@@ -43,8 +51,7 @@ impl<'a, T: PixelStor> RasterMut<'a, T> {
     }
 
     /// Get a mutable slice
-    pub fn as_mut_slice(&mut self)
-            -> &mut [T] {
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
         self.buf
     }
 }
@@ -57,24 +64,19 @@ mod tests {
     #[should_panic]
     fn test_raster_mut_overflow() {
         let mut buf = [0; 1];
-        let _ = RasterMut::new(
-                usize::MAX, usize::MAX, &mut buf);
+        let _ = RasterMut::new(usize::MAX, usize::MAX, &mut buf);
     }
 
     #[test]
     fn test_borrow_row_u16_mut() {
-        let expected = [
-            0x0, 0x1, 0x2, 0x3,
-            0x4, 0x5, 0x6, 0x7,
-            0x8, 0x9, 0xA, 0xB,];
+        let expected = [0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xA, 0xB];
 
         const IMG_W: usize = 4;
         const IMG_H: usize = 1;
         let mut buf = [0u16; 3 * IMG_W * IMG_H];
 
         {
-            let mut dst = RasterMut::new(
-                    IMG_W, IMG_H, &mut buf);
+            let mut dst = RasterMut::new(IMG_W, IMG_H, &mut buf);
             let row = dst.borrow_row_mut(0);
 
             for (i, elt) in row.iter_mut().enumerate() {

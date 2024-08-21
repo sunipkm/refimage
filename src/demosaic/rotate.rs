@@ -1,4 +1,3 @@
-
 macro_rules! rotate {
     ($v0:ident <- $v1:ident) => {{
         std::mem::swap(&mut $v0, &mut $v1);

@@ -20,7 +20,7 @@ use crate::traits::Enlargeable;
 use crate::ImageData;
 use crate::PixelStor;
 #[allow(unused_imports)]
-use crate::{GenericImage, DynamicImageData};
+use crate::{DynamicImageData, GenericImage};
 
 /// Mutable raster structure.
 pub(crate) struct RasterMut<'a, T: PixelStor> {
@@ -63,9 +63,9 @@ where
 }
 
 /// Trait to apply a Demosaic algorithm to an image.
-/// 
+///
 /// This trait is implemented for [`ImageData`], [`DynamicImageData`], and [`GenericImage`].
-pub trait Debayer <'b: 'a, 'a>
+pub trait Debayer<'b: 'a, 'a>
 where
     Self: Sized,
 {
