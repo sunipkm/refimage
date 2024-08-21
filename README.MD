@@ -41,7 +41,7 @@ let rimg: GenericImage = serde_json::from_str(&json).unwrap(); // deserialize to
 assert_eq!(&img, &rimg); // Confirm that deserialized image matches the original
 ```
 
-In the second case, an image can be loaded with the [`image`](https://crates.io/crates/image) from disk, by enabling the `image` feature:
+In the second case, an image can be loaded using the [`image`](https://crates.io/crates/image) crate from disk, by enabling the `image` feature:
 ```rust,no_run
 use refimage::DynamicImageData;
 use image::open;
