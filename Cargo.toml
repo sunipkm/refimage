@@ -10,7 +10,10 @@ authors = ["Sunip K. Mukherjee <sunipkmukherjee@gmail.com>"]
 readme = "README.md"
 
 include = [
-    "/README.md",
+    "/LICENSE-APACHE",
+    "/LICENSE-MIT",
+    "/README.MD",
+    "/src/",
 ]
 
 [dependencies]
