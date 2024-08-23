@@ -7,7 +7,7 @@
 //! The image data is stored in a row-major order and can be of different pixel
 //! types - `u8`, `u16`, and `f32`. The image data supports arbitrary color spaces
 //! and number of channels, but the number of channels must be consistent with the
-//! length of the backing storage. 
+//! length of the backing storage.
 //! The image size is limited to 65535 x 65535 pixels. In case the image is a
 //! Bayer mosaic image, the crate supports debayering of the image data.
 //!

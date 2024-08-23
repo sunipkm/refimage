@@ -111,11 +111,15 @@ impl<'a> GenericImage<'a> {
     ///
     /// # Note
     /// - The metadata key is case-insensitive and is stored as an uppercase string.
+    /// - Re-inserting a timestamp key will return an error.
     /// - When saving to a FITS file, the metadata comment may be truncated.
     /// - Metadata of type [`std::time::Duration`] or [`std::time::SystemTime`] is split
     ///   and stored as two consecutive metadata items, with the same key, split into
     ///   seconds ([`u64`]) and microseconds ([`u32`]).
     pub fn insert_key<T: InsertValue>(&mut self, name: &str, value: T) -> Result<(), &'static str> {
+        if name.to_uppercase() == TIMESTAMP_KEY {
+            return Err("Cannot re-insert timestamp key");
+        }
         T::insert_key(self, name, value)
     }
 
@@ -126,10 +130,14 @@ impl<'a> GenericImage<'a> {
     ///
     /// # Returns
     /// - `Ok(())` if the key was removed successfully.
+    /// - `Err("Can not remove timestamp key")` if the key is the timestamp key.
     /// - `Err("Key not found")` if the key was not found.
     /// - `Err("Key cannot be empty")` if the key is an empty string.
     /// - `Err("Key cannot be longer than 80 characters")` if the key is longer than 80 characters.
     pub fn remove_key(&mut self, name: &str) -> Result<(), &'static str> {
+        if name.to_uppercase() == TIMESTAMP_KEY {
+            return Err("Cannot remove timestamp key");
+        }
         name_check(name)?;
         let mut not_found = true;
         self.metadata.retain(|x| {
@@ -204,18 +212,19 @@ impl<'a: 'b, 'b> Debayer<'a, 'b> for GenericImage<'b> {
 impl<'a: 'b, 'b> GenericImage<'a> {
     /// Apply a function to the image data.
     ///
-    /// This function allows replacing the underlying image data with a new image data.
+    /// This function copies the metadata of the current image, and replaces the underlying
+    /// image data with the result of the function.
     ///
     /// # Arguments
     /// - `f`: The function to apply to the image data.
-    ///   The function must take a [`DynamicImageData`] and return a [`DynamicImageData`].
-    pub fn operate<F>(self, f: F) -> Result<GenericImage<'b>, &'static str>
+    ///   The function must take a reference to an [`DynamicImageData`] and return a [`DynamicImageData`].
+    pub fn operate<F>(&'a self, f: F) -> Result<GenericImage<'b>, &'static str>
     where
-        F: FnOnce(DynamicImageData<'b>) -> Result<DynamicImageData<'b>, &'static str>,
+        F: FnOnce(&'a DynamicImageData<'a>) -> Result<DynamicImageData<'b>, &'static str>,
     {
-        let img = f(self.image)?;
+        let img = f(&(self.image))?;
         Ok(GenericImage {
-            metadata: self.metadata,
+            metadata: self.metadata.clone(),
             image: img,
         })
     }
@@ -667,17 +676,28 @@ impl PrvGenLineItem {
 mod test {
     #[test]
     fn test_operate() {
+        use crate::Debayer;
         use crate::{ColorSpace, DynamicImageData, GenericImage, ImageData};
         use std::time::SystemTime;
 
-        let data = vec![1u8, 2, 3, 4, 5, 6];
-        let img = ImageData::from_owned(data, 3, 2, ColorSpace::Gray).unwrap();
+        let data = vec![0u8; 256];
+        let img = ImageData::from_owned(data, 16, 16, ColorSpace::Grbg).unwrap();
         let img = DynamicImageData::from(img);
         let mut img = GenericImage::new(SystemTime::now(), img);
 
         img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
 
-        let img2 = img.clone().operate(|x| Ok(x)).unwrap();
-        assert_eq!(img, img2);
+        let img2 = img
+            .operate(|x| {
+                let x = x.debayer(crate::DemosaicMethod::Linear).unwrap();
+                Ok(x)
+            })
+            .unwrap();
+        let img3 = img.operate(|x| Ok(x.clone())).unwrap();
+        assert_eq!(img, img3);
+        assert_eq!(img.get_metadata(), img2.get_metadata());
+        assert_eq!(img.get_image().width(), img2.get_image().width());
+        assert_eq!(img.get_image().height(), img2.get_image().height());
+        assert_eq!(img.get_image().channels() * 3, img2.get_image().channels());
     }
 }

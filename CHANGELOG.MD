@@ -2,13 +2,19 @@
 
 ## Changes
 
+### 0.3.0 (2024-08-23)
+- Changed the signature of the closure taken by the `GenericImage::operate` function, and
+  changed the behavior of the function to return a copy of the original image. Updated the
+  relevant test.
+- Updated the example to show the use of `DynamicImageData` and `GenericImage`.
+
 ### 0.2.0 (2024-08-21)
 - Moved the `debayer` method to its own trait, and removed public `debayer` methods
-from `DynamicImageData` and `ImageData`.
+  from `DynamicImageData` and `ImageData`.
 - Renamed enum `Demosaic` to `DemosaicMethod`.
 - Implemented `Debayer::debayer` for `GenericImage`.
 - Implemented `GenericImage::operate()` that allows replacement of the underlying
-image while conserving the metadata.
+  image while conserving the metadata.
 - Moved the `GenericImage::write_fits` function (enabled with `fitsio` feature) to the `FitsWrite` trait.
 - Added custom FITS compression support through `FitsCompression::Custom`.
 - Formatted all files and documentation.
@@ -19,7 +25,7 @@ image while conserving the metadata.
 
 ## Pre-publish steps
 ### Check documentation
-First you add this to your Cargo.toml:
+First you add this to your `Cargo.toml`:
 
 ```toml
 [package.metadata.docs.rs]
