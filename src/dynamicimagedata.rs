@@ -53,6 +53,47 @@ impl<'a: 'b, 'b> Debayer<'a, 'b> for DynamicImageData<'b> {
     }
 }
 
+impl<'a: 'b, 'b> DynamicImageData<'a> {
+    /// Convert the image to a luminance image.
+    ///
+    /// This function uses the formula `Y = 0.299R + 0.587G + 0.114B` to calculate the
+    /// corresponding luminance image.
+    ///
+    /// # Errors
+    /// - If the image is not debayered and is not a grayscale image.
+    /// - If the image is not an RGB image.
+    pub fn into_luma(&'a self) -> Result<DynamicImageData<'a>, &'static str> {
+        use DynamicImageData::*;
+        match self {
+            U8(image) => Ok(U8(image.into_luma()?)),
+            U16(image) => Ok(U16(image.into_luma()?)),
+            F32(image) => Ok(F32(image.into_luma()?)),
+        }
+    }
+
+    /// Convert the image to a luminance image with custom coefficients.
+    ///
+    /// # Arguments
+    /// - `wts`: The weights to use for the conversion. The number of weights must match
+    ///   the number of channels in the image.
+    ///
+    /// # Errors
+    /// - If the number of weights does not match the number of channels in the image.
+    /// - If the image is not debayered and is not a grayscale image.
+    /// - If the image is not an RGB image.
+    pub fn into_luma_custom(
+        &'a self,
+        coeffs: &[f64],
+    ) -> Result<DynamicImageData<'a>, &'static str> {
+        use DynamicImageData::*;
+        match self {
+            U8(image) => Ok(U8(image.into_luma_custom(coeffs)?)),
+            U16(image) => Ok(U16(image.into_luma_custom(coeffs)?)),
+            F32(image) => Ok(F32(image.into_luma_custom(coeffs)?)),
+        }
+    }
+}
+
 impl<'a> From<&DynamicImageData<'a>> for PixelType {
     fn from(data: &DynamicImageData<'a>) -> Self {
         match data {

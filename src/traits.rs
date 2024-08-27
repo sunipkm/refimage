@@ -13,6 +13,24 @@ pub trait PixelStor:
     /// The minimum value for this type of primitive within the context of color.
     /// For floats, the minimum is `0.0`, whereas the integer types inherit their usual minimum values.
     const DEFAULT_MIN_VALUE: Self;
+
+    /// Convert to f64.
+    fn to_f64(self) -> f64 {
+        NumCast::from(self).unwrap()
+    }
+
+    /// Convert from f64.
+    /// This function will clamp the value to the range of the type.
+    fn from_f64(v: f64) -> Self {
+        let v = NumCast::from(v).unwrap();
+        if v > Self::DEFAULT_MAX_VALUE {
+            Self::DEFAULT_MAX_VALUE
+        } else if v < Self::DEFAULT_MIN_VALUE {
+            Self::DEFAULT_MIN_VALUE
+        } else {
+            v
+        }
+    }
 }
 
 macro_rules! declare_pixelstor {

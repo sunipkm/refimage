@@ -2,6 +2,12 @@
 
 ## Changes
 
+### 0.4.0 (2024-08-27)
+- Exposed a `GenericValue` enum, with `From` and `TryInto` implementations to concrete types.
+  `GenericLineItem` now does not include functions to access the underlying concrete types.
+- Added optimum exposure calculation support.
+- Added luminance conversion support.
+
 ### 0.3.0 (2024-08-23)
 - Changed the signature of the closure taken by the `GenericImage::operate` function, and
   changed the behavior of the function to return a copy of the original image. Updated the

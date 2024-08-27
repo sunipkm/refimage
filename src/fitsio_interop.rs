@@ -13,8 +13,8 @@ use fitsio::{
 };
 
 use crate::{
-    metadata::{PrvGenLineItem, PrvLineItem, TIMESTAMP_KEY},
-    DynamicImageData, GenericImage, GenericLineItem, ImageData, PixelStor, PixelType,
+    metadata::TIMESTAMP_KEY, DynamicImageData, GenericImage, GenericLineItem, GenericValue,
+    ImageData, PixelStor, PixelType,
 };
 
 #[derive(Debug, Clone, PartialEq, Hash)]
@@ -138,9 +138,12 @@ impl FitsWrite for GenericImage<'_> {
 
         let timestamp = match self.get_key(TIMESTAMP_KEY) {
             Some(val) => {
-                let val = val.get_value_systemtime().ok_or(FitsError::Message(
-                    "Could not convert timestamp to SystemTime".to_owned(),
-                ))?;
+                let val = val
+                    .get_value()
+                    .get_value_systemtime()
+                    .ok_or(FitsError::Message(
+                        "Could not convert timestamp to SystemTime".to_owned(),
+                    ))?;
                 val.duration_since(UNIX_EPOCH)
                     .map_err(|err| {
                         FitsError::Message(format!(
@@ -238,6 +241,28 @@ impl<'a, T: PixelStor + WriteImage> ImageData<'a, T> {
     }
 }
 
+struct PrvLineItem<T> {
+    name: String,
+    value: T,
+    comment: Option<String>,
+}
+
+enum PrvGenLineItem {
+    U8(PrvLineItem<u8>),
+    U16(PrvLineItem<u16>),
+    U32(PrvLineItem<u32>),
+    U64(PrvLineItem<u64>),
+    I8(PrvLineItem<i8>),
+    I16(PrvLineItem<i16>),
+    I32(PrvLineItem<i32>),
+    I64(PrvLineItem<i64>),
+    F32(PrvLineItem<f32>),
+    F64(PrvLineItem<f64>),
+    String(PrvLineItem<String>),
+    SystemTime(PrvLineItem<SystemTime>),
+    Duration(PrvLineItem<Duration>),
+}
+
 impl PrvGenLineItem {
     fn write_key(&self, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError> {
         match self {
@@ -258,9 +283,82 @@ impl PrvGenLineItem {
     }
 }
 
+impl From<GenericLineItem> for PrvGenLineItem {
+    fn from(value: GenericLineItem) -> Self {
+        match value.value {
+            GenericValue::U8(val) => PrvGenLineItem::U8(PrvLineItem {
+                name: value.name,
+                value: val,
+                comment: value.comment,
+            }),
+            GenericValue::U16(val) => PrvGenLineItem::U16(PrvLineItem {
+                name: value.name,
+                value: val,
+                comment: value.comment,
+            }),
+            GenericValue::U32(val) => PrvGenLineItem::U32(PrvLineItem {
+                name: value.name,
+                value: val,
+                comment: value.comment,
+            }),
+            GenericValue::U64(val) => PrvGenLineItem::U64(PrvLineItem {
+                name: value.name,
+                value: val,
+                comment: value.comment,
+            }),
+            GenericValue::I8(val) => PrvGenLineItem::I8(PrvLineItem {
+                name: value.name,
+                value: val,
+                comment: value.comment,
+            }),
+            GenericValue::I16(val) => PrvGenLineItem::I16(PrvLineItem {
+                name: value.name,
+                value: val,
+                comment: value.comment,
+            }),
+            GenericValue::I32(val) => PrvGenLineItem::I32(PrvLineItem {
+                name: value.name,
+                value: val,
+                comment: value.comment,
+            }),
+            GenericValue::I64(val) => PrvGenLineItem::I64(PrvLineItem {
+                name: value.name,
+                value: val,
+                comment: value.comment,
+            }),
+            GenericValue::F32(val) => PrvGenLineItem::F32(PrvLineItem {
+                name: value.name,
+                value: val,
+                comment: value.comment,
+            }),
+            GenericValue::F64(val) => PrvGenLineItem::F64(PrvLineItem {
+                name: value.name,
+                value: val,
+                comment: value.comment,
+            }),
+            GenericValue::String(val) => PrvGenLineItem::String(PrvLineItem {
+                name: value.name,
+                value: val,
+                comment: value.comment,
+            }),
+            GenericValue::SystemTime(val) => PrvGenLineItem::SystemTime(PrvLineItem {
+                name: value.name,
+                value: val,
+                comment: value.comment,
+            }),
+            GenericValue::Duration(val) => PrvGenLineItem::Duration(PrvLineItem {
+                name: value.name,
+                value: val,
+                comment: value.comment,
+            }),
+        }
+    }
+}
+
 impl GenericLineItem {
     fn write_key(&self, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError> {
-        self.0.write_key(hdu, fptr)
+        let line = PrvGenLineItem::from(self.clone());
+        line.write_key(hdu, fptr)
     }
 }
 
@@ -363,7 +461,9 @@ mod test {
         let img = crate::ImageData::from_owned(data, 3, 2, crate::ColorSpace::Gray)
             .expect("Failed to create ImageData");
         let img = crate::DynamicImageData::from(img);
-        let img = crate::GenericImage::new(std::time::SystemTime::now(), img);
+        let mut img = crate::GenericImage::new(std::time::SystemTime::now(), img);
+        img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
+        img.insert_key("TESTING_THIS_LONG_KEY_VERY_VERY_VERY_VERYLONG", "This is a long key").unwrap();
         img.write_fits(
             std::path::Path::new("test.fits"),
             crate::FitsCompression::Custom("[compress R 2,3]".into()),

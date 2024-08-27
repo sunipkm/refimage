@@ -37,12 +37,42 @@ pub const PROGRAMNAME_KEY: &str = "PROGNAME";
 ///   and stored as two consecutive metadata items, with the same key, split into
 ///   seconds ([`u64`]) and microseconds ([`u32`]).
 ///
-pub struct GenericLineItem(pub(crate) PrvGenLineItem);
+pub struct GenericLineItem {
+    pub(crate) name: String,
+    pub(crate) value: GenericValue,
+    pub(crate) comment: Option<String>,
+}
 
-impl From<PrvGenLineItem> for GenericLineItem {
-    fn from(item: PrvGenLineItem) -> Self {
-        Self(item)
-    }
+/// A type-erased enum to hold a metadata value.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum GenericValue {
+    /// An unsigned 8-bit integer.
+    U8(u8),
+    /// An unsigned 16-bit integer.
+    U16(u16),
+    /// An unsigned 32-bit integer.
+    U32(u32),
+    /// An unsigned 64-bit integer.
+    U64(u64),
+    /// A signed 8-bit integer.
+    I8(i8),
+    /// A signed 16-bit integer.
+    I16(i16),
+    /// A signed 32-bit integer.
+    I32(i32),
+    /// A signed 64-bit integer.
+    I64(i64),
+    /// A 32-bit floating point number.
+    F32(f32),
+    /// A 64-bit floating point number.
+    F64(f64),
+    /// A [`Duration`].
+    Duration(Duration),
+    /// A [`SystemTime`].
+    SystemTime(SystemTime),
+    /// A string.
+    String(String),
 }
 
 /// A serializable, generic image with metadata.
@@ -87,12 +117,11 @@ impl<'a> GenericImage<'a> {
     /// img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
     /// ```
     pub fn new(tstamp: SystemTime, image: DynamicImageData<'a>) -> Self {
-        let metadata = vec![PrvGenLineItem::SystemTime(PrvLineItem {
+        let metadata = vec![GenericLineItem {
             name: TIMESTAMP_KEY.to_string(),
-            value: tstamp,
+            value: tstamp.into(),
             comment: Some("Timestamp of the image".to_owned()),
-        })
-        .into()];
+        }];
         Self { metadata, image }
     }
 
@@ -228,118 +257,111 @@ impl<'a: 'b, 'b> GenericImage<'a> {
             image: img,
         })
     }
+
+    /// Convert the image to a luminance image.
+    ///
+    /// This function uses the formula `Y = 0.299R + 0.587G + 0.114B` to calculate the
+    /// corresponding luminance image.
+    ///
+    /// # Errors
+    /// - If the image is not debayered and is not a grayscale image.
+    /// - If the image is not an RGB image.
+    pub fn into_luma(&'a self) -> Result<GenericImage<'b>, &'static str> {
+        let img = self.image.into_luma()?;
+        Ok(GenericImage {
+            metadata: self.metadata.clone(),
+            image: img,
+        })
+    }
+
+    /// Convert the image to a luminance image with custom coefficients.
+    ///
+    /// # Arguments
+    /// - `wts`: The weights to use for the conversion. The number of weights must match
+    ///   the number of channels in the image.
+    ///
+    /// # Errors
+    /// - If the number of weights does not match the number of channels in the image.
+    /// - If the image is not debayered and is not a grayscale image.
+    /// - If the image is not an RGB image.
+    pub fn into_luma_custom(&'a self, coeffs: &[f64]) -> Result<GenericImage<'b>, &'static str> {
+        let img = self.image.into_luma_custom(coeffs)?;
+        Ok(GenericImage {
+            metadata: self.metadata.clone(),
+            image: img,
+        })
+    }
 }
 
-macro_rules! impl_functions {
-    ($(#[$attr:meta])* => $name: ident, $type: ty) => {
-        $(#[$attr])*
-        pub fn $name(&self) -> $type {
-            self.0.$name()
+impl GenericLineItem {
+    /// Get the name of the metadata value.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Get the comment of the metadata value.
+    pub fn get_comment(&self) -> Option<&str> {
+        self.comment.as_deref()
+    }
+
+    /// Get the value of the metadata item.
+    pub fn get_value(&self) -> &GenericValue {
+        &self.value
+    }
+}
+
+macro_rules! impl_from_genericvalue {
+    ($t:ty, $variant:path) => {
+        impl From<$t> for GenericValue {
+            fn from(value: $t) -> Self {
+                $variant(value)
+            }
         }
     };
 }
 
-impl GenericLineItem {
-    impl_functions! {
-        /// Get the name of the metadata value.
-        => name, &str
-    }
-    impl_functions! {
-        /// Get the comment of the metadata value.
-        => get_comment, Option<&str>
-    }
-    impl_functions! {
-        /// Get the `u8` metadata value.
-        => get_value_u8, Option<u8>
-    }
-    impl_functions! {
-        /// Get the `u16` metadata value.
-        => get_value_u16, Option<u16>
-    }
-    impl_functions! {
-        /// Get the `u32` metadata value.
-        => get_value_u32, Option<u32>
-    }
-    impl_functions! {
-        /// Get the `u64` metadata value.
-        => get_value_u64, Option<u64>
-    }
-    impl_functions! {
-        /// Get the `i8` metadata value.
-        => get_value_i8, Option<i8>
-    }
-    impl_functions! {
-        /// Get the `i16` metadata value.
-        => get_value_i16, Option<i16>
-    }
-    impl_functions! {
-        /// Get the `i32` metadata value.
-        => get_value_i32, Option<i32>
-    }
-    impl_functions! {
-        /// Get the `i64` metadata value.
-        => get_value_i64, Option<i64>
-    }
-    impl_functions! {
-        /// Get the `f32` metadata value.
-        => get_value_f32, Option<f32>
-    }
-    impl_functions! {
-        /// Get the `f64` metadata value.
-        => get_value_f64, Option<f64>
-    }
-    impl_functions! {
-        /// Get the `std::time::Duration` metadata value.
-        => get_value_duration, Option<Duration>
-    }
-    impl_functions! {
-        /// Get the `std::time::SystemTime` metadata value.
-        => get_value_systemtime, Option<SystemTime>
-    }
-    impl_functions! {
-        /// Get the `String` metadata value.
-        => get_value_string, Option<&str>
-    }
+impl_from_genericvalue!(u8, GenericValue::U8);
+impl_from_genericvalue!(u16, GenericValue::U16);
+impl_from_genericvalue!(u32, GenericValue::U32);
+impl_from_genericvalue!(u64, GenericValue::U64);
+impl_from_genericvalue!(i8, GenericValue::I8);
+impl_from_genericvalue!(i16, GenericValue::I16);
+impl_from_genericvalue!(i32, GenericValue::I32);
+impl_from_genericvalue!(i64, GenericValue::I64);
+impl_from_genericvalue!(f32, GenericValue::F32);
+impl_from_genericvalue!(f64, GenericValue::F64);
+impl_from_genericvalue!(Duration, GenericValue::Duration);
+impl_from_genericvalue!(SystemTime, GenericValue::SystemTime);
+impl_from_genericvalue!(String, GenericValue::String);
+
+macro_rules! impl_tryinto_genericvalue {
+    ($t:ty, $variant:path) => {
+        impl TryInto<$t> for GenericValue {
+            type Error = String;
+
+            fn try_into(self) -> Result<$t, Self::Error> {
+                match self {
+                    $variant(x) => Ok(x),
+                    _ => Err(format!("Invalid type {:?}", self)),
+                }
+            }
+        }
+    };
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub(crate) struct PrvLineItem<T: InsertValue> {
-    pub(crate) name: String,
-    pub(crate) value: T,
-    pub(crate) comment: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
-/// A type-erasure enum to hold a metadata item.
-pub(crate) enum PrvGenLineItem {
-    /// A `u8` metadata value.
-    U8(PrvLineItem<u8>),
-    /// A `u16` metadata value.
-    U16(PrvLineItem<u16>),
-    /// A `u32` metadata value.
-    U32(PrvLineItem<u32>),
-    /// A `u64` metadata value.
-    U64(PrvLineItem<u64>),
-    /// An `i8` metadata value.
-    I8(PrvLineItem<i8>),
-    /// An `i16` metadata value.
-    I16(PrvLineItem<i16>),
-    /// An `i32` metadata value.
-    I32(PrvLineItem<i32>),
-    /// An `i64` metadata value.
-    I64(PrvLineItem<i64>),
-    /// An `f32` metadata value.
-    F32(PrvLineItem<f32>),
-    /// An `f64` metadata value.
-    F64(PrvLineItem<f64>),
-    /// A `std::time::Duration` metadata value.
-    Duration(PrvLineItem<Duration>),
-    /// A `std::time::SystemTime` metadata value.
-    SystemTime(PrvLineItem<SystemTime>),
-    /// A `String` metadata value.
-    String(PrvLineItem<String>),
-}
+impl_tryinto_genericvalue!(u8, GenericValue::U8);
+impl_tryinto_genericvalue!(u16, GenericValue::U16);
+impl_tryinto_genericvalue!(u32, GenericValue::U32);
+impl_tryinto_genericvalue!(u64, GenericValue::U64);
+impl_tryinto_genericvalue!(i8, GenericValue::I8);
+impl_tryinto_genericvalue!(i16, GenericValue::I16);
+impl_tryinto_genericvalue!(i32, GenericValue::I32);
+impl_tryinto_genericvalue!(i64, GenericValue::I64);
+impl_tryinto_genericvalue!(f32, GenericValue::F32);
+impl_tryinto_genericvalue!(f64, GenericValue::F64);
+impl_tryinto_genericvalue!(Duration, GenericValue::Duration);
+impl_tryinto_genericvalue!(SystemTime, GenericValue::SystemTime);
+impl_tryinto_genericvalue!(String, GenericValue::String);
 
 /// Trait to insert a metadata value into a [`GenericImage`].
 pub trait InsertValue {
@@ -360,12 +382,12 @@ macro_rules! insert_value_impl {
                 value: Self,
             ) -> Result<(), &'static str> {
                 name_check(name)?;
-                let line = PrvLineItem {
+                let line = GenericLineItem {
                     name: name.to_string().to_uppercase(),
-                    value,
+                    value: value.into(),
                     comment: None,
                 };
-                f.metadata.push(GenericLineItem($datatype(line)));
+                f.metadata.push(line);
                 Ok(())
             }
 
@@ -395,12 +417,12 @@ macro_rules! insert_value_impl {
             ) -> Result<(), &'static str> {
                 name_check(name)?;
                 comment_check(value.1)?;
-                let line = PrvLineItem {
+                let line = GenericLineItem {
                     name: name.to_string().to_uppercase(),
-                    value: value.0,
+                    value: value.0.into(),
                     comment: Some(value.1.to_owned()),
                 };
-                f.metadata.push(GenericLineItem($datatype(line)));
+                f.metadata.push(line);
                 Ok(())
             }
 
@@ -472,13 +494,12 @@ impl InsertValue for &str {
     fn insert_key(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str> {
         name_check(name)?;
         str_value_check(value)?;
-        let line = PrvLineItem {
+        let line = GenericLineItem {
             name: name.to_string().to_uppercase(),
-            value: value.to_owned(),
+            value: value.to_owned().into(),
             comment: None,
         };
-        f.metadata
-            .push(GenericLineItem(PrvGenLineItem::String(line)));
+        f.metadata.push(line);
         Ok(())
     }
 
@@ -503,13 +524,12 @@ impl InsertValue for (&str, &str) {
         name_check(name)?;
         str_value_check(value.0)?;
         comment_check(value.1)?;
-        let line = PrvLineItem {
+        let line = GenericLineItem {
             name: name.to_string().to_uppercase(),
-            value: value.0.to_owned(),
+            value: value.0.to_owned().into(),
             comment: Some(value.1.to_owned()),
         };
-        f.metadata
-            .push(GenericLineItem(PrvGenLineItem::String(line)));
+        f.metadata.push(line);
         Ok(())
     }
 
@@ -529,145 +549,72 @@ impl InsertValue for (&str, &str) {
     }
 }
 
-impl PrvGenLineItem {
-    /// Get the name of the metadata value.
-    pub fn name(&self) -> &str {
-        match self {
-            PrvGenLineItem::U8(x) => &x.name,
-            PrvGenLineItem::U16(x) => &x.name,
-            PrvGenLineItem::U32(x) => &x.name,
-            PrvGenLineItem::U64(x) => &x.name,
-            PrvGenLineItem::I8(x) => &x.name,
-            PrvGenLineItem::I16(x) => &x.name,
-            PrvGenLineItem::I32(x) => &x.name,
-            PrvGenLineItem::I64(x) => &x.name,
-            PrvGenLineItem::F32(x) => &x.name,
-            PrvGenLineItem::F64(x) => &x.name,
-            PrvGenLineItem::Duration(x) => &x.name,
-            PrvGenLineItem::SystemTime(x) => &x.name,
-            PrvGenLineItem::String(x) => &x.name,
-        }
-    }
-
-    /// Get the comment of the metadata value.
-    pub fn get_comment(&self) -> Option<&str> {
-        match self {
-            PrvGenLineItem::U8(x) => x.comment.as_deref(),
-            PrvGenLineItem::U16(x) => x.comment.as_deref(),
-            PrvGenLineItem::U32(x) => x.comment.as_deref(),
-            PrvGenLineItem::U64(x) => x.comment.as_deref(),
-            PrvGenLineItem::I8(x) => x.comment.as_deref(),
-            PrvGenLineItem::I16(x) => x.comment.as_deref(),
-            PrvGenLineItem::I32(x) => x.comment.as_deref(),
-            PrvGenLineItem::I64(x) => x.comment.as_deref(),
-            PrvGenLineItem::F32(x) => x.comment.as_deref(),
-            PrvGenLineItem::F64(x) => x.comment.as_deref(),
-            PrvGenLineItem::Duration(x) => x.comment.as_deref(),
-            PrvGenLineItem::SystemTime(x) => x.comment.as_deref(),
-            PrvGenLineItem::String(x) => x.comment.as_deref(),
-        }
-    }
-
+impl GenericValue {
     /// Get the `u8` metadata value.
     pub fn get_value_u8(&self) -> Option<u8> {
-        match self {
-            PrvGenLineItem::U8(x) => Some(x.value),
-            _ => None,
-        }
+        // The clone here is a trivial copy, so it's fine.
+        self.clone().try_into().ok()
     }
 
     /// Get the `u16` metadata value.
     pub fn get_value_u16(&self) -> Option<u16> {
-        match self {
-            PrvGenLineItem::U16(x) => Some(x.value),
-            _ => None,
-        }
+        self.clone().try_into().ok()
     }
 
     /// Get the `u32` metadata value.
     pub fn get_value_u32(&self) -> Option<u32> {
-        match self {
-            PrvGenLineItem::U32(x) => Some(x.value),
-            _ => None,
-        }
+        self.clone().try_into().ok()
     }
 
     /// Get the `u64` metadata value.
     pub fn get_value_u64(&self) -> Option<u64> {
-        match self {
-            PrvGenLineItem::U64(x) => Some(x.value),
-            _ => None,
-        }
+        self.clone().try_into().ok()
     }
 
     /// Get the `i8` metadata value.
     pub fn get_value_i8(&self) -> Option<i8> {
-        match self {
-            PrvGenLineItem::I8(x) => Some(x.value),
-            _ => None,
-        }
+        self.clone().try_into().ok()
     }
 
     /// Get the `i16` metadata value.
     pub fn get_value_i16(&self) -> Option<i16> {
-        match self {
-            PrvGenLineItem::I16(x) => Some(x.value),
-            _ => None,
-        }
+        self.clone().try_into().ok()
     }
 
     /// Get the `i32` metadata value.
     pub fn get_value_i32(&self) -> Option<i32> {
-        match self {
-            PrvGenLineItem::I32(x) => Some(x.value),
-            _ => None,
-        }
+        self.clone().try_into().ok()
     }
 
     /// Get the `i64` metadata value.
     pub fn get_value_i64(&self) -> Option<i64> {
-        match self {
-            PrvGenLineItem::I64(x) => Some(x.value),
-            _ => None,
-        }
+        self.clone().try_into().ok()
     }
 
     /// Get the `f32` metadata value.
     pub fn get_value_f32(&self) -> Option<f32> {
-        match self {
-            PrvGenLineItem::F32(x) => Some(x.value),
-            _ => None,
-        }
+        self.clone().try_into().ok()
     }
 
     /// Get the `f64` metadata value.
     pub fn get_value_f64(&self) -> Option<f64> {
-        match self {
-            PrvGenLineItem::F64(x) => Some(x.value),
-            _ => None,
-        }
+        self.clone().try_into().ok()
     }
 
     /// Get the `std::time::Duration` metadata value.
     pub fn get_value_duration(&self) -> Option<Duration> {
-        match self {
-            PrvGenLineItem::Duration(x) => Some(x.value),
-            _ => None,
-        }
+        self.clone().try_into().ok()
     }
 
     /// Get the `std::time::SystemTime` metadata value.
     pub fn get_value_systemtime(&self) -> Option<SystemTime> {
-        match self {
-            PrvGenLineItem::SystemTime(x) => Some(x.value),
-            _ => None,
-        }
+        self.clone().try_into().ok()
     }
 
     /// Get the `String` metadata value.
     pub fn get_value_string(&self) -> Option<&str> {
         match self {
-            PrvGenLineItem::String(x) => Some(&x.value),
+            GenericValue::String(s) => Some(s.as_str()),
             _ => None,
         }
     }
@@ -686,6 +633,7 @@ mod test {
         let mut img = GenericImage::new(SystemTime::now(), img);
 
         img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
+        img.insert_key("TESTING_THIS_LONG_KEY", "This is a long key").unwrap();
 
         let img2 = img
             .operate(|x| {

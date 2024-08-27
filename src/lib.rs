@@ -62,7 +62,9 @@ mod fitsio_interop;
 pub use fitsio_interop::{FitsCompression, FitsError, FitsWrite};
 
 mod metadata;
-pub use metadata::{GenericImage, GenericLineItem, CAMERANAME_KEY, PROGRAMNAME_KEY, TIMESTAMP_KEY};
+pub use metadata::{
+    GenericImage, GenericLineItem, GenericValue, CAMERANAME_KEY, PROGRAMNAME_KEY, TIMESTAMP_KEY,
+};
 
 pub(crate) use datastor::DataStor;
 use demosaic::ColorFilterArray;
@@ -76,6 +78,9 @@ pub use image::DynamicImage; // Used for image interop
 pub use serde::{Deserializer, Serializer};
 
 pub use imagedata::ImageData;
+
+mod optimumexposure;
+pub use optimumexposure::{OptimumExposure, OptimumExposureBuilder};
 
 /// Image data with a dynamic pixel type.
 ///
