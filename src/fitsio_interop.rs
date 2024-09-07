@@ -463,7 +463,11 @@ mod test {
         let img = crate::DynamicImageData::from(img);
         let mut img = crate::GenericImage::new(std::time::SystemTime::now(), img);
         img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
-        img.insert_key("TESTING_THIS_LONG_KEY_VERY_VERY_VERY_VERYLONG", "This is a long key").unwrap();
+        img.insert_key(
+            "TESTING_THIS_LONG_KEY_VERY_VERY_VERY_VERYLONG",
+            "This is a long key",
+        )
+        .unwrap();
         img.write_fits(
             std::path::Path::new("test.fits"),
             crate::FitsCompression::Custom("[compress R 2,3]".into()),

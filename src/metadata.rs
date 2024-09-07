@@ -633,7 +633,8 @@ mod test {
         let mut img = GenericImage::new(SystemTime::now(), img);
 
         img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
-        img.insert_key("TESTING_THIS_LONG_KEY", "This is a long key").unwrap();
+        img.insert_key("TESTING_THIS_LONG_KEY", "This is a long key")
+            .unwrap();
 
         let img2 = img
             .operate(|x| {
