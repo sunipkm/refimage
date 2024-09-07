@@ -56,6 +56,7 @@ declare_pixelstor!(f64: (0.0)..1.0);
 /// An `Enlargable::Larger` value should be enough to calculate
 /// the sum (average) of a few hundred or thousand Enlargeable values.
 pub trait Enlargeable: Sized + Bounded + NumCast + Copy {
+    /// The larger type that can hold the sum of `Self` values.
     type Larger: Copy
         + NumCast
         + Num

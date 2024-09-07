@@ -69,7 +69,7 @@ pub use metadata::{
 pub(crate) use datastor::DataStor;
 use demosaic::ColorFilterArray;
 pub use demosaic::{BayerError, Debayer, DemosaicMethod};
-pub use traits::PixelStor;
+pub use traits::{PixelStor, Enlargeable};
 
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
