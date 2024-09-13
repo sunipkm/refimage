@@ -50,8 +50,11 @@ mod traits;
 mod demosaic;
 mod datastor;
 mod imagedata;
+mod imageowned;
 #[macro_use]
 mod dynamicimagedata;
+#[macro_use]
+mod dynamicimageowned;
 #[cfg(feature = "image")]
 mod dynamicimage_interop;
 mod dynamicimagedata_serde;
@@ -63,12 +66,14 @@ pub use fitsio_interop::{FitsCompression, FitsError, FitsWrite};
 
 mod metadata;
 pub use metadata::{
-    GenericImage, GenericLineItem, GenericValue, CAMERANAME_KEY, PROGRAMNAME_KEY, TIMESTAMP_KEY,
+    GenericImage, GenericImageOwned, GenericLineItem, GenericValue, CAMERANAME_KEY,
+    PROGRAMNAME_KEY, TIMESTAMP_KEY,
 };
 
 pub(crate) use datastor::DataStor;
 use demosaic::ColorFilterArray;
 pub use demosaic::{BayerError, Debayer, DemosaicMethod};
+use serde::{Deserialize, Serialize};
 pub use traits::{Enlargeable, PixelStor};
 
 #[cfg(feature = "image")]
@@ -78,11 +83,12 @@ pub use image::DynamicImage; // Used for image interop
 pub use serde::{Deserializer, Serializer};
 
 pub use imagedata::ImageData;
+pub use imageowned::ImageOwned;
 
 mod optimumexposure;
 pub use optimumexposure::{OptimumExposure, OptimumExposureBuilder};
 
-/// Image data with a dynamic pixel type.
+/// Image data with a dynamic pixel type, backed by owned or slice of data.
 ///
 /// This represents a _matrix_ of _pixels_ which are composed of primitive and common
 /// types, i.e. `u8`, `u16`, and `f32`. The matrix is stored in a _row-major_ order.
@@ -92,8 +98,11 @@ pub use optimumexposure::{OptimumExposure, OptimumExposureBuilder};
 /// reuse of allocated memory without re-allocation.
 ///
 /// # Note
-/// Alpha channels are not trivially supported. They can be added by using a custom
-/// color space.
+/// # Note
+/// - Alpha channels are not trivially supported. They can be added by using a custom
+///   color space.
+/// - Internally [`DynamicImageData`] and [`DynamicImageOwned`] serialize to the same
+///   representation, and can be deserialized into each other.
 ///
 /// # Usage
 ///
@@ -119,52 +128,73 @@ pub enum DynamicImageData<'a> {
     F32(ImageData<'a, f32>),
 }
 
+/// Image data with a dynamic pixel type, backed by owned data.
+///
+/// This represents a _matrix_ of _pixels_ which are composed of primitive and common
+/// types, i.e. `u8`, `u16`, and `f32`. The matrix is stored in a _row-major_ order.
+/// More variants that adhere to these principles may get added in the future, in
+/// particular to cover other combinations typically used. The data is stored in a single
+/// contiguous buffer, which is either backed by a slice or a vector, and aims to enable
+/// reuse of allocated memory without re-allocation.
+///
+/// # Note
+/// - Alpha channels are not trivially supported. They can be added by using a custom
+///   color space.
+/// - Internally [`DynamicImageData`] and [`DynamicImageOwned`] serialize to the same
+///   representation, and can be deserialized into each other.
+///
+/// # Usage
+///
+/// ```
+/// use refimage::{ImageOwned, ColorSpace, DynamicImageOwned};
+///
+/// let data = vec![1u8, 2, 3, 4, 5, 6];
+/// let img = ImageOwned::from_owned(data, 3, 2, ColorSpace::Gray).unwrap();
+/// let img = DynamicImageOwned::from(img);
+///
+/// ```
+///
+/// This type acts as a type-erased version of `ImageData` and can be used to store
+/// image data with different pixel types. The pixel type is determined at runtime.
+#[derive(Debug, PartialEq, Clone)]
+#[non_exhaustive]
+pub enum DynamicImageOwned {
+    /// [`ImageOwned`] with a `u8` primitive type.
+    U8(ImageOwned<u8>),
+    /// [`ImageOwned`] with a `u16` primitive type.
+    U16(ImageOwned<u16>),
+    /// [`ImageOwned`] with a `f32` primitive type.
+    F32(ImageOwned<f32>),
+}
+
 /// Description of the color space of the image.
 ///
 /// The colorspace information is used to enable debayering of the image data, and
 /// for interpretation of single or multi-channel images.
-#[repr(u8)]
 #[non_exhaustive]
-#[derive(Debug, PartialEq, Clone, Copy, PartialOrd)]
+#[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord, Serialize, Deserialize)]
 pub enum ColorSpace {
     /// Grayscale image.
-    Gray = 0xa0,
+    Gray,
     /// Bayer mosaic BGGR.
-    Bggr = 0xa1,
+    Bggr,
     /// Bayer mosaic GBRG.
-    Gbrg = 0xa2,
+    Gbrg,
     /// Bayer mosaic GRBG.
-    Grbg = 0xa3,
+    Grbg,
     /// Bayer mosaic RGGB.
-    Rggb = 0xa4,
+    Rggb,
     /// RGB image.
-    Rgb = 0xb0,
+    Rgb,
     /// Custom color space.
-    Custom = 0xff,
-}
-
-impl TryFrom<u8> for ColorSpace {
-    type Error = &'static str;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0xa0 => Ok(Self::Gray),
-            0xa1 => Ok(Self::Bggr),
-            0xa2 => Ok(Self::Gbrg),
-            0xa3 => Ok(Self::Grbg),
-            0xa4 => Ok(Self::Rggb),
-            0xb0 => Ok(Self::Rgb),
-            0xff => Ok(Self::Custom),
-            _ => Err("Invalid value for ColorSpace"),
-        }
-    }
+    Custom(String),
 }
 
 /// Enum to describe the primitive pixel type of the image.
 /// The underlying `i8` representation conforms to the FITS standard.
 #[repr(i8)]
 #[non_exhaustive]
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum PixelType {
     /// 8-bit unsigned integer.
     U8 = 8,

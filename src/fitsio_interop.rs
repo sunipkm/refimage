@@ -13,8 +13,9 @@ use fitsio::{
 };
 
 use crate::{
-    metadata::TIMESTAMP_KEY, DynamicImageData, GenericImage, GenericLineItem, GenericValue,
-    ImageData, PixelStor, PixelType,
+    metadata::GenericValue, metadata::TIMESTAMP_KEY, ColorSpace, DynamicImageData,
+    DynamicImageOwned, GenericImage, GenericImageOwned, GenericLineItem, ImageData, ImageOwned,
+    PixelStor, PixelType,
 };
 
 #[derive(Debug, Clone, PartialEq, Hash)]
@@ -103,17 +104,6 @@ impl Display for FitsCompression {
 /// Trait for writing objects to FITS files.
 pub trait FitsWrite {
     #[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
-    /// Write an object to a FITS file specified by `path`.
-    fn write_fits(
-        &self,
-        path: &Path,
-        compress: FitsCompression,
-        overwrite: bool,
-    ) -> Result<PathBuf, FitsError>;
-}
-
-impl FitsWrite for GenericImage<'_> {
-    #[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
     /// Write the image, with metadata, to a FITS file.
     ///
     /// # Arguments
@@ -126,6 +116,15 @@ impl FitsWrite for GenericImage<'_> {
     ///
     /// # Errors
     /// This function returns errors from the FITS library if the file could not be written.
+    fn write_fits(
+        &self,
+        path: &Path,
+        compress: FitsCompression,
+        overwrite: bool,
+    ) -> Result<PathBuf, FitsError>;
+}
+
+impl FitsWrite for GenericImage<'_> {
     fn write_fits(
         &self,
         path: &Path,
@@ -181,6 +180,85 @@ impl FitsWrite for GenericImage<'_> {
             comment: Some("Date and time of FITS file data".to_string()),
         };
         lineitem.write_key(&hdu, &mut fptr)?;
+
+        let lineitem = PrvLineItem {
+            name: "COLOR_SPACE".to_string(),
+            value: self.get_image().color_space(),
+            comment: Some("Color space of the image".to_string()),
+        };
+        lineitem.write_key(&hdu, &mut fptr)?;
+
+        for item in self.get_metadata().iter() {
+            item.write_key(&hdu, &mut fptr)?;
+        }
+        Ok(fpath)
+    }
+}
+
+impl FitsWrite for GenericImageOwned {
+    fn write_fits(
+        &self,
+        path: &Path,
+        compress: FitsCompression,
+        overwrite: bool,
+    ) -> Result<PathBuf, FitsError> {
+        if path.exists() && path.is_dir() {
+            return Err(FitsError::Message("Path is a directory".to_string()));
+        }
+
+        let timestamp = match self.get_key(TIMESTAMP_KEY) {
+            Some(val) => {
+                let val = val
+                    .get_value()
+                    .get_value_systemtime()
+                    .ok_or(FitsError::Message(
+                        "Could not convert timestamp to SystemTime".to_owned(),
+                    ))?;
+                val.duration_since(UNIX_EPOCH)
+                    .map_err(|err| {
+                        FitsError::Message(format!(
+                            "Could not convert SystemTime to duration since epoch: {}",
+                            err
+                        ))
+                    })?
+                    .as_millis()
+            }
+            None => SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis(),
+        };
+
+        let datestamp = DateTime::from_timestamp_millis(timestamp as i64).ok_or(
+            FitsError::Message("Could not convert timestamp to NaiveDateTime".to_owned()),
+        )?;
+        let datestamp = datestamp.format("%Y-%m-%dT%H:%M:%S%.6f").to_string();
+
+        let mut path = PathBuf::from(path);
+        path.set_extension((FitsCompression::None).extension()); // Default extension
+        if overwrite && path.exists() {
+            // There seems to be a bug in FITSIO, overwrite() the way called here does nothing
+            std::fs::remove_file(&path)?;
+        }
+
+        let fpath = path.clone();
+        path.set_extension(compress.extension());
+
+        let (hdu, mut fptr) = self.get_image().write_fits(path, compress)?;
+        let lineitem = PrvLineItem {
+            name: "DATE-OBS".to_string(),
+            value: datestamp,
+            comment: Some("Date and time of FITS file data".to_string()),
+        };
+        lineitem.write_key(&hdu, &mut fptr)?;
+
+        let lineitem = PrvLineItem {
+            name: "COLOR_SPACE".to_string(),
+            value: self.get_image().color_space(),
+            comment: Some("Color space of the image".to_string()),
+        };
+        lineitem.write_key(&hdu, &mut fptr)?;
+
         for item in self.get_metadata().iter() {
             item.write_key(&hdu, &mut fptr)?;
         }
@@ -194,15 +272,70 @@ impl<'a> DynamicImageData<'a> {
         path: PathBuf,
         compress: FitsCompression,
     ) -> Result<(FitsHdu, FitsFile), FitsError> {
+        use DynamicImageData::*;
         match self {
-            DynamicImageData::U8(data) => data.write_fits(path, compress, PixelType::U8),
-            DynamicImageData::U16(data) => data.write_fits(path, compress, PixelType::U16),
-            DynamicImageData::F32(data) => data.write_fits(path, compress, PixelType::F32),
+            U8(data) => data.write_fits(path, compress, PixelType::U8),
+            U16(data) => data.write_fits(path, compress, PixelType::U16),
+            F32(data) => data.write_fits(path, compress, PixelType::F32),
+        }
+    }
+}
+
+impl DynamicImageOwned {
+    fn write_fits(
+        &self,
+        path: PathBuf,
+        compress: FitsCompression,
+    ) -> Result<(FitsHdu, FitsFile), FitsError> {
+        use DynamicImageOwned::*;
+        match self {
+            U8(data) => data.write_fits(path, compress, PixelType::U8),
+            U16(data) => data.write_fits(path, compress, PixelType::U16),
+            F32(data) => data.write_fits(path, compress, PixelType::F32),
         }
     }
 }
 
 impl<'a, T: PixelStor + WriteImage> ImageData<'a, T> {
+    /// Write the image data to a FITS file.
+    fn write_fits(
+        &self,
+        path: PathBuf,
+        compress: FitsCompression,
+        pxltype: PixelType,
+    ) -> Result<(FitsHdu, FitsFile), FitsError> {
+        let data = self.data.as_slice();
+        let desc = ImageDescription {
+            data_type: pxltype.into(),
+            dimensions: if self.channels() > 1 {
+                &[self.height() as _, self.width() as _, self.channels() as _]
+            } else {
+                &[self.height() as _, self.width() as _]
+            },
+        };
+
+        let mut fptr = FitsFile::create(path);
+
+        if compress == FitsCompression::None {
+            fptr = fptr.with_custom_primary(&desc);
+        }
+        let mut fptr = fptr.open()?;
+
+        let hdu = if compress == FitsCompression::None {
+            fptr.primary_hdu()?
+        } else {
+            let hdu = fptr.primary_hdu()?;
+            hdu.write_key(&mut fptr, "COMPRESSED_IMAGE", "T")?;
+            hdu.write_key(&mut fptr, "COMPRESSION_ALGO", compress.to_string())?;
+            fptr.create_image("IMAGE", &desc)?
+        };
+
+        hdu.write_image(&mut fptr, data)?;
+        Ok((hdu, fptr))
+    }
+}
+
+impl<T: PixelStor + WriteImage> ImageOwned<T> {
     /// Write the image data to a FITS file.
     fn write_fits(
         &self,
@@ -258,6 +391,7 @@ enum PrvGenLineItem {
     I64(PrvLineItem<i64>),
     F32(PrvLineItem<f32>),
     F64(PrvLineItem<f64>),
+    ColorSpace(PrvLineItem<ColorSpace>),
     String(PrvLineItem<String>),
     SystemTime(PrvLineItem<SystemTime>),
     Duration(PrvLineItem<Duration>),
@@ -276,6 +410,7 @@ impl PrvGenLineItem {
             PrvGenLineItem::I64(item) => item.write_key(hdu, fptr),
             PrvGenLineItem::F32(item) => item.write_key(hdu, fptr),
             PrvGenLineItem::F64(item) => item.write_key(hdu, fptr),
+            PrvGenLineItem::ColorSpace(item) => item.write_key(hdu, fptr),
             PrvGenLineItem::String(item) => item.write_key(hdu, fptr),
             PrvGenLineItem::SystemTime(item) => item.write_key(hdu, fptr),
             PrvGenLineItem::Duration(item) => item.write_key(hdu, fptr),
@@ -332,6 +467,11 @@ impl From<GenericLineItem> for PrvGenLineItem {
                 comment: value.comment,
             }),
             GenericValue::F64(val) => PrvGenLineItem::F64(PrvLineItem {
+                name: value.name,
+                value: val,
+                comment: value.comment,
+            }),
+            GenericValue::ColorSpace(val) => PrvGenLineItem::ColorSpace(PrvLineItem {
                 name: value.name,
                 value: val,
                 comment: value.comment,
@@ -453,7 +593,56 @@ impl From<PixelType> for ImageType {
     }
 }
 
+impl WriteKey for PrvLineItem<ColorSpace> {
+    fn write_key(&self, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError> {
+        let val = match self.value.clone() {
+            ColorSpace::Gray => "GRAY",
+            ColorSpace::Rgb => "RGB",
+            ColorSpace::Bggr => "BGGR",
+            ColorSpace::Gbrg => "GBRG",
+            ColorSpace::Grbg => "GRBG",
+            ColorSpace::Rggb => "RGGB",
+            ColorSpace::Custom(val) => &format!("C({})", val),
+        };
+        match &self.comment {
+            Some(cmt) => hdu.write_key(fptr, &self.name, (val, cmt.as_str())),
+            None => hdu.write_key(fptr, &self.name, val),
+        }
+    }
+}
+
 mod test {
+
+    #[cfg(test)]
+    fn files_equal(file1: &str, file2: &str) -> bool {
+        use std::{
+            fs::File,
+            io::{BufReader, Read},
+        };
+        if let Result::Ok(file1) = File::open(file1) {
+            let mut reader1 = BufReader::new(file1);
+            if let Result::Ok(file2) = File::open(file2) {
+                let mut reader2 = BufReader::new(file2);
+                let mut buf1 = [0; 1024];
+                let mut buf2 = [0; 1024];
+                while let Result::Ok(n1) = reader1.read(&mut buf1) {
+                    if n1 > 0 {
+                        if let Result::Ok(n2) = reader2.read(&mut buf2) {
+                            if n1 == n2 && buf1 == buf2 {
+                                continue;
+                            }
+                            return false;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                return true;
+            };
+        };
+        false
+    }
+
     #[test]
     fn test_fitsio() {
         use crate::FitsWrite;
@@ -474,5 +663,13 @@ mod test {
             true,
         )
         .expect("Could not write FITS file");
+        let img: crate::GenericImageOwned = img.into();
+        img.write_fits(
+            std::path::Path::new("test2.fits"),
+            crate::FitsCompression::Custom("[compress R 2,3]".into()),
+            true,
+        )
+        .expect("Could not write FITS file");
+        assert!(files_equal("test.fits", "test2.fits"));
     }
 }

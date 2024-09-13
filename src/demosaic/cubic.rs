@@ -28,11 +28,11 @@ use crate::traits::{do_div_float, do_prod, get_mean, large_to_f64, Enlargeable};
 
 #[cfg(feature = "rayon")]
 use crate::demosaic::border_mirror::BorderMirror;
-use crate::{ImageData, PixelStor};
+use crate::{ImageData, ImageOwned, PixelStor};
 
 const PADDING: usize = 3;
 
-pub fn run<T>(
+pub fn run_imagedata<T>(
     src: &ImageData<'_, T>,
     cfa: ColorFilterArray,
     dst: &mut RasterMut<'_, T>,
@@ -40,7 +40,22 @@ pub fn run<T>(
 where
     T: PixelStor + Enlargeable,
 {
-    if dst.w < 4 || dst.h < 4 {
+    if src.width() < 2 || src.height() < 2 {
+        return Err(BayerError::WrongResolution);
+    }
+
+    debayer(src.as_slice(), cfa, dst)
+}
+
+pub fn run_imageowned<T>(
+    src: &ImageOwned<T>,
+    cfa: ColorFilterArray,
+    dst: &mut RasterMut<'_, T>,
+) -> BayerResult<()>
+where
+    T: PixelStor + Enlargeable,
+{
+    if src.width() < 2 || src.height() < 2 {
         return Err(BayerError::WrongResolution);
     }
 

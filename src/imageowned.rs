@@ -1,18 +1,17 @@
 use crate::{
-    demosaic::{run_demosaic_imagedata, Debayer, RasterMut},
-    traits::Enlargeable,
-    BayerError, ColorSpace, DataStor, DemosaicMethod, ImageOwned, PixelStor,
+    demosaic::{run_demosaic_imageowned, Debayer, RasterMut},
+    BayerError, ColorSpace, DemosaicMethod, Enlargeable, ImageData, PixelStor,
 };
 use num_traits::CheckedEuclid;
 #[cfg(feature = "rayon")]
 use rayon::{iter::ParallelIterator, slice::ParallelSlice};
 
-/// A structure that holds image data backed by a slice or a vector.
+/// A structure that holds image data backed by a vector.
 ///
 /// This represents a _matrix_ of _pixels_ which are composed of primitive and common
 /// types, i.e. `u8`, `u16`, and `f32`. The matrix is stored in a _row-major_ order.
 ///
-/// [`ImageData`] supports arbitrary color spaces and number of channels, but the number
+/// [`ImageOwned`] supports arbitrary color spaces and number of channels, but the number
 /// of channels must be consistent across the image. The data is stored in a single
 /// contiguous buffer.
 ///
@@ -22,23 +21,23 @@ use rayon::{iter::ParallelIterator, slice::ParallelSlice};
 ///
 /// # Usage
 /// ```
-/// use refimage::{ImageData, ColorSpace};
+/// use refimage::{ImageOwned, ColorSpace};
 ///
 /// let data = vec![1u8, 2, 3, 4, 5, 6];
-/// let img = ImageData::from_owned(data, 3, 2, ColorSpace::Gray).unwrap();
+/// let img = ImageOwned::from_owned(data, 3, 2, ColorSpace::Gray).unwrap();
 /// ```
 #[derive(Debug, PartialEq, Clone)]
-pub struct ImageData<'a, T: PixelStor> {
-    pub(crate) data: DataStor<'a, T>,
+pub struct ImageOwned<T: PixelStor> {
+    pub(crate) data: Vec<T>,
     pub(crate) width: u16,
     pub(crate) height: u16,
     pub(crate) channels: u8,
     pub(crate) cspace: ColorSpace,
 }
 
-impl<'a, T: PixelStor> ImageData<'a, T> {
+impl<T: PixelStor> ImageOwned<T> {
     pub(crate) fn new(
-        data: DataStor<'a, T>,
+        data: Vec<T>,
         width: usize,
         height: usize,
         cspace: ColorSpace,
@@ -72,7 +71,7 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
             return Err("Too many channels for RGB.");
         }
 
-        Ok(Self {
+        Ok(ImageOwned {
             data,
             width: width as u16,
             height: height as u16,
@@ -81,7 +80,7 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
         })
     }
 
-    /// Create a new [`ImageData`] from a mutable slice of data.
+    /// Create a new [`ImageOwned`] from a slice of data.
     ///
     /// Images can not be larger than 65535x65535 pixels.
     ///
@@ -99,16 +98,16 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
     /// - If the data length does not match the image size.
     /// - If there are too many channels for grayscale/Bayer pattern images.
     /// - If color space is RGB and number of channels is not 3.
-    pub fn from_mut_ref(
-        data: &'a mut [T],
+    pub fn from_ref(
+        data: &[T],
         width: usize,
         height: usize,
         cspace: ColorSpace,
     ) -> Result<Self, &'static str> {
-        Self::new(DataStor::from_mut_ref(data), width, height, cspace)
+        Self::new(data.into(), width, height, cspace)
     }
 
-    /// Create a new [`ImageData`] struct from owned data.
+    /// Create a new [`ImageOwned`] from owned data.
     ///
     /// Images can not be larger than 65535x65535 pixels.
     ///
@@ -132,7 +131,7 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
         height: usize,
         cspace: ColorSpace,
     ) -> Result<Self, &'static str> {
-        Self::new(DataStor::from_owned(data), width, height, cspace)
+        Self::new(data, width, height, cspace)
     }
 
     /// Get the underlying data as a slice.
@@ -147,10 +146,9 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
 
     /// Get the underlying data as a vector.
     ///
-    /// If the data is owned, this will return the owned data. If the data is a reference,
-    /// this will return a copy of the data.
+    /// Note: This function returns a copy of the data.
     pub fn into_vec(self) -> Vec<T> {
-        self.data.into_vec()
+        self.data.clone()
     }
 
     /// Get a raw pointer to the data.
@@ -180,12 +178,12 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
     /// As such, it is unsafe, but it is safe to use since the data is vector of
     /// primitive types.
     pub fn as_u8_slice(&self) -> &[u8] {
-        self.data.as_u8_slice()
+        bytemuck::cast_slice(self.as_slice())
     }
 
     /// Safely get a u8 slice of the data.
     pub fn as_u8_slice_checked(&self) -> Option<&[u8]> {
-        self.data.as_u8_slice_checked()
+        bytemuck::try_cast_slice(self.as_slice()).ok()
     }
 
     /// Get the length of the data.
@@ -215,11 +213,9 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
 
     /// Get the color space of the image.
     pub fn color_space(&self) -> ColorSpace {
-        self.cspace.clone() // in most cases, this is a cheap operation
+        self.cspace.clone() // In most cases, this is a cheap operation
     }
-}
 
-impl<T: PixelStor> ImageData<'_, T> {
     /// Convert the image to a [`ImageOwned`] with [`u8`] pixel type.
     ///
     /// Conversion is done by scaling the pixel values to the range `[0, 255]`.
@@ -240,18 +236,17 @@ impl<T: PixelStor> ImageData<'_, T> {
     }
 }
 
-impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ImageData<'a, T> {
+impl<T: PixelStor + Enlargeable> ImageOwned<T> {
     /// Apply a function to the image data.
     ///
     /// # Arguments
     /// - `f`: The function to apply to the image data.
-    ///   The function must take a reference to an [`ImageData<T>`] and return a [`ImageData<T>`].
-    pub fn operate<F>(&'a self, f: F) -> Result<ImageData<'b, T>, &'static str>
+    ///   The function must take a reference to an [`ImageOwned<T>`] and return a [`ImageOwned<T>`].
+    pub fn operate<F>(&self, f: F) -> Result<ImageOwned<T>, &'static str>
     where
-        F: FnOnce(&'a ImageData<'a, T>) -> Result<ImageData<'b, T>, &'static str>,
+        F: FnOnce(&ImageOwned<T>) -> Result<ImageOwned<T>, &'static str>,
     {
-        let img = f(self)?;
-        Ok(img)
+        f(self)
     }
 
     /// Convert the image to a luminance image.
@@ -262,7 +257,7 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ImageData<'a, T> {
     /// # Errors
     /// - If the image is not debayered and is not a grayscale image.
     /// - If the image is not an RGB image.
-    pub fn into_luma(&'a self) -> Result<ImageData<'b, T>, &'static str> {
+    pub fn into_luma(&self) -> Result<ImageOwned<T>, &'static str> {
         if self.channels() == 1 {
             if self.cspace == ColorSpace::Gray {
                 return Ok(self.clone());
@@ -304,12 +299,7 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ImageData<'a, T> {
                 )
             })
             .collect::<Vec<T>>();
-        Self::new(
-            DataStor::from_owned(out),
-            self.width(),
-            self.height(),
-            ColorSpace::Gray,
-        )
+        Self::new(out, self.width(), self.height(), ColorSpace::Gray)
     }
 
     /// Convert the image to a luminance image with custom coefficients.
@@ -322,7 +312,7 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ImageData<'a, T> {
     /// - If the number of weights does not match the number of channels in the image.
     /// - If the image is not debayered and is not a grayscale image.
     /// - If the image is not an RGB image.
-    pub fn into_luma_custom(&'a self, wts: &[f64]) -> Result<ImageData<'b, T>, &'static str> {
+    pub fn into_luma_custom(&self, wts: &[f64]) -> Result<ImageOwned<T>, &'static str> {
         if wts.len() != self.channels() as usize {
             return Err("Invalid number of weights.");
         }
@@ -367,17 +357,12 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ImageData<'a, T> {
                 )
             })
             .collect::<Vec<T>>();
-        Self::new(
-            DataStor::from_owned(out),
-            self.width(),
-            self.height(),
-            ColorSpace::Gray,
-        )
+        Self::new(out, self.width(), self.height(), ColorSpace::Gray)
     }
 }
 
-impl<'a: 'b, 'b, T: PixelStor + Enlargeable> Debayer<'a, 'b> for ImageData<'b, T> {
-    fn debayer(&self, alg: DemosaicMethod) -> Result<ImageData<T>, BayerError> {
+impl<'a: 'b, 'b, T: PixelStor + Enlargeable> Debayer<'a, 'b> for ImageOwned<T> {
+    fn debayer(&self, alg: DemosaicMethod) -> Result<ImageOwned<T>, BayerError> {
         let cfa = self
             .cspace
             .clone()
@@ -388,9 +373,9 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> Debayer<'a, 'b> for ImageData<'b, T
         }
         let mut dst = vec![T::zero(); self.width() * self.height() * 3];
         let mut dst = RasterMut::new(self.width(), self.height(), &mut dst);
-        run_demosaic_imagedata(self, cfa, alg, &mut dst)?;
+        run_demosaic_imageowned(self, cfa, alg, &mut dst)?;
         Ok(Self {
-            data: DataStor::from_owned(dst.as_mut_slice().into()),
+            data: dst.as_mut_slice().into(),
             width: self.width,
             height: self.height,
             channels: 3,
@@ -399,11 +384,23 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> Debayer<'a, 'b> for ImageData<'b, T
     }
 }
 
+impl<'a, T: PixelStor> From<ImageData<'a, T>> for ImageOwned<T> {
+    fn from(data: ImageData<'a, T>) -> Self {
+        Self {
+            data: data.data.into_vec(),
+            width: data.width,
+            height: data.height,
+            channels: data.channels,
+            cspace: data.cspace,
+        }
+    }
+}
+
 mod test {
 
     #[test]
     fn test_into_luma() {
-        use crate::{ColorSpace, ImageData};
+        use crate::{ColorSpace, ImageOwned};
         let data = vec![
             181u8, 178, 118, 183, 85, 131, 82, 143, 196, 108, 64, 33, 174, 43, 18, 236, 19, 179,
             178, 132, 14, 32, 82, 1, 185, 221, 160, 112, 67, 179, 248, 104, 31, 105, 33, 100, 73,
@@ -447,7 +444,7 @@ mod test {
             91, 171, 247, 88, 158, 95, 220, 127, 126, 12, 3, 124, 198, 134, 151, 21, 98, 200, 157,
             131, 82, 216, 142, 218, 19, 142, 73, 108, 155, 51, 254, 221, 41, 85, 57, 60, 176,
         ];
-        let img = ImageData::from_owned(data, 16, 16, ColorSpace::Rgb).unwrap();
+        let img = ImageOwned::from_owned(data, 16, 16, ColorSpace::Rgb).unwrap();
         let luma = img.into_luma().unwrap();
         let expected = vec![
             172, 119, 130, 73, 79, 102, 132, 57, 203, 93, 138, 62, 112, 159, 116, 155, 78, 85, 165,

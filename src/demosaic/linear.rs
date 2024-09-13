@@ -18,11 +18,11 @@ use rayon::prelude::*;
 use crate::demosaic::border_replicate::*;
 use crate::demosaic::{BayerError, BayerRead, BayerResult, ColorFilterArray, RasterMut};
 use crate::traits::{get_mean, Enlargeable};
-use crate::{ImageData, PixelStor};
+use crate::{ImageData, ImageOwned, PixelStor};
 
 const PADDING: usize = 1;
 
-pub fn run<T>(
+pub fn run_imagedata<T>(
     src: &ImageData<'_, T>,
     cfa: ColorFilterArray,
     dst: &mut RasterMut<'_, T>,
@@ -30,7 +30,22 @@ pub fn run<T>(
 where
     T: PixelStor + Enlargeable,
 {
-    if src.width < 2 || src.height < 2 {
+    if src.width() < 2 || src.height() < 2 {
+        return Err(BayerError::WrongResolution);
+    }
+
+    debayer(src.as_slice(), cfa, dst)
+}
+
+pub fn run_imageowned<T>(
+    src: &ImageOwned<T>,
+    cfa: ColorFilterArray,
+    dst: &mut RasterMut<'_, T>,
+) -> BayerResult<()>
+where
+    T: PixelStor + Enlargeable,
+{
+    if src.width() < 2 || src.height() < 2 {
         return Err(BayerError::WrongResolution);
     }
 

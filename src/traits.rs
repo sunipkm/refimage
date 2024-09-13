@@ -31,6 +31,35 @@ pub trait PixelStor:
             v
         }
     }
+
+    /// Convert to f32.
+    fn to_f32(self) -> f32 {
+        NumCast::from(self).unwrap()
+    }
+
+    /// Convert from f32.
+    /// This function will clamp the value to the range of the type.
+    fn from_f32(v: f32) -> Self {
+        let v = NumCast::from(v).unwrap();
+        if v > Self::DEFAULT_MAX_VALUE {
+            Self::DEFAULT_MAX_VALUE
+        } else if v < Self::DEFAULT_MIN_VALUE {
+            Self::DEFAULT_MIN_VALUE
+        } else {
+            v
+        }
+    }
+
+    /// Cast the value to [`u8`], by scaling the value to the range `[0, 255]`.
+    fn cast_u8(self) -> u8 {
+        let mut val: f32 = NumCast::from(self).unwrap();
+        let min: f32 = NumCast::from(Self::DEFAULT_MIN_VALUE).unwrap();
+        let max: f32 = NumCast::from(Self::DEFAULT_MAX_VALUE).unwrap();
+        val -= min;
+        val /= max - min;
+        val *= 255.0;
+        val.round() as u8
+    }
 }
 
 macro_rules! declare_pixelstor {
@@ -199,4 +228,17 @@ impl Enlargeable for f32 {
 }
 impl Enlargeable for f64 {
     type Larger = f64;
+}
+
+mod test {
+    #[test]
+    fn test_pixelstor() {
+        use crate::traits::PixelStor;
+        let v = 0.5f32;
+        let u = v.cast_u8();
+        assert_eq!(u, 128);
+        let v = 0.4f32;
+        let u = v.cast_u8();
+        assert_eq!(u, 102); // f32::round(v * 255.0) as u8);
+    }
 }

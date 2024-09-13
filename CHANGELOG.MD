@@ -2,6 +2,15 @@
 
 ## Changes
 
+### 0.4.0 (2024-09-13)
+- Optimum exposure calculation internally casts to `f32`.
+- Added `ColorSpace` metadata, removed `repr(u8)` requirement since `serde` is now required.
+- Added `to_f32` and `from_f32` functions for `PixelStor` trait.
+- Added `cast_u8` for `PixelStor`, allowing casting any value to [0, 255] range.
+- Added owned data counterparts to `GenericImage`, `DynamicImageData` and `ImageData`, along with
+  accompanying `To` and `From` implementations.
+- Added `into_u8` functions to convert all images to owned images with `u8` pixels.
+
 ### 0.4.0 (2024-08-27)
 - Exposed a `GenericValue` enum, with `From` and `TryInto` implementations to concrete types.
   `GenericLineItem` now does not include functions to access the underlying concrete types.

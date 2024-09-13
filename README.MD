@@ -9,15 +9,18 @@ slice (owned or referenced) of primitive (`u8`, `u16`, `f32`) pixels, with arbit
 color space (grayscale, Bayer pattern, RGB, ...) and color channels support (max. 255).
 Image sizes are limited to 65536 &times; 65536 for practical reasons.
 
-`GenericImage` is powerful, since it supports metadata in the form of (`key`, `value`) pairs,
+`GenericImage` and `GenericImageOwned` are powerful, since it supports metadata in the form of (`key`, `value`) pairs,
 with optional comments. Valid metadata keys are case-insensitive, 80-character strings, and
 values are up to 64-bit integer types, 32- and 64-bit floating point numbers, strings up-to 
 4096 characters, or `std::time::{SystemTime, Duration}`.
 
-`GenericImage` also supports serialization and deserialization, and, optionally can be saved
+`GenericImage` and `GenericImageOwned` also support serialization and deserialization, and, optionally can be saved
 in the open [Flexible Image Transport System (FITS)](https://fits.gsfc.nasa.gov/fits_standard.html)
 format by enabling the optional `fitsio` feature. FITS files support lossless compression,
 and saving of arbitrary metadata.
+
+`GenericImage` and `GenericImageOwned` are represented by the same underlying object
+after serialization, and can be deserialized as either type at the deserializer end.
 
 ## The path to a `GenericImage`
 
@@ -25,7 +28,7 @@ A `GenericImage` can be obtained in a couple of ways. In the first case, the Rus
 itself generates the image. In that case, a `ImageData` object is first created with the
 appropriate, contiguous, backing storage and image format:
 ```rust
-use refimage::{ColorSpace, ImageData, Debayer, DemosaicMethod, DynamicImageData, GenericImage};
+use refimage::{ColorSpace, ImageData, Debayer, DemosaicMethod, DynamicImageData, GenericImage, GenericImageOwned};
 use std::time::SystemTime;
 
 let mut data = vec![0u8; 256]; // this is the backing store
@@ -39,6 +42,9 @@ img.insert_key("CAMERA", ("Rust Test Program", "Name of the camera used to captu
 let json = serde_json::to_string(&img).unwrap(); // serialize the image to JSON
 let rimg: GenericImage = serde_json::from_str(&json).unwrap(); // deserialize to GenericImage
 assert_eq!(&img, &rimg); // Confirm that deserialized image matches the original
+let rimg: GenericImageOwned = rimg.into(); // convert to GenericImageOwned
+let ownedjson = serde_json::to_string(&rimg).unwrap(); // serialize the image to JSON
+assert_eq!(&json, &ownedjson); // the two representations should be identical
 ```
 
 In the second case, an image can be loaded using the [`image`](https://crates.io/crates/image) crate from disk, by enabling the `image` feature:

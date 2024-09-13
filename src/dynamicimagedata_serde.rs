@@ -1,4 +1,6 @@
-use crate::{DataStor, DynamicImageData, ImageData, PixelType};
+use crate::{
+    ColorSpace, DataStor, DynamicImageData, DynamicImageOwned, ImageData, ImageOwned, PixelType,
+};
 use crate::{Deserializer, Serializer};
 #[cfg(feature = "serde_flate")]
 use flate2::{write::ZlibDecoder, write::ZlibEncoder, Compress, Compression};
@@ -11,7 +13,7 @@ struct SerialImage {
     width: u16,
     height: u16,
     channels: u8,
-    cspace: u8,
+    cspace: ColorSpace,
     pixeltype: i8,
     compressed: bool,
     data: Vec<u8>,
@@ -70,7 +72,7 @@ impl<'b> TryFrom<SerialImage> for DynamicImageData<'b> {
         let width = data.width;
         let height = data.height;
         let channels = data.channels;
-        let cspace = data.cspace.try_into()?;
+        let cspace = data.cspace;
         let pixeltype = data.pixeltype.try_into()?;
         #[allow(unused_mut)]
         let mut out;
@@ -165,6 +167,148 @@ impl<'de: 'a, 'a> Deserialize<'de> for DynamicImageData<'a> {
     }
 }
 
+impl TryFrom<&DynamicImageOwned> for SerialImage {
+    type Error = &'static str;
+
+    fn try_from(data: &DynamicImageOwned) -> Result<Self, Self::Error> {
+        let width = data.width();
+        let height = data.height();
+        let channels = data.channels();
+        let cspace = data.color_space();
+        let pixeltype: PixelType = (data).into();
+        let data = data.as_raw_u8();
+        let out;
+        let crc = crc32fast::hash(data);
+        let compressed;
+        #[cfg(feature = "serde_flate")]
+        {
+            let mut encoder = ZlibEncoder::new_with_compress(
+                Vec::new(),
+                Compress::new(Compression::fast(), true),
+            );
+            encoder
+                .write_all(data)
+                .map_err(|_| "Could not write data to compressor.")?;
+            out = encoder
+                .finish()
+                .map_err(|_| "Could not finalize compression.")?;
+            compressed = true;
+        }
+        #[cfg(not(feature = "serde_flate"))]
+        {
+            out = data.to_vec();
+            compressed = false;
+        }
+        Ok(SerialImage {
+            width: width as _,
+            height: height as _,
+            channels,
+            cspace: cspace as _,
+            pixeltype: pixeltype as _,
+            compressed,
+            data: out,
+            crc,
+        })
+    }
+}
+
+impl TryFrom<SerialImage> for DynamicImageOwned {
+    type Error = &'static str;
+
+    fn try_from(data: SerialImage) -> Result<Self, Self::Error> {
+        let width = data.width;
+        let height = data.height;
+        let channels = data.channels;
+        let cspace = data.cspace;
+        let pixeltype = data.pixeltype.try_into()?;
+        #[allow(unused_mut)]
+        let mut out;
+        #[cfg(feature = "serde_flate")]
+        {
+            if !data.compressed {
+                return Err("Data is not compressed.");
+            }
+            out = Vec::new();
+            let mut decoder = ZlibDecoder::new(out);
+            decoder
+                .write_all(&data.data)
+                .map_err(|_| "Could not decompress the data.")?;
+            out = decoder
+                .finish()
+                .map_err(|_| "Could not finalize the decompression.")?;
+        }
+        #[cfg(not(feature = "serde_flate"))]
+        {
+            if data.compressed {
+                return Err("Data is compressed.");
+            }
+            out = data.data;
+        }
+        let crc = crc32fast::hash(&out);
+        if data.crc != crc {
+            return Err("Invalid data checksum");
+        }
+        match pixeltype {
+            PixelType::U8 => {
+                let img = ImageOwned::new(out, width.into(), height.into(), cspace)?;
+                if img.channels() != channels {
+                    return Err("Data length does not match image size.");
+                }
+                Ok(DynamicImageOwned::U8(img))
+            }
+            PixelType::U16 => {
+                let data = u8_slice_as_u16(&out).map_err(|_| "Could not cast u8 slice as u16")?;
+                let img = ImageOwned::new(
+                    data.as_slice().to_vec(),
+                    width.into(),
+                    height.into(),
+                    cspace,
+                )?;
+                if img.channels() != channels {
+                    return Err("Data length does not match image size.");
+                }
+                Ok(DynamicImageOwned::U16(img))
+            }
+            PixelType::F32 => {
+                let data = u8_slice_as_f32(&out).map_err(|_| "Could not cast u8 slice as f32")?;
+                let img = ImageOwned::new(
+                    data.as_slice().to_vec(),
+                    width.into(),
+                    height.into(),
+                    cspace,
+                )?;
+                if img.channels() != channels {
+                    return Err("Data length does not match image size.");
+                }
+                Ok(DynamicImageOwned::F32(img))
+            }
+        }
+    }
+}
+
+impl Serialize for DynamicImageOwned {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerialImage::try_from(self)
+            .map_err(|_| serde::ser::Error::custom("Could not serialize DynamicImageOwned"))
+            .and_then(|img| img.serialize(serializer))
+    }
+}
+
+impl<'de> Deserialize<'de> for DynamicImageOwned {
+    fn deserialize<D>(deserializer: D) -> Result<DynamicImageOwned, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        SerialImage::deserialize(deserializer).and_then(|img| {
+            DynamicImageOwned::try_from(img)
+                .map_err(|_| serde::de::Error::custom("Could not deserialize DynamicImageOwned"))
+        })
+    }
+}
+
 enum DtypeContainer<'a, T> {
     Slice(&'a [T]),
     Vec(Vec<T>),
@@ -232,7 +376,7 @@ fn u8_slice_as_u16(buf: &[u8]) -> ByteResult<DtypeContainer<u16>> {
 mod test {
 
     #[test]
-    fn generate_pycode() {
+    fn generate_pycode_dynamicimagedata() {
         use serde_reflection::{Tracer, TracerConfig};
         use std::path::Path;
 
@@ -263,6 +407,42 @@ mod test {
                 }
             }
             std::fs::write(outdir.join("DynamicImageData.py"), src)
+                .expect("Could not write to file.");
+        }
+    }
+
+    #[test]
+    fn generate_pycode_dynamicimageowned() {
+        use serde_reflection::{Tracer, TracerConfig};
+        use std::path::Path;
+
+        let mut tracer = Tracer::new(TracerConfig::default());
+        if let Err(v) = tracer.trace_simple_type::<super::SerialImage>() {
+            eprintln!("Tracer Error: {:?}", v);
+            return;
+        }
+        if let Ok(registry) = tracer.registry() {
+            let mut src = Vec::new();
+            let cfg =
+                serde_generate::CodeGeneratorConfig::new("refimage::DynamicImageOwned".to_string())
+                    .with_encodings(vec![serde_generate::Encoding::Bincode]);
+
+            let gen = serde_generate::python3::CodeGenerator::new(&cfg);
+            if let Err(v) = gen.output(&mut src, &registry) {
+                eprintln!("Output Error: {:?}", v);
+                return;
+            }
+            let outdir = Path::new(&"serde-interop/python3/dynamicimageowned");
+            if let Err(v) = std::fs::create_dir_all(outdir) {
+                match v.kind() {
+                    std::io::ErrorKind::AlreadyExists => {}
+                    _ => {
+                        eprintln!("Error creating directory: {:?}", v);
+                        return;
+                    }
+                }
+            }
+            std::fs::write(outdir.join("DynamicImageOwned.py"), src)
                 .expect("Could not write to file.");
         }
     }

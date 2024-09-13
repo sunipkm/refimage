@@ -2,7 +2,7 @@ use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{BayerError, Debayer, DemosaicMethod, DynamicImageData};
+use crate::{BayerError, ColorSpace, Debayer, DemosaicMethod, DynamicImageData, DynamicImageOwned};
 
 /// Key for the timestamp metadata.
 /// This key is inserted by default when creating a new [`GenericImage`].
@@ -27,8 +27,11 @@ pub const PROGRAMNAME_KEY: &str = "PROGNAME";
 /// - [`u8`] | [`u16`] | [`u32`] | [`u64`]
 /// - [`i8`] | [`i16`] | [`i32`] | [`i64`]
 /// - [`f32`] | [`f64`]
+/// - [`ColorSpace`]
 /// - [`std::time::Duration`] | [`std::time::SystemTime`]
 /// - [`String`] | [`&str`]
+///
+/// The metadata values are encapsulated in a type-erased enum [`GenericValue`].
 ///
 /// # Note
 /// - The metadata key is case-insensitive and is stored as an uppercase string.
@@ -67,6 +70,8 @@ pub enum GenericValue {
     F32(f32),
     /// A 64-bit floating point number.
     F64(f64),
+    /// Color space of the image ([`ColorSpace`]).
+    ColorSpace(crate::ColorSpace),
     /// A [`Duration`].
     Duration(Duration),
     /// A [`SystemTime`].
@@ -75,10 +80,16 @@ pub enum GenericValue {
     String(String),
 }
 
-/// A serializable, generic image with metadata.
+/// A serializable, generic image with metadata, backed by [`DynamicImageData`].
 ///
 /// This struct holds an image with associated metadata. The metadata is stored as a vector of
 /// [`GenericLineItem`] structs. The image data is stored as a [`DynamicImageData`].
+/// 
+/// # Note
+/// - Alpha channels are not trivially supported. They can be added by using a custom
+///   color space.
+/// - Internally [`GenericImage`] and [`GenericImageOwned`] serialize to the same
+///   representation, and can be deserialized into each other.
 ///
 /// # Usage
 /// ```
@@ -98,12 +109,42 @@ pub struct GenericImage<'a> {
     image: DynamicImageData<'a>,
 }
 
+/// A serializable, generic image with metadata, backed by [`DynamicImageOwned`].
+///
+/// The image data is backed either by owned data, or a slice.
+///
+/// This struct holds an image with associated metadata. The metadata is stored as a vector of
+/// [`GenericLineItem`] structs. The image data is stored as a [`DynamicImageOwned`].
+/// 
+/// /// # Note
+/// - Alpha channels are not trivially supported. They can be added by using a custom
+///   color space.
+/// - Internally [`GenericImage`] and [`GenericImageOwned`] serialize to the same
+///   representation, and can be deserialized into each other.
+///
+/// # Usage
+/// ```
+/// use refimage::{ImageData, DynamicImageData, GenericImage, ColorSpace};
+/// use std::time::SystemTime;
+/// let data = vec![1u8, 2, 3, 4, 5, 6];
+/// let img = ImageData::from_owned(data, 3, 2, ColorSpace::Gray).unwrap();
+/// let img = DynamicImageData::from(img);
+/// let mut img = GenericImage::new(std::time::SystemTime::now(), img);
+///
+/// img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GenericImageOwned {
+    metadata: Vec<GenericLineItem>,
+    image: DynamicImageOwned,
+}
+
 impl<'a> GenericImage<'a> {
-    /// Create a new `GenericImage` with metadata.
+    /// Create a new [`GenericImage`] with metadata.
     ///
     /// # Arguments
     /// - `tstamp`: The timestamp of the image.
-    /// - `image`: The image data, of type `DynamicImageData`.
+    /// - `image`: The image data, of type [`DynamicImageData`].
     ///
     /// # Example
     /// ```
@@ -135,6 +176,7 @@ impl<'a> GenericImage<'a> {
     /// - [`u8`] | [`u16`] | [`u32`] | [`u64`]
     /// - [`i8`] | [`i16`] | [`i32`] | [`i64`]
     /// - [`f32`] | [`f64`]
+    /// - [`ColorSpace`]
     /// - [`std::time::Duration`] | [`std::time::SystemTime`]
     /// - [`String`] | [`&str`]
     ///
@@ -149,7 +191,7 @@ impl<'a> GenericImage<'a> {
         if name.to_uppercase() == TIMESTAMP_KEY {
             return Err("Cannot re-insert timestamp key");
         }
-        T::insert_key(self, name, value)
+        T::insert_key_gi(self, name, value)
     }
 
     /// Remove a metadata value from the [`GenericImage`].
@@ -196,7 +238,7 @@ impl<'a> GenericImage<'a> {
         name: &str,
         value: T,
     ) -> Result<(), &'static str> {
-        T::replace(self, name, value)
+        T::replace_gi(self, name, value)
     }
 
     /// Get the underlying [`DynamicImageData`].
@@ -225,6 +267,154 @@ impl<'a> GenericImage<'a> {
         name_check(name).ok()?;
         self.metadata.iter().find(|x| x.name() == name)
     }
+
+    /// Convert the image to a [`GenericImageOwned`] with [`u8`] pixel type.
+    pub fn into_u8(self) -> GenericImageOwned {
+        let img = self.image.into_u8();
+        GenericImageOwned {
+            metadata: self.metadata,
+            image: img,
+        }
+    }
+}
+
+impl GenericImageOwned {
+    /// Create a new [`GenericImageOwned`] with metadata.
+    ///
+    /// # Arguments
+    /// - `tstamp`: The timestamp of the image.
+    /// - `image`: The image data, of type [`DynamicImageOwned`].
+    ///
+    /// # Example
+    /// ```
+    /// use refimage::{ImageOwned, DynamicImageOwned, GenericImageOwned, ColorSpace};
+    /// use std::time::SystemTime;
+    /// let data = vec![1u8, 2, 3, 4, 5, 6];
+    /// let img = ImageOwned::from_owned(data, 3, 2, ColorSpace::Gray).unwrap();
+    /// let img = DynamicImageOwned::from(img);
+    /// let mut img = GenericImageOwned::new(std::time::SystemTime::now(), img);
+    ///
+    /// img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
+    /// ```
+    pub fn new(tstamp: SystemTime, image: DynamicImageOwned) -> Self {
+        let metadata = vec![GenericLineItem {
+            name: TIMESTAMP_KEY.to_string(),
+            value: tstamp.into(),
+            comment: Some("Timestamp of the image".to_owned()),
+        }];
+        Self { metadata, image }
+    }
+
+    /// Insert a metadata value into the [`GenericImageOwned`].
+    ///
+    /// # Arguments
+    /// - `name`: The name of the metadata value. The name must be non-empty and less than 80 characters.
+    /// - `value`: The value to insert. The value is either a primitive type, a `String`, or a `std::time::Duration` or `std::time::SystemTime` or a tuple of a primitive type and a comment ().
+    /// # Valid Types
+    /// The valid types for the metadata value are:
+    /// - [`u8`] | [`u16`] | [`u32`] | [`u64`]
+    /// - [`i8`] | [`i16`] | [`i32`] | [`i64`]
+    /// - [`f32`] | [`f64`]
+    /// - [`ColorSpace`]
+    /// - [`std::time::Duration`] | [`std::time::SystemTime`]
+    /// - [`String`] | [`&str`]
+    ///
+    /// # Note
+    /// - The metadata key is case-insensitive and is stored as an uppercase string.
+    /// - Re-inserting a timestamp key will return an error.
+    /// - When saving to a FITS file, the metadata comment may be truncated.
+    /// - Metadata of type [`std::time::Duration`] or [`std::time::SystemTime`] is split
+    ///   and stored as two consecutive metadata items, with the same key, split into
+    ///   seconds ([`u64`]) and microseconds ([`u32`]).
+    pub fn insert_key<T: InsertValue>(&mut self, name: &str, value: T) -> Result<(), &'static str> {
+        if name.to_uppercase() == TIMESTAMP_KEY {
+            return Err("Cannot re-insert timestamp key");
+        }
+        T::insert_key_go(self, name, value)
+    }
+
+    /// Remove a metadata value from the [`GenericImageOwned`].
+    ///
+    /// # Arguments
+    /// - `name`: The name of the metadata value to remove.
+    ///
+    /// # Returns
+    /// - `Ok(())` if the key was removed successfully.
+    /// - `Err("Can not remove timestamp key")` if the key is the timestamp key.
+    /// - `Err("Key not found")` if the key was not found.
+    /// - `Err("Key cannot be empty")` if the key is an empty string.
+    /// - `Err("Key cannot be longer than 80 characters")` if the key is longer than 80 characters.
+    pub fn remove_key(&mut self, name: &str) -> Result<(), &'static str> {
+        if name.to_uppercase() == TIMESTAMP_KEY {
+            return Err("Cannot remove timestamp key");
+        }
+        name_check(name)?;
+        let mut not_found = true;
+        self.metadata.retain(|x| {
+            let found = x.name() == name;
+            not_found &= x.name() != name;
+            found
+        });
+        if not_found {
+            Err("Key not found")
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Replace a metadata value in the [`GenericImageOwned`].
+    ///
+    /// # Arguments
+    /// - `name`: The name of the metadata value to replace.
+    /// - `value`: The new value to insert. The value is either a primitive type, a `String`, or a `std::time::Duration` or `std::time::SystemTime` or a tuple of a value type and a comment.
+    ///
+    /// # Returns
+    /// - `Ok(())` if the key was replaced successfully.
+    /// - `Err("Key not found")` if the key was not found.
+    ///
+    pub fn replace_key<T: InsertValue>(
+        &mut self,
+        name: &str,
+        value: T,
+    ) -> Result<(), &'static str> {
+        T::replace_go(self, name, value)
+    }
+
+    /// Get the underlying [`DynamicImageOwned`].
+    ///
+    /// # Returns
+    /// The underlying [`DynamicImageOwned`] of the [`GenericImageOwned`].
+    pub fn get_image(&self) -> &DynamicImageOwned {
+        &self.image
+    }
+
+    /// Get the contained metadata as a slice of [`GenericLineItem`]s.
+    ///
+    /// # Returns
+    /// A slice of [`GenericLineItem`]s containing the metadata.
+    pub fn get_metadata(&self) -> &[GenericLineItem] {
+        &self.metadata
+    }
+
+    /// Get a specific metadata value by name.
+    ///
+    /// Returns the first metadata value with the given name.
+    ///
+    /// # Arguments
+    /// - `name`: The name of the metadata value.
+    pub fn get_key(&self, name: &str) -> Option<&GenericLineItem> {
+        name_check(name).ok()?;
+        self.metadata.iter().find(|x| x.name() == name)
+    }
+
+    /// Convert the image to a [`GenericImageOwned`] with [`u8`] pixel type.
+    pub fn into_u8(self) -> GenericImageOwned {
+        let img = self.image.into_u8();
+        GenericImageOwned {
+            metadata: self.metadata,
+            image: img,
+        }
+    }
 }
 
 impl<'a: 'b, 'b> Debayer<'a, 'b> for GenericImage<'b> {
@@ -232,6 +422,17 @@ impl<'a: 'b, 'b> Debayer<'a, 'b> for GenericImage<'b> {
         let img = self.image.debayer(method)?;
         let meta = self.metadata.clone();
         Ok(GenericImage {
+            metadata: meta,
+            image: img,
+        })
+    }
+}
+
+impl<'a: 'b, 'b> Debayer<'a, 'b> for GenericImageOwned {
+    fn debayer(&self, method: DemosaicMethod) -> Result<Self, BayerError> {
+        let img = self.image.debayer(method)?;
+        let meta = self.metadata.clone();
+        Ok(Self {
             metadata: meta,
             image: img,
         })
@@ -293,6 +494,70 @@ impl<'a: 'b, 'b> GenericImage<'a> {
     }
 }
 
+impl GenericImageOwned {
+    /// Apply a function to the image data.
+    ///
+    /// This function copies the metadata of the current image, and replaces the underlying
+    /// image data with the result of the function.
+    ///
+    /// # Arguments
+    /// - `f`: The function to apply to the image data.
+    ///   The function must take a reference to an [`DynamicImageData`] and return a [`DynamicImageData`].
+    pub fn operate<F>(&self, f: F) -> Result<Self, &'static str>
+    where
+        F: FnOnce(&DynamicImageOwned) -> Result<DynamicImageOwned, &'static str>,
+    {
+        let img = f(&(self.image))?;
+        Ok(GenericImageOwned {
+            metadata: self.metadata.clone(),
+            image: img,
+        })
+    }
+
+    /// Convert the image to a luminance image.
+    ///
+    /// This function uses the formula `Y = 0.299R + 0.587G + 0.114B` to calculate the
+    /// corresponding luminance image.
+    ///
+    /// # Errors
+    /// - If the image is not debayered and is not a grayscale image.
+    /// - If the image is not an RGB image.
+    pub fn into_luma(&self) -> Result<Self, &'static str> {
+        let img = self.image.into_luma()?;
+        Ok(Self {
+            metadata: self.metadata.clone(),
+            image: img,
+        })
+    }
+
+    /// Convert the image to a luminance image with custom coefficients.
+    ///
+    /// # Arguments
+    /// - `wts`: The weights to use for the conversion. The number of weights must match
+    ///   the number of channels in the image.
+    ///
+    /// # Errors
+    /// - If the number of weights does not match the number of channels in the image.
+    /// - If the image is not debayered and is not a grayscale image.
+    /// - If the image is not an RGB image.
+    pub fn into_luma_custom(&self, coeffs: &[f64]) -> Result<Self, &'static str> {
+        let img = self.image.into_luma_custom(coeffs)?;
+        Ok(Self {
+            metadata: self.metadata.clone(),
+            image: img,
+        })
+    }
+}
+
+impl<'a> From<GenericImage<'a>> for GenericImageOwned {
+    fn from(img: GenericImage<'a>) -> Self {
+        Self {
+            metadata: img.metadata,
+            image: img.image.into(),
+        }
+    }
+}
+
 impl GenericLineItem {
     /// Get the name of the metadata value.
     pub fn name(&self) -> &str {
@@ -330,6 +595,7 @@ impl_from_genericvalue!(i32, GenericValue::I32);
 impl_from_genericvalue!(i64, GenericValue::I64);
 impl_from_genericvalue!(f32, GenericValue::F32);
 impl_from_genericvalue!(f64, GenericValue::F64);
+impl_from_genericvalue!(ColorSpace, GenericValue::ColorSpace);
 impl_from_genericvalue!(Duration, GenericValue::Duration);
 impl_from_genericvalue!(SystemTime, GenericValue::SystemTime);
 impl_from_genericvalue!(String, GenericValue::String);
@@ -359,24 +625,34 @@ impl_tryinto_genericvalue!(i32, GenericValue::I32);
 impl_tryinto_genericvalue!(i64, GenericValue::I64);
 impl_tryinto_genericvalue!(f32, GenericValue::F32);
 impl_tryinto_genericvalue!(f64, GenericValue::F64);
+impl_tryinto_genericvalue!(ColorSpace, GenericValue::ColorSpace);
 impl_tryinto_genericvalue!(Duration, GenericValue::Duration);
 impl_tryinto_genericvalue!(SystemTime, GenericValue::SystemTime);
 impl_tryinto_genericvalue!(String, GenericValue::String);
 
 /// Trait to insert a metadata value into a [`GenericImage`].
 pub trait InsertValue {
-    /// Insert a metadata value by name.
-    fn insert_key(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str>;
+    /// Insert a metadata value into a [`GenericImage`] by name.
+    fn insert_key_gi(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str>;
 
-    /// Replace a metadata value by name.
-    fn replace(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str>;
+    /// Insert a metadata value into a [`GenericImageOwned`] by name.
+    fn insert_key_go(
+        f: &mut GenericImageOwned,
+        name: &str,
+        value: Self,
+    ) -> Result<(), &'static str>;
+
+    /// Replace a metadata value in a [`GenericImage`] by name.
+    fn replace_gi(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str>;
+
+    /// Replace a metadata value in a [`GenericImageOwned`] by name.
+    fn replace_go(f: &mut GenericImageOwned, name: &str, value: Self) -> Result<(), &'static str>;
 }
 
 macro_rules! insert_value_impl {
     ($t:ty, $datatype:expr) => {
         impl InsertValue for $t {
-            /// Insert a metadata value.
-            fn insert_key(
+            fn insert_key_gi(
                 f: &mut GenericImage,
                 name: &str,
                 value: Self,
@@ -391,8 +667,11 @@ macro_rules! insert_value_impl {
                 Ok(())
             }
 
-            /// Replace a metadata value.
-            fn replace(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str> {
+            fn replace_gi(
+                f: &mut GenericImage,
+                name: &str,
+                value: Self,
+            ) -> Result<(), &'static str> {
                 name_check(name)?;
                 let mut not_found = true;
                 f.metadata.retain(|x| {
@@ -403,14 +682,47 @@ macro_rules! insert_value_impl {
                 if not_found {
                     Err("Key not found")
                 } else {
-                    Self::insert_key(f, name, value)
+                    Self::insert_key_gi(f, name, value)
+                }
+            }
+
+            fn insert_key_go(
+                f: &mut GenericImageOwned,
+                name: &str,
+                value: Self,
+            ) -> Result<(), &'static str> {
+                name_check(name)?;
+                let line = GenericLineItem {
+                    name: name.to_string().to_uppercase(),
+                    value: value.into(),
+                    comment: None,
+                };
+                f.metadata.push(line);
+                Ok(())
+            }
+
+            fn replace_go(
+                f: &mut GenericImageOwned,
+                name: &str,
+                value: Self,
+            ) -> Result<(), &'static str> {
+                name_check(name)?;
+                let mut not_found = true;
+                f.metadata.retain(|x| {
+                    let found = x.name() != name;
+                    not_found &= found;
+                    found
+                });
+                if not_found {
+                    Err("Key not found")
+                } else {
+                    Self::insert_key_go(f, name, value)
                 }
             }
         }
 
         impl InsertValue for ($t, &str) {
-            /// Insert a metadata value with a comment.
-            fn insert_key(
+            fn insert_key_gi(
                 f: &mut GenericImage,
                 name: &str,
                 value: Self,
@@ -426,8 +738,11 @@ macro_rules! insert_value_impl {
                 Ok(())
             }
 
-            /// Replace a metadata value with a comment.
-            fn replace(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str> {
+            fn replace_gi(
+                f: &mut GenericImage,
+                name: &str,
+                value: Self,
+            ) -> Result<(), &'static str> {
                 name_check(name)?;
                 let mut not_found = true;
                 f.metadata.retain(|x| {
@@ -438,7 +753,41 @@ macro_rules! insert_value_impl {
                 if not_found {
                     Err("Key not found")
                 } else {
-                    Self::insert_key(f, name, value)
+                    Self::insert_key_gi(f, name, value)
+                }
+            }
+
+            fn insert_key_go(
+                f: &mut GenericImageOwned,
+                name: &str,
+                value: Self,
+            ) -> Result<(), &'static str> {
+                name_check(name)?;
+                let line = GenericLineItem {
+                    name: name.to_string().to_uppercase(),
+                    value: value.0.into(),
+                    comment: None,
+                };
+                f.metadata.push(line);
+                Ok(())
+            }
+
+            fn replace_go(
+                f: &mut GenericImageOwned,
+                name: &str,
+                value: Self,
+            ) -> Result<(), &'static str> {
+                name_check(name)?;
+                let mut not_found = true;
+                f.metadata.retain(|x| {
+                    let found = x.name() != name;
+                    not_found &= found;
+                    found
+                });
+                if not_found {
+                    Err("Key not found")
+                } else {
+                    Self::insert_key_go(f, name, value)
                 }
             }
         }
@@ -491,7 +840,7 @@ insert_value_impl!(Duration, PrvGenLineItem::Duration);
 insert_value_impl!(SystemTime, PrvGenLineItem::SystemTime);
 
 impl InsertValue for &str {
-    fn insert_key(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str> {
+    fn insert_key_gi(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str> {
         name_check(name)?;
         str_value_check(value)?;
         let line = GenericLineItem {
@@ -503,7 +852,7 @@ impl InsertValue for &str {
         Ok(())
     }
 
-    fn replace(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str> {
+    fn replace_gi(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str> {
         name_check(name)?;
         let mut not_found = true;
         f.metadata.retain(|x| {
@@ -514,13 +863,44 @@ impl InsertValue for &str {
         if not_found {
             Err("Key not found")
         } else {
-            Self::insert_key(f, name, value)
+            Self::insert_key_gi(f, name, value)
+        }
+    }
+
+    fn insert_key_go(
+        f: &mut GenericImageOwned,
+        name: &str,
+        value: Self,
+    ) -> Result<(), &'static str> {
+        name_check(name)?;
+        str_value_check(value)?;
+        let line = GenericLineItem {
+            name: name.to_string().to_uppercase(),
+            value: value.to_owned().into(),
+            comment: None,
+        };
+        f.metadata.push(line);
+        Ok(())
+    }
+
+    fn replace_go(f: &mut GenericImageOwned, name: &str, value: Self) -> Result<(), &'static str> {
+        name_check(name)?;
+        let mut not_found = true;
+        f.metadata.retain(|x| {
+            let found = x.name() != name;
+            not_found &= found;
+            found
+        });
+        if not_found {
+            Err("Key not found")
+        } else {
+            Self::insert_key_go(f, name, value)
         }
     }
 }
 
 impl InsertValue for (&str, &str) {
-    fn insert_key(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str> {
+    fn insert_key_gi(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str> {
         name_check(name)?;
         str_value_check(value.0)?;
         comment_check(value.1)?;
@@ -533,7 +913,7 @@ impl InsertValue for (&str, &str) {
         Ok(())
     }
 
-    fn replace(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str> {
+    fn replace_gi(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str> {
         name_check(name)?;
         let mut not_found = true;
         f.metadata.retain(|x| {
@@ -544,7 +924,39 @@ impl InsertValue for (&str, &str) {
         if not_found {
             Err("Key not found")
         } else {
-            Self::insert_key(f, name, value)
+            Self::insert_key_gi(f, name, value)
+        }
+    }
+
+    fn insert_key_go(
+        f: &mut GenericImageOwned,
+        name: &str,
+        value: Self,
+    ) -> Result<(), &'static str> {
+        name_check(name)?;
+        str_value_check(value.0)?;
+        comment_check(value.1)?;
+        let line = GenericLineItem {
+            name: name.to_string().to_uppercase(),
+            value: value.0.to_owned().into(),
+            comment: Some(value.1.to_owned()),
+        };
+        f.metadata.push(line);
+        Ok(())
+    }
+
+    fn replace_go(f: &mut GenericImageOwned, name: &str, value: Self) -> Result<(), &'static str> {
+        name_check(name)?;
+        let mut not_found = true;
+        f.metadata.retain(|x| {
+            let found = x.name() != name;
+            not_found &= found;
+            found
+        });
+        if not_found {
+            Err("Key not found")
+        } else {
+            Self::insert_key_go(f, name, value)
         }
     }
 }
@@ -622,7 +1034,7 @@ impl GenericValue {
 
 mod test {
     #[test]
-    fn test_operate() {
+    fn test_operate_generic() {
         use crate::Debayer;
         use crate::{ColorSpace, DynamicImageData, GenericImage, ImageData};
         use std::time::SystemTime;
@@ -631,6 +1043,35 @@ mod test {
         let img = ImageData::from_owned(data, 16, 16, ColorSpace::Grbg).unwrap();
         let img = DynamicImageData::from(img);
         let mut img = GenericImage::new(SystemTime::now(), img);
+
+        img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
+        img.insert_key("TESTING_THIS_LONG_KEY", "This is a long key")
+            .unwrap();
+
+        let img2 = img
+            .operate(|x| {
+                let x = x.debayer(crate::DemosaicMethod::Linear).unwrap();
+                Ok(x)
+            })
+            .unwrap();
+        let img3 = img.operate(|x| Ok(x.clone())).unwrap();
+        assert_eq!(img, img3);
+        assert_eq!(img.get_metadata(), img2.get_metadata());
+        assert_eq!(img.get_image().width(), img2.get_image().width());
+        assert_eq!(img.get_image().height(), img2.get_image().height());
+        assert_eq!(img.get_image().channels() * 3, img2.get_image().channels());
+    }
+
+    #[test]
+    fn test_operate_owned() {
+        use crate::Debayer;
+        use crate::{ColorSpace, DynamicImageOwned, GenericImageOwned, ImageOwned};
+        use std::time::SystemTime;
+
+        let data = vec![0u8; 256];
+        let img = ImageOwned::from_owned(data, 16, 16, ColorSpace::Grbg).unwrap();
+        let img = DynamicImageOwned::from(img);
+        let mut img = GenericImageOwned::new(SystemTime::now(), img);
 
         img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
         img.insert_key("TESTING_THIS_LONG_KEY", "This is a long key")
