@@ -996,6 +996,7 @@ dependencies = [
  "image",
  "num-traits",
  "quick-error",
+ "rand",
  "rayon",
  "serde",
  "serde-generate",

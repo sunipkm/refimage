@@ -9,7 +9,7 @@
 - Added `cast_u8` for `PixelStor`, allowing casting any value to [0, 255] range.
 - Added owned data counterparts to `GenericImage`, `DynamicImageData` and `ImageData`, along with
   accompanying `To` and `From` implementations.
-- Added `into_u8` functions to convert all images to owned images with `u8` pixels.
+- Added `into_u8` (parallelized with `rayon`) functions to convert all images to owned images with `u8` pixels.
 
 ### 0.4.0 (2024-08-27)
 - Exposed a `GenericValue` enum, with `From` and `TryInto` implementations to concrete types.

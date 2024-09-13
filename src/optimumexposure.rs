@@ -238,8 +238,8 @@ impl OptimumExposure {
             max_allowed_bin
         };
 
-        let pixel_tgt = pixel_tgt as f32 * (T::DEFAULT_MAX_VALUE).to_f32();
-        let pixel_uncertainty = pixel_uncertainty as f32 * (T::DEFAULT_MAX_VALUE).to_f32();
+        let pixel_tgt = pixel_tgt * (T::DEFAULT_MAX_VALUE).to_f32();
+        let pixel_uncertainty = pixel_uncertainty * (T::DEFAULT_MAX_VALUE).to_f32();
 
         if max_allowed_bin < 2 {
             change_bin = false;
@@ -274,8 +274,9 @@ impl OptimumExposure {
             }
         };
 
-        target_exposure =
-            Duration::from_secs_f64((pixel_tgt as f64 * exposure.as_micros() as f64 * 1e-6 / val as f64).abs());
+        target_exposure = Duration::from_secs_f64(
+            (pixel_tgt as f64 * exposure.as_micros() as f64 * 1e-6 / val as f64).abs(),
+        );
 
         if change_bin {
             let mut tgt_exp = target_exposure;

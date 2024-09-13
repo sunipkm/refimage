@@ -1,6 +1,6 @@
 use crate::{
     demosaic::{run_demosaic_imagedata, Debayer, RasterMut},
-    traits::Enlargeable,
+    traits::{cast_u8, Enlargeable},
     BayerError, ColorSpace, DataStor, DemosaicMethod, ImageOwned, PixelStor,
 };
 use num_traits::CheckedEuclid;
@@ -223,13 +223,10 @@ impl<T: PixelStor> ImageData<'_, T> {
     /// Convert the image to a [`ImageOwned`] with [`u8`] pixel type.
     ///
     /// Conversion is done by scaling the pixel values to the range `[0, 255]`.
+    /// 
+    /// Note: This operation is parallelized if the `rayon` feature is enabled.
     pub fn into_u8(&self) -> ImageOwned<u8> {
-        let out = self
-            .data
-            .as_slice()
-            .iter()
-            .map(|px| px.cast_u8())
-            .collect::<Vec<u8>>();
+        let out = cast_u8(self.data.as_slice());
         ImageOwned {
             data: out,
             width: self.width() as _,

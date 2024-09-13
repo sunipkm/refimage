@@ -1,5 +1,7 @@
 use bytemuck::NoUninit;
 use num_traits::{Bounded, Num, NumCast, ToPrimitive, Zero};
+#[cfg(feature = "rayon")]
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::ops::AddAssign;
 
 /// The type of each channel in a pixel. For example, this can be `u8`, `u16`, `f32`.
@@ -59,6 +61,17 @@ pub trait PixelStor:
         val /= max - min;
         val *= 255.0;
         val.round() as u8
+    }
+
+    /// Cast the value to [`u8`], by scaling the value to the range `[0, 255]`. Floors the value at the end.
+    fn floor_u8(self) -> u8 {
+        let mut val: f32 = NumCast::from(self).unwrap();
+        let min: f32 = NumCast::from(Self::DEFAULT_MIN_VALUE).unwrap();
+        let max: f32 = NumCast::from(Self::DEFAULT_MAX_VALUE).unwrap();
+        val -= min;
+        val /= max - min;
+        val *= 255.0;
+        val.floor() as u8
     }
 }
 
@@ -228,6 +241,18 @@ impl Enlargeable for f32 {
 }
 impl Enlargeable for f64 {
     type Larger = f64;
+}
+
+/// Cast a slice of `T` to a slice of `u8`.
+pub(crate) fn cast_u8<T: PixelStor>(data: &[T]) -> Vec<u8> {
+    #[cfg(not(feature = "rayon"))]
+    {
+        data.iter().map(|&x| x.cast_u8()).collect()
+    }
+    #[cfg(feature = "rayon")]
+    {
+        data.par_iter().map(|&x| x.cast_u8()).collect()
+    }
 }
 
 mod test {

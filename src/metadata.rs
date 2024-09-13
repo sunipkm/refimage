@@ -84,7 +84,7 @@ pub enum GenericValue {
 ///
 /// This struct holds an image with associated metadata. The metadata is stored as a vector of
 /// [`GenericLineItem`] structs. The image data is stored as a [`DynamicImageData`].
-/// 
+///
 /// # Note
 /// - Alpha channels are not trivially supported. They can be added by using a custom
 ///   color space.
@@ -115,7 +115,7 @@ pub struct GenericImage<'a> {
 ///
 /// This struct holds an image with associated metadata. The metadata is stored as a vector of
 /// [`GenericLineItem`] structs. The image data is stored as a [`DynamicImageOwned`].
-/// 
+///
 /// /// # Note
 /// - Alpha channels are not trivially supported. They can be added by using a custom
 ///   color space.
@@ -269,6 +269,8 @@ impl<'a> GenericImage<'a> {
     }
 
     /// Convert the image to a [`GenericImageOwned`] with [`u8`] pixel type.
+    /// 
+    /// Note: This operation is parallelized if the `rayon` feature is enabled.
     pub fn into_u8(self) -> GenericImageOwned {
         let img = self.image.into_u8();
         GenericImageOwned {
@@ -408,6 +410,8 @@ impl GenericImageOwned {
     }
 
     /// Convert the image to a [`GenericImageOwned`] with [`u8`] pixel type.
+    /// 
+    /// Note: This operation is parallelized if the `rayon` feature is enabled.
     pub fn into_u8(self) -> GenericImageOwned {
         let img = self.image.into_u8();
         GenericImageOwned {
