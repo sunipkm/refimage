@@ -2,7 +2,7 @@
 
 ## Changes
 
-### 0.4.0 (2024-09-13)
+### 0.5.0 (2024-09-13)
 - Optimum exposure calculation internally casts to `f32`.
 - Added `ColorSpace` metadata, removed `repr(u8)` requirement since `serde` is now required.
 - Added `to_f32` and `from_f32` functions for `PixelStor` trait.
