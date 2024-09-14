@@ -42,7 +42,12 @@
 //! let serialized = bincode::serialize(&img).unwrap(); // Serialize the image
 //! let deserialized: GenericImage = bincode::deserialize(&serialized).unwrap(); // Deserialize the image
 //! ```
-//!
+//! # Optional Features
+//! Features are available to extend the functionalities of the core `refimage` data types:
+//! - `rayon`: Parallelizes [`GenericImage::into_luma`] (and similar), [`GenericImage::into_luma_custom`], [`GenericImage::into_u8`] and [`GenericImage::debayer`] functions (<b>enabled</b> by default).
+//! - `serde_flate`: Compresses the data using deflate during serialization (<b>enabled</b> by default).
+//! - `fitsio`: Exposes [`FitsWrite`] trait to write [`GenericImage`] and [`GenericImageOwned`] (<b>disabled</b> by default).
+//! - `image`: Enables [`TryFrom`] conversions between [`DynamicImage`] and [`DynamicImageData`], [`DynamicImageOwned`] (<b>disabled</b> by default).
 //!
 
 mod traits;

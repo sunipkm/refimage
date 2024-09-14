@@ -1,7 +1,10 @@
 use bytemuck::NoUninit;
 use num_traits::{Bounded, Num, NumCast, ToPrimitive, Zero};
 #[cfg(feature = "rayon")]
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::{
+    iter::{IntoParallelRefIterator, ParallelIterator},
+    slice::ParallelSlice,
+};
 use std::ops::AddAssign;
 
 /// The type of each channel in a pixel. For example, this can be `u8`, `u16`, `f32`.
@@ -244,6 +247,7 @@ impl Enlargeable for f64 {
 }
 
 /// Cast a slice of `T` to a slice of `u8`.
+#[inline(never)]
 pub(crate) fn cast_u8<T: PixelStor>(data: &[T]) -> Vec<u8> {
     #[cfg(not(feature = "rayon"))]
     {
@@ -252,6 +256,38 @@ pub(crate) fn cast_u8<T: PixelStor>(data: &[T]) -> Vec<u8> {
     #[cfg(feature = "rayon")]
     {
         data.par_iter().map(|&x| x.cast_u8()).collect()
+    }
+}
+
+/// Run the luminance conversion on a slice of pixel data.
+#[inline(never)]
+pub(crate) fn run_luma<T: PixelStor>(data: &[T], wts: &[f64]) -> Vec<T> {
+    let channels = wts.len();
+    #[cfg(not(feature = "rayon"))]
+    {
+        data.chunks_exact(channels)
+            .map(|chunk| {
+                T::from_f64(
+                    chunk
+                        .iter()
+                        .zip(wts.iter())
+                        .fold(0f64, |acc, (px, &w)| acc + (*px).to_f64() * w),
+                )
+            })
+            .collect::<Vec<T>>()
+    }
+    #[cfg(feature = "rayon")]
+    {
+        data.par_chunks_exact(channels)
+            .map(|chunk| {
+                T::from_f64(
+                    chunk
+                        .iter()
+                        .zip(wts.iter())
+                        .fold(0f64, |acc, (px, &w)| acc + (*px).to_f64() * w),
+                )
+            })
+            .collect::<Vec<T>>()
     }
 }
 

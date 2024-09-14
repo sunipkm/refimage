@@ -72,3 +72,9 @@ let img: GenericImage = { todo!() }; // obtain a GenericImage
 img.write_fits(Path::new("/path/to/fitsimage.fit"), FitsCompression::None, true) // no compression, overwrite
     .expect("Could not write FITS file.");
 ```
+# Optional Features
+Features are available to extend the functionalities of the core `refimage` data types:
+- `rayon`: Parallelizes `into_luma`, `into_luma_custom`, `into_u8` and `debayer` functions (<b>enabled</b> by default).
+- `serde_flate`: Compresses the data using deflate during serialization (<b>enabled</b> by default).
+- `fitsio`: Exposes `FitsWrite` trait to write `GenericImage` and `GenericImageOwned` (<b>disabled</b> by default).
+- `image`: Enables `TryFrom` conversions between `image::DynamicImage` and `refimage::DynamicImageData`, `refimage::DynamicImageOwned` (<b>disabled</b> by default).

@@ -269,7 +269,7 @@ impl<'a> GenericImage<'a> {
     }
 
     /// Convert the image to a [`GenericImageOwned`] with [`u8`] pixel type.
-    /// 
+    ///
     /// Note: This operation is parallelized if the `rayon` feature is enabled.
     pub fn into_u8(self) -> GenericImageOwned {
         let img = self.image.into_u8();
@@ -410,7 +410,7 @@ impl GenericImageOwned {
     }
 
     /// Convert the image to a [`GenericImageOwned`] with [`u8`] pixel type.
-    /// 
+    ///
     /// Note: This operation is parallelized if the `rayon` feature is enabled.
     pub fn into_u8(self) -> GenericImageOwned {
         let img = self.image.into_u8();

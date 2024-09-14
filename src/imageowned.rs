@@ -4,8 +4,6 @@ use crate::{
     BayerError, ColorSpace, DemosaicMethod, Enlargeable, ImageData, PixelStor,
 };
 use num_traits::CheckedEuclid;
-#[cfg(feature = "rayon")]
-use rayon::{iter::ParallelIterator, slice::ParallelSlice};
 
 /// A structure that holds image data backed by a vector.
 ///
@@ -220,7 +218,7 @@ impl<T: PixelStor> ImageOwned<T> {
     /// Convert the image to a [`ImageOwned`] with [`u8`] pixel type.
     ///
     /// Conversion is done by scaling the pixel values to the range `[0, 255]`.
-    /// 
+    ///
     /// Note: This operation is parallelized if the `rayon` feature is enabled.
     pub fn into_u8(&self) -> ImageOwned<u8> {
         let out = cast_u8(self.data.as_slice());
@@ -256,48 +254,7 @@ impl<T: PixelStor + Enlargeable> ImageOwned<T> {
     /// - If the image is not debayered and is not a grayscale image.
     /// - If the image is not an RGB image.
     pub fn into_luma(&self) -> Result<ImageOwned<T>, &'static str> {
-        if self.channels() == 1 {
-            if self.cspace == ColorSpace::Gray {
-                return Ok(self.clone());
-            } else if self.cspace < ColorSpace::Rgb {
-                return Err(
-                    "Bayer pattern image can not be converted to luminance without debayering.",
-                );
-            }
-        } else if self.channels() == 3 && self.cspace == ColorSpace::Rgb {
-            // Okay
-        } else {
-            return Err("Invalid image for conversion to luminance.");
-        }
-        #[cfg(not(feature = "rayon"))]
-        let out = self
-            .data
-            .as_slice()
-            .chunks_exact(self.channels().into())
-            .map(|chunk| {
-                T::from_f64(
-                    chunk
-                        .iter()
-                        .zip([0.299, 0.587, 0.114].iter())
-                        .fold(0f64, |acc, (px, &w)| acc + (*px).to_f64() * w),
-                )
-            })
-            .collect::<Vec<T>>();
-        #[cfg(feature = "rayon")]
-        let out = self
-            .data
-            .as_slice()
-            .par_chunks_exact(self.channels().into())
-            .map(|chunk| {
-                T::from_f64(
-                    chunk
-                        .iter()
-                        .zip([0.299, 0.587, 0.114].iter())
-                        .fold(0f64, |acc, (px, &w)| acc + (*px).to_f64() * w),
-                )
-            })
-            .collect::<Vec<T>>();
-        Self::new(out, self.width(), self.height(), ColorSpace::Gray)
+        self.into_luma_custom(&[0.299, 0.587, 0.114])
     }
 
     /// Convert the image to a luminance image with custom coefficients.
@@ -327,34 +284,7 @@ impl<T: PixelStor + Enlargeable> ImageOwned<T> {
         } else {
             return Err("Invalid image for conversion to luminance.");
         }
-        #[cfg(not(feature = "rayon"))]
-        let out = self
-            .data
-            .as_slice()
-            .chunks_exact(self.channels().into())
-            .map(|chunk| {
-                T::from_f64(
-                    chunk
-                        .iter()
-                        .zip(wts.iter())
-                        .fold(0f64, |acc, (px, &w)| acc + (*px).to_f64() * w),
-                )
-            })
-            .collect::<Vec<T>>();
-        #[cfg(feature = "rayon")]
-        let out = self
-            .data
-            .as_slice()
-            .par_chunks_exact(self.channels().into())
-            .map(|chunk| {
-                T::from_f64(
-                    chunk
-                        .iter()
-                        .zip(wts.iter())
-                        .fold(0f64, |acc, (px, &w)| acc + (*px).to_f64() * w),
-                )
-            })
-            .collect::<Vec<T>>();
+        let out = crate::traits::run_luma(self.data.as_slice(), wts);
         Self::new(out, self.width(), self.height(), ColorSpace::Gray)
     }
 }

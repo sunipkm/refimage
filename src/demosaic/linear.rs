@@ -110,8 +110,26 @@ macro_rules! apply_kernel_row {
 /* Rayon                                                        */
 /*--------------------------------------------------------------*/
 
-#[cfg(feature = "rayon")]
 fn debayer<T>(r: &[T], cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
+where
+    T: PixelStor + Enlargeable,
+{
+    #[cfg(feature = "rayon")]
+    {
+        debayer_parallel(r, cfa, dst)
+    }
+    #[cfg(not(feature = "rayon"))]
+    {
+        debayer_serial(r, cfa, dst)
+    }
+}
+
+#[cfg(feature = "rayon")]
+fn debayer_parallel<T>(
+    r: &[T],
+    cfa: ColorFilterArray,
+    dst: &mut RasterMut<'_, T>,
+) -> BayerResult<()>
 where
     T: PixelStor + Enlargeable,
 {
@@ -160,7 +178,7 @@ where
 /*--------------------------------------------------------------*/
 
 #[cfg(not(feature = "rayon"))]
-fn debayer<T>(r: &[T], cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
+fn debayer_serial<T>(r: &[T], cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
 where
     T: PixelStor + Enlargeable,
 {

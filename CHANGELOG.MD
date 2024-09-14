@@ -2,6 +2,10 @@
 
 ## Changes
 
+### 0.5.1 (2024-09-14)
+- Refactored `rayon` code, reduced code duplication.
+- Added feature documentation.
+
 ### 0.5.0 (2024-09-13)
 - Optimum exposure calculation internally casts to `f32`.
 - Added `ColorSpace` metadata, removed `repr(u8)` requirement since `serde` is now required.

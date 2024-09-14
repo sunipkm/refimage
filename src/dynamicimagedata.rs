@@ -197,7 +197,7 @@ impl<'a> DynamicImageData<'a> {
     }
 
     /// Convert the image to a [`DynamicImageOwned`] with [`u8`] pixel type.
-    /// 
+    ///
     /// Note: This operation is parallelized if the `rayon` feature is enabled.
     pub fn into_u8(self) -> DynamicImageOwned {
         use DynamicImageData::*;

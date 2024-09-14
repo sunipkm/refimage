@@ -1,6 +1,6 @@
 [package]
 name = "refimage"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 resolver = "2"
 
@@ -22,6 +22,7 @@ include = [
     "/CHANGELOG.MD",
     "/src/",
     "/examples/",
+    "/benches/",
 ]
 
 [dependencies]
