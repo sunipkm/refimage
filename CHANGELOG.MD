@@ -2,6 +2,11 @@
 
 ## Changes
 
+### 0.6.0 (2024-09-21)
+- Added `CalcOptExp` trait to calculate optimum exposure for a given `DynamicImageData` or `ImageData`.
+  This trait is also implemented for the equivalent Owned types.
+- Changed the signature of `OptimumExposure::calculate` function to accept a mutable reference to an array instead of a `Vec<T>`.
+
 ### 0.5.1 (2024-09-14)
 - Refactored `rayon` code, reduced code duplication.
 - Added feature documentation.

@@ -91,7 +91,7 @@ pub use imagedata::ImageData;
 pub use imageowned::ImageOwned;
 
 mod optimumexposure;
-pub use optimumexposure::{OptimumExposure, OptimumExposureBuilder};
+pub use optimumexposure::{CalcOptExp, OptimumExposure, OptimumExposureBuilder};
 
 /// Image data with a dynamic pixel type, backed by owned or slice of data.
 ///

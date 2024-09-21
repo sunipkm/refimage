@@ -1,7 +1,7 @@
 #![warn(missing_docs)]
 use std::{cmp::Ord, time::Duration};
 
-use crate::PixelStor;
+use crate::{DynamicImageData, DynamicImageOwned, ImageData, ImageOwned, PixelStor};
 
 #[derive(Debug, Clone, PartialEq)]
 /// Builder for the [`OptimumExposure`] calculator.
@@ -196,7 +196,7 @@ impl OptimumExposure {
     ///  - Errors are returned as static string slices.
     pub fn calculate<T: PixelStor + Ord>(
         &self,
-        mut img: Vec<T>,
+        img: &mut [T],
         exposure: Duration,
         bin: u8,
     ) -> Result<(Duration, u16), &'static str> {
@@ -329,6 +329,85 @@ impl OptimumExposure {
     }
 }
 
+/// Trait to calculate the optimum exposure time and binning.
+///
+/// This trait abstracts the retrieval of underlying image data.
+pub trait CalcOptExp {
+    /// Calculate the optimum exposure time and binning.
+    ///
+    /// # Arguments
+    /// * `eval` - The [`OptimumExposure`] calculator.
+    /// * `exposure` - The exposure duration used to obtain the image data.
+    /// * `bin` - The binning used to obtain the image data.
+    ///
+    /// # Returns
+    /// * `Ok((Duration, u16))` - The optimum exposure time and binning.
+    /// * `Err(&'static str)` - Error message.
+    ///
+    /// # Note
+    /// The image data is consumed by the function.
+    fn calc_opt_exp(
+        self,
+        eval: &OptimumExposure,
+        exposure: Duration,
+        bin: u8,
+    ) -> Result<(Duration, u16), &'static str>;
+}
+
+impl<'a, T: PixelStor + Ord> CalcOptExp for ImageData<'a, T> {
+    fn calc_opt_exp(
+        mut self,
+        eval: &OptimumExposure,
+        exposure: Duration,
+        bin: u8,
+    ) -> Result<(Duration, u16), &'static str> {
+        eval.calculate(self.data.as_mut_slice(), exposure, bin)
+    }
+}
+
+impl<T: PixelStor + Ord> CalcOptExp for ImageOwned<T> {
+    fn calc_opt_exp(
+        mut self,
+        eval: &OptimumExposure,
+        exposure: Duration,
+        bin: u8,
+    ) -> Result<(Duration, u16), &'static str> {
+        eval.calculate(self.data.as_mut_slice(), exposure, bin)
+    }
+}
+
+impl<'a> CalcOptExp for DynamicImageData<'a> {
+    fn calc_opt_exp(
+        mut self,
+        eval: &OptimumExposure,
+        exposure: Duration,
+        bin: u8,
+    ) -> Result<(Duration, u16), &'static str> {
+        use DynamicImageData::*;
+        match self {
+            U8(ref mut img) => eval.calculate(img.as_mut_slice(), exposure, bin),
+            U16(ref mut img) => eval.calculate(img.as_mut_slice(), exposure, bin),
+            F32(_) => Err("Floating point images are not supported for this operation, since Ord is not implemented for floating point types."),
+        }
+    }
+}
+
+impl CalcOptExp for DynamicImageOwned {
+    fn calc_opt_exp(
+        mut self,
+        eval: &OptimumExposure,
+        exposure: Duration,
+        bin: u8,
+    ) -> Result<(Duration, u16), &'static str> {
+        use DynamicImageOwned::*;
+        match self {
+            U8(ref mut img) => eval.calculate(img.as_mut_slice(), exposure, bin),
+            U16(ref mut img) => eval.calculate(img.as_mut_slice(), exposure, bin),
+            F32(_) => Err("Floating point images are not supported for this operation, since Ord is not implemented for floating point types."),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -339,14 +418,21 @@ mod test {
             .pixel_exclusion(1)
             .build()
             .unwrap();
-        let img = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let mut img = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
         let exp = Duration::from_secs(10); // expected exposure
         let bin = 1; // expected binning
-        let res = opt_exp.calculate(img, exp, bin).unwrap();
+        let res = opt_exp.calculate(&mut img, exp, bin).unwrap();
         assert_eq!(res, (exp, bin as u16));
         assert_eq!(
             opt_exp.get_builder(),
             OptimumExposureBuilder::default().pixel_exclusion(1)
         );
+        let img = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let img = ImageOwned::from_owned(img, 5, 2, crate::ColorSpace::Gray)
+            .expect("Failed to create ImageOwned");
+        let exp = Duration::from_secs(10); // expected exposure
+        let bin = 1; // expected binning
+        let res = img.calc_opt_exp(&opt_exp, exp, bin).unwrap();
+        assert_eq!(res, (exp, bin as u16));
     }
 }
