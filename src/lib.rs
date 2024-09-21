@@ -71,7 +71,7 @@ pub use fitsio_interop::{FitsCompression, FitsError, FitsWrite};
 
 mod metadata;
 pub use metadata::{
-    GenericImage, GenericImageOwned, GenericLineItem, GenericValue, CAMERANAME_KEY,
+    GenericImage, GenericImageOwned, GenericLineItem, GenericValue, CAMERANAME_KEY, EXPOSURE_KEY,
     PROGRAMNAME_KEY, TIMESTAMP_KEY,
 };
 

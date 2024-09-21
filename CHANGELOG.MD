@@ -2,6 +2,9 @@
 
 ## Changes
 
+### 0.6.1 (2024-09-21)
+- Added `EXPOSURE_KEY` to standardize setting of exposure time.
+
 ### 0.6.0 (2024-09-21)
 - Added `CalcOptExp` trait to calculate optimum exposure for a given `DynamicImageData` or `ImageData`.
   This trait is also implemented for the equivalent Owned types.

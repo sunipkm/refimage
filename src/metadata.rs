@@ -11,6 +11,8 @@ pub const TIMESTAMP_KEY: &str = "TIMESTAMP";
 pub const CAMERANAME_KEY: &str = "CAMERA";
 /// Key for the name of the program that generated this object.
 pub const PROGRAMNAME_KEY: &str = "PROGNAME";
+/// Key for exposure time metadata of the image.
+pub const EXPOSURE_KEY: &str = "EXPOSURE";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 /// A metadata item.
