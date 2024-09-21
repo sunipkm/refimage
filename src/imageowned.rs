@@ -268,9 +268,6 @@ impl<T: PixelStor + Enlargeable> ImageOwned<T> {
     /// - If the image is not debayered and is not a grayscale image.
     /// - If the image is not an RGB image.
     pub fn into_luma_custom(&self, wts: &[f64]) -> Result<ImageOwned<T>, &'static str> {
-        if wts.len() != self.channels() as usize {
-            return Err("Invalid number of weights.");
-        }
         if self.channels() == 1 {
             if self.cspace == ColorSpace::Gray {
                 return Ok(self.clone());
@@ -283,6 +280,10 @@ impl<T: PixelStor + Enlargeable> ImageOwned<T> {
             // Okay
         } else {
             return Err("Invalid image for conversion to luminance.");
+        }
+        // at this point, number of channels must match number of weights
+        if wts.len() != self.channels() as usize {
+            return Err("Invalid number of weights.");
         }
         let out = crate::traits::run_luma(self.data.as_slice(), wts);
         Self::new(out, self.width(), self.height(), ColorSpace::Gray)

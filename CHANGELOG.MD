@@ -2,6 +2,9 @@
 
 ## Changes
 
+### 0.6.2 (2024-09-21)
+- Bugfix: `into_luma()` errored on a grayscale image.
+
 ### 0.6.1 (2024-09-21)
 - Added `EXPOSURE_KEY` to standardize setting of exposure time.
 
