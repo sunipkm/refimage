@@ -221,8 +221,8 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
     }
 }
 
-impl <'a, T: PixelStor + AnyBitPattern> ImageData<'a, T> {
-        /// Create a new [`ImageData`] from a mutable slice of `u8` data.
+impl<'a, T: PixelStor + AnyBitPattern> ImageData<'a, T> {
+    /// Create a new [`ImageData`] from a mutable slice of `u8` data.
     ///
     /// Images can not be larger than 65535x65535 pixels.
     ///

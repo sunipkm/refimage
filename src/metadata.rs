@@ -1062,7 +1062,6 @@ mod test {
         img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
         img.insert_key("TESTING_THIS_LONG_KEY", "This is a long key")
             .unwrap();
-
         let img2 = img
             .operate(|x| {
                 let x = x.debayer(crate::DemosaicMethod::Linear).unwrap();

@@ -236,8 +236,8 @@ impl<T: PixelStor> ImageOwned<T> {
     }
 }
 
-impl <T: PixelStor + AnyBitPattern> ImageOwned<T> {
-        /// Create a new [`ImageOwned`] from a mutable slice of `u8` data.
+impl<T: PixelStor + AnyBitPattern> ImageOwned<T> {
+    /// Create a new [`ImageOwned`] from a mutable slice of `u8` data.
     ///
     /// Images can not be larger than 65535x65535 pixels.
     ///
