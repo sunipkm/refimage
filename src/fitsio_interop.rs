@@ -1,7 +1,7 @@
 use std::{
     fmt::Display,
     path::{Path, PathBuf},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use chrono::DateTime;
@@ -174,22 +174,21 @@ impl FitsWrite for GenericImage<'_> {
         path.set_extension(compress.extension());
 
         let (hdu, mut fptr) = self.get_image().write_fits(path, compress)?;
-        let lineitem = PrvLineItem {
-            name: "DATE-OBS".to_string(),
-            value: datestamp,
+
+        let lineitem = GenericLineItem {
+            value: GenericValue::String(datestamp),
             comment: Some("Date and time of FITS file data".to_string()),
         };
-        lineitem.write_key(&hdu, &mut fptr)?;
+        lineitem.write_key("DATE-OBS", &hdu, &mut fptr)?;
 
-        let lineitem = PrvLineItem {
-            name: "COLOR_SPACE".to_string(),
-            value: self.get_image().color_space(),
+        let lineitem = GenericLineItem {
+            value: self.get_image().color_space().into(),
             comment: Some("Color space of the image".to_string()),
         };
-        lineitem.write_key(&hdu, &mut fptr)?;
+        lineitem.write_key("COLOR_SPACE", &hdu, &mut fptr)?;
 
-        for item in self.get_metadata().iter() {
-            item.write_key(&hdu, &mut fptr)?;
+        for (name, value) in self.get_metadata().iter() {
+            value.write_key(name, &hdu, &mut fptr)?;
         }
         Ok(fpath)
     }
@@ -245,22 +244,21 @@ impl FitsWrite for GenericImageOwned {
         path.set_extension(compress.extension());
 
         let (hdu, mut fptr) = self.get_image().write_fits(path, compress)?;
-        let lineitem = PrvLineItem {
-            name: "DATE-OBS".to_string(),
-            value: datestamp,
+
+        let lineitem = GenericLineItem {
+            value: GenericValue::String(datestamp),
             comment: Some("Date and time of FITS file data".to_string()),
         };
-        lineitem.write_key(&hdu, &mut fptr)?;
+        lineitem.write_key("DATE-OBS", &hdu, &mut fptr)?;
 
-        let lineitem = PrvLineItem {
-            name: "COLOR_SPACE".to_string(),
-            value: self.get_image().color_space(),
+        let lineitem = GenericLineItem {
+            value: self.get_image().color_space().into(),
             comment: Some("Color space of the image".to_string()),
         };
-        lineitem.write_key(&hdu, &mut fptr)?;
+        lineitem.write_key("COLOR_SPACE", &hdu, &mut fptr)?;
 
-        for item in self.get_metadata().iter() {
-            item.write_key(&hdu, &mut fptr)?;
+        for (name, value) in self.get_metadata().iter() {
+            value.write_key(name, &hdu, &mut fptr)?;
         }
         Ok(fpath)
     }
@@ -374,210 +372,71 @@ impl<T: PixelStor + WriteImage> ImageOwned<T> {
     }
 }
 
-struct PrvLineItem<T> {
-    name: String,
-    value: T,
-    comment: Option<String>,
-}
-
-enum PrvGenLineItem {
-    U8(PrvLineItem<u8>),
-    U16(PrvLineItem<u16>),
-    U32(PrvLineItem<u32>),
-    U64(PrvLineItem<u64>),
-    I8(PrvLineItem<i8>),
-    I16(PrvLineItem<i16>),
-    I32(PrvLineItem<i32>),
-    I64(PrvLineItem<i64>),
-    F32(PrvLineItem<f32>),
-    F64(PrvLineItem<f64>),
-    ColorSpace(PrvLineItem<ColorSpace>),
-    String(PrvLineItem<String>),
-    SystemTime(PrvLineItem<SystemTime>),
-    Duration(PrvLineItem<Duration>),
-}
-
-impl PrvGenLineItem {
-    fn write_key(&self, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError> {
-        match self {
-            PrvGenLineItem::U8(item) => item.write_key(hdu, fptr),
-            PrvGenLineItem::U16(item) => item.write_key(hdu, fptr),
-            PrvGenLineItem::U32(item) => item.write_key(hdu, fptr),
-            PrvGenLineItem::U64(item) => item.write_key(hdu, fptr),
-            PrvGenLineItem::I8(item) => item.write_key(hdu, fptr),
-            PrvGenLineItem::I16(item) => item.write_key(hdu, fptr),
-            PrvGenLineItem::I32(item) => item.write_key(hdu, fptr),
-            PrvGenLineItem::I64(item) => item.write_key(hdu, fptr),
-            PrvGenLineItem::F32(item) => item.write_key(hdu, fptr),
-            PrvGenLineItem::F64(item) => item.write_key(hdu, fptr),
-            PrvGenLineItem::ColorSpace(item) => item.write_key(hdu, fptr),
-            PrvGenLineItem::String(item) => item.write_key(hdu, fptr),
-            PrvGenLineItem::SystemTime(item) => item.write_key(hdu, fptr),
-            PrvGenLineItem::Duration(item) => item.write_key(hdu, fptr),
-        }
-    }
-}
-
-impl From<GenericLineItem> for PrvGenLineItem {
-    fn from(value: GenericLineItem) -> Self {
-        match value.value {
-            GenericValue::U8(val) => PrvGenLineItem::U8(PrvLineItem {
-                name: value.name,
-                value: val,
-                comment: value.comment,
-            }),
-            GenericValue::U16(val) => PrvGenLineItem::U16(PrvLineItem {
-                name: value.name,
-                value: val,
-                comment: value.comment,
-            }),
-            GenericValue::U32(val) => PrvGenLineItem::U32(PrvLineItem {
-                name: value.name,
-                value: val,
-                comment: value.comment,
-            }),
-            GenericValue::U64(val) => PrvGenLineItem::U64(PrvLineItem {
-                name: value.name,
-                value: val,
-                comment: value.comment,
-            }),
-            GenericValue::I8(val) => PrvGenLineItem::I8(PrvLineItem {
-                name: value.name,
-                value: val,
-                comment: value.comment,
-            }),
-            GenericValue::I16(val) => PrvGenLineItem::I16(PrvLineItem {
-                name: value.name,
-                value: val,
-                comment: value.comment,
-            }),
-            GenericValue::I32(val) => PrvGenLineItem::I32(PrvLineItem {
-                name: value.name,
-                value: val,
-                comment: value.comment,
-            }),
-            GenericValue::I64(val) => PrvGenLineItem::I64(PrvLineItem {
-                name: value.name,
-                value: val,
-                comment: value.comment,
-            }),
-            GenericValue::F32(val) => PrvGenLineItem::F32(PrvLineItem {
-                name: value.name,
-                value: val,
-                comment: value.comment,
-            }),
-            GenericValue::F64(val) => PrvGenLineItem::F64(PrvLineItem {
-                name: value.name,
-                value: val,
-                comment: value.comment,
-            }),
-            GenericValue::ColorSpace(val) => PrvGenLineItem::ColorSpace(PrvLineItem {
-                name: value.name,
-                value: val,
-                comment: value.comment,
-            }),
-            GenericValue::String(val) => PrvGenLineItem::String(PrvLineItem {
-                name: value.name,
-                value: val,
-                comment: value.comment,
-            }),
-            GenericValue::SystemTime(val) => PrvGenLineItem::SystemTime(PrvLineItem {
-                name: value.name,
-                value: val,
-                comment: value.comment,
-            }),
-            GenericValue::Duration(val) => PrvGenLineItem::Duration(PrvLineItem {
-                name: value.name,
-                value: val,
-                comment: value.comment,
-            }),
-        }
-    }
-}
-
-impl GenericLineItem {
-    fn write_key(&self, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError> {
-        let line = PrvGenLineItem::from(self.clone());
-        line.write_key(hdu, fptr)
-    }
-}
-
 pub(crate) trait WriteKey {
-    fn write_key(&self, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError>;
+    fn write_key(&self, key: &str, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError>;
 }
 
-macro_rules! write_num_key_impl {
-    ($type:ty) => {
-        impl WriteKey for PrvLineItem<$type> {
-            fn write_key(&self, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError> {
-                match &self.comment {
-                    Some(cmt) => hdu.write_key(fptr, &self.name, (self.value, cmt.as_str())),
-                    None => hdu.write_key(fptr, &self.name, self.value),
+impl WriteKey for GenericLineItem {
+    fn write_key(&self, key: &str, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError> {
+        if let Some(cmt) = &self.comment {
+            match &self.value {
+                GenericValue::U8(v) => hdu.write_key(fptr, key, (*v, cmt.as_str())),
+                GenericValue::U16(v) => hdu.write_key(fptr, key, (*v, cmt.as_str())),
+                GenericValue::F32(v) => hdu.write_key(fptr, key, (*v, cmt.as_str())),
+                GenericValue::String(ref v) => hdu.write_key(fptr, key, (v.as_str(), cmt.as_str())),
+                GenericValue::SystemTime(v) => {
+                    let v = v
+                        .duration_since(UNIX_EPOCH)
+                        .map_err(|err| FitsError::Message(err.to_string()))?;
+                    let cmt_ = format!("{cmt} (s from EPOCH)");
+                    hdu.write_key(fptr, key, (v.as_secs(), cmt_.as_str()))?;
+                    let cmt_ = format!("{cmt} (ns from EPOCH)");
+                    hdu.write_key(fptr, key, (v.subsec_nanos(), cmt_.as_str()))
+                }
+                GenericValue::U32(v) => hdu.write_key(fptr, key, (*v, cmt.as_str())),
+                GenericValue::U64(v) => hdu.write_key(fptr, key, (*v, cmt.as_str())),
+                GenericValue::I8(v) => hdu.write_key(fptr, key, (*v, cmt.as_str())),
+                GenericValue::I16(v) => hdu.write_key(fptr, key, (*v, cmt.as_str())),
+                GenericValue::I32(v) => hdu.write_key(fptr, key, (*v, cmt.as_str())),
+                GenericValue::I64(v) => hdu.write_key(fptr, key, (*v, cmt.as_str())),
+                GenericValue::F64(v) => hdu.write_key(fptr, key, (*v, cmt.as_str())),
+                GenericValue::ColorSpace(color_space) => {
+                    hdu.write_key(fptr, key, (str_from_cspace(color_space), cmt.as_str()))
+                }
+                GenericValue::Duration(duration) => {
+                    let cmt_ = format!("{cmt} (s)");
+                    hdu.write_key(fptr, key, (duration.as_secs(), cmt_.as_str()))?;
+                    let cmt_ = format!("{cmt} (ns)");
+                    hdu.write_key(fptr, key, (duration.subsec_nanos(), cmt_.as_str()))
                 }
             }
-        }
-    };
-}
-
-write_num_key_impl!(u8);
-write_num_key_impl!(u16);
-write_num_key_impl!(u32);
-write_num_key_impl!(u64);
-write_num_key_impl!(i8);
-write_num_key_impl!(i16);
-write_num_key_impl!(i32);
-write_num_key_impl!(i64);
-write_num_key_impl!(f32);
-write_num_key_impl!(f64);
-
-impl WriteKey for PrvLineItem<String> {
-    fn write_key(&self, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError> {
-        match &self.comment {
-            Some(cmt) => hdu.write_key(fptr, &self.name, (self.value.as_str(), cmt.as_str())),
-            None => hdu.write_key(fptr, &self.name, self.value.as_str()),
-        }
-    }
-}
-
-impl WriteKey for PrvLineItem<SystemTime> {
-    fn write_key(&self, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError> {
-        let timestamp = self.value.duration_since(UNIX_EPOCH).map_err(|err| {
-            FitsError::Message(format!(
-                "Could not convert SystemTime to duration since epoch: {}",
-                err
-            ))
-        })?;
-        let timestamp_secs = timestamp.as_secs();
-        let timestamp_usecs = timestamp.subsec_micros();
-        match &self.comment {
-            Some(cmt) => {
-                let cmt_ = format!("{} (s from EPOCH)", cmt);
-                hdu.write_key(fptr, &self.name, (timestamp_secs, cmt_.as_str()))?;
-                let cmt_ = format!("{} (us from EPOCH)", cmt);
-                hdu.write_key(fptr, &self.name, (timestamp_usecs, cmt_.as_str()))
-            }
-            None => {
-                hdu.write_key(fptr, &self.name, timestamp_secs)?;
-                hdu.write_key(fptr, &self.name, timestamp_usecs)
-            }
-        }
-    }
-}
-
-impl WriteKey for PrvLineItem<Duration> {
-    fn write_key(&self, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError> {
-        let timestamp_secs = self.value.as_secs();
-        let timestamp_usecs = self.value.subsec_micros();
-        match &self.comment {
-            Some(cmt) => {
-                let cmt_ = format!("{} (s)", cmt);
-                hdu.write_key(fptr, &self.name, (timestamp_secs, cmt_.as_str()))?;
-                let cmt_ = format!("{} (us)", cmt);
-                hdu.write_key(fptr, &self.name, (timestamp_usecs, cmt_.as_str()))
-            }
-            None => {
-                hdu.write_key(fptr, &self.name, timestamp_secs)?;
-                hdu.write_key(fptr, &self.name, timestamp_usecs)
+        } else {
+            match &self.value {
+                GenericValue::U8(v) => hdu.write_key(fptr, key, *v),
+                GenericValue::U16(v) => hdu.write_key(fptr, key, *v),
+                GenericValue::F32(v) => hdu.write_key(fptr, key, *v),
+                GenericValue::String(ref v) => hdu.write_key(fptr, key, v.as_str()),
+                GenericValue::SystemTime(v) => {
+                    let v = v
+                        .duration_since(UNIX_EPOCH)
+                        .map_err(|err| FitsError::Message(err.to_string()))?;
+                    hdu.write_key(fptr, key, (v.as_secs(), "s from EPOCH"))?;
+                    hdu.write_key(fptr, key, (v.subsec_nanos(), "ns from EPOCH"))
+                }
+                GenericValue::U32(v) => hdu.write_key(fptr, key, *v),
+                GenericValue::U64(v) => hdu.write_key(fptr, key, *v),
+                GenericValue::I8(v) => hdu.write_key(fptr, key, *v),
+                GenericValue::I16(v) => hdu.write_key(fptr, key, *v),
+                GenericValue::I32(v) => hdu.write_key(fptr, key, *v),
+                GenericValue::I64(v) => hdu.write_key(fptr, key, *v),
+                GenericValue::F64(v) => hdu.write_key(fptr, key, *v),
+                GenericValue::ColorSpace(color_space) => {
+                    hdu.write_key(fptr, key, str_from_cspace(color_space))
+                }
+                GenericValue::Duration(duration) => {
+                    hdu.write_key(fptr, key, (duration.as_secs(), "(s)"))?;
+                    hdu.write_key(fptr, key, (duration.subsec_nanos(), "(ns)"))
+                }
             }
         }
     }
@@ -593,24 +452,23 @@ impl From<PixelType> for ImageType {
     }
 }
 
-impl WriteKey for PrvLineItem<ColorSpace> {
-    fn write_key(&self, hdu: &FitsHdu, fptr: &mut FitsFile) -> Result<(), FitsError> {
-        let val = match self.value.clone() {
-            ColorSpace::Gray => "GRAY",
-            ColorSpace::Rgb => "RGB",
-            ColorSpace::Bayer(b) => match b {
-                BayerPattern::Bggr => "BGGR",
-                BayerPattern::Gbrg => "GBRG",
-                BayerPattern::Grbg => "GRBG",
-                BayerPattern::Rggb => "RGGB",
-            },
-            ColorSpace::Custom(val) => &format!("C({})", val),
-        };
-        match &self.comment {
-            Some(cmt) => hdu.write_key(fptr, &self.name, (val, cmt.as_str())),
-            None => hdu.write_key(fptr, &self.name, val),
-        }
-    }
+fn str_from_cspace(cspace: &ColorSpace) -> String {
+    let val = match cspace {
+        ColorSpace::Gray => "GRAY",
+        ColorSpace::GrayAlpha => "GRAYA",
+        ColorSpace::Rgb => "RGB",
+        ColorSpace::Rgba => "RGBA",
+        ColorSpace::Bayer(BayerPattern::Bggr) => "BGGR",
+        ColorSpace::Bayer(BayerPattern::Gbrg) => "GBRG",
+        ColorSpace::Bayer(BayerPattern::Grbg) => "GRBG",
+        ColorSpace::Bayer(BayerPattern::Rggb) => "RGGB",
+        ColorSpace::BayerAlpha(BayerPattern::Bggr) => "BGGRA",
+        ColorSpace::BayerAlpha(BayerPattern::Gbrg) => "GBRGA",
+        ColorSpace::BayerAlpha(BayerPattern::Grbg) => "GRBGA",
+        ColorSpace::BayerAlpha(BayerPattern::Rggb) => "RGBGA",
+        ColorSpace::Custom(val) => &format!("C({})", val),
+    };
+    val.to_string()
 }
 
 mod test {

@@ -64,10 +64,17 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
         if channels > u8::MAX.into() {
             return Err("Too many channels.");
         }
-        if channels > 1 && cspace < ColorSpace::Rgb {
-            return Err("Too many channels for color space.");
-        } else if channels != 3 && cspace == ColorSpace::Rgb {
-            return Err("Too many channels for RGB.");
+
+        if let Some(exp_channels) = match cspace {
+            ColorSpace::Gray | ColorSpace::Bayer(_) => Some(1),
+            ColorSpace::GrayAlpha | ColorSpace::BayerAlpha(_) => Some(2),
+            ColorSpace::Rgb => Some(3),
+            ColorSpace::Rgba => Some(4),
+            _ => None,
+        } {
+            if channels != exp_channels {
+                return Err("Invalid number of channels.");
+            }
         }
 
         Ok(Self {
@@ -257,45 +264,229 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ImageData<'a, T> {
     /// # Errors
     /// - If the image is not debayered and is not a grayscale image.
     /// - If the image is not an RGB image.
-    pub fn into_luma(&'a self) -> Result<ImageData<'b, T>, &'static str> {
-        self.into_luma_custom(&[0.299, 0.587, 0.114])
+    pub fn into_luma(&self) -> Result<Self, &'static str> {
+        self.into_luma_custom([0.299, 0.587, 0.114])
     }
 
     /// Convert the image to a luminance image with custom coefficients.
     ///
     /// # Arguments
-    /// - `wts`: The weights to use for the conversion. The number of weights must match
-    ///   the number of channels in the image.
+    /// - `wts`: The weights to use for the conversion.
     ///
     /// # Errors
-    /// - If the number of weights does not match the number of channels in the image.
     /// - If the image is not debayered and is not a grayscale image.
     /// - If the image is not an RGB image.
-    pub fn into_luma_custom(&'a self, wts: &[f64]) -> Result<ImageData<'b, T>, &'static str> {
-        if self.channels() == 1 {
-            if self.cspace == ColorSpace::Gray {
-                return Ok(self.clone());
-            } else if self.cspace < ColorSpace::Rgb {
-                return Err(
-                    "Bayer pattern image can not be converted to luminance without debayering.",
-                );
-            }
-        } else if self.channels() == 3 && self.cspace == ColorSpace::Rgb {
-            // Okay
-        } else {
-            return Err("Invalid image for conversion to luminance.");
-        }
+    pub fn into_luma_custom(&self, wts: [f64; 3]) -> Result<Self, &'static str> {
         // at this point, number of channels must match number of weights
-        if wts.len() != self.channels() as usize {
-            return Err("Invalid number of weights.");
+        match self.cspace {
+            ColorSpace::Gray => Ok(self.clone()),
+            ColorSpace::GrayAlpha => {
+                let out = self.data.as_slice().iter().step_by(2).copied().collect();
+                Self::new(
+                    DataStor::from_owned(out),
+                    self.width(),
+                    self.height(),
+                    ColorSpace::Gray,
+                )
+            }
+            ColorSpace::Rgb | ColorSpace::Rgba => {
+                let out = crate::traits::run_luma(self.channels.into(), self.data.as_slice(), &wts);
+                Self::new(
+                    DataStor::from_owned(out),
+                    self.width(),
+                    self.height(),
+                    ColorSpace::Gray,
+                )
+            }
+            ColorSpace::Bayer(_) | ColorSpace::BayerAlpha(_) => Err("Image is not debayered."),
+            ColorSpace::Custom(_) => Err("Custom color space not supported."),
         }
-        let out = crate::traits::run_luma(self.data.as_slice(), wts);
-        Self::new(
-            DataStor::from_owned(out),
-            self.width(),
-            self.height(),
-            ColorSpace::Gray,
-        )
+    }
+
+    /// Convert the image to a luminance alpha image.
+    ///
+    /// This function uses the formula `Y = 0.299R + 0.587G + 0.114B` to calculate the
+    /// corresponding luminance image.
+    ///
+    /// The alpha channel is copied from the original image, if present.
+    /// Otherwise, the alpha channel is set to maximum value.
+    ///
+    /// # Errors
+    /// - If the image is not debayered and is not a grayscale image.
+    /// - If the image is not an RGB image.
+    pub fn into_luma_alpha(&self) -> Result<Self, &'static str> {
+        self.into_luma_alpha_custom([0.299, 0.587, 0.114])
+    }
+
+    /// Convert the image to a luminance image with custom coefficients.
+    ///
+    /// # Arguments
+    /// - `wts`: The weights to use for the conversion. The number of weights must be 3.
+    ///
+    /// # Errors
+    /// - If the number of weights is not 3.
+    /// - If the image is not debayered and is not a grayscale image.
+    /// - If the image is not an RGB image.
+    pub fn into_luma_alpha_custom(&self, wts: [f64; 3]) -> Result<Self, &'static str> {
+        match self.cspace {
+            ColorSpace::Gray => {
+                let out: Vec<_> = self
+                    .data
+                    .as_slice()
+                    .iter()
+                    .flat_map(|x| [*x, T::DEFAULT_MAX_VALUE])
+                    .collect();
+                Self::new(
+                    DataStor::from_owned(out),
+                    self.width(),
+                    self.height(),
+                    ColorSpace::GrayAlpha,
+                )
+            }
+            ColorSpace::GrayAlpha => Ok(self.clone()),
+            ColorSpace::Rgb | ColorSpace::Rgba => {
+                let out =
+                    crate::traits::run_luma_alpha(self.channels.into(), self.data.as_slice(), &wts);
+                Self::new(
+                    DataStor::from_owned(out),
+                    self.width(),
+                    self.height(),
+                    ColorSpace::GrayAlpha,
+                )
+            }
+            ColorSpace::Bayer(_) | ColorSpace::BayerAlpha(_) => Err("Image is not debayered."),
+            ColorSpace::Custom(_) => Err("Custom color space not supported."),
+        }
+    }
+
+    /// Add an alpha channel to the image.
+    pub fn add_alpha(&self, luma: T) -> Result<Self, &'static str> {
+        match &self.cspace {
+            ColorSpace::Gray => {
+                let out = self
+                    .data
+                    .as_slice()
+                    .chunks_exact(self.channels.into())
+                    .flat_map(|x| {
+                        let mut x = x.to_vec();
+                        x.push(luma);
+                        x
+                    })
+                    .collect();
+                Self::new(
+                    DataStor::from_owned(out),
+                    self.width(),
+                    self.height(),
+                    ColorSpace::GrayAlpha,
+                )
+            }
+            ColorSpace::Rgb => {
+                let out = self
+                    .data
+                    .as_slice()
+                    .chunks_exact(3)
+                    .flat_map(|x| {
+                        let mut x = x.to_vec();
+                        x.push(luma);
+                        x
+                    })
+                    .collect();
+                Self::new(
+                    DataStor::from_owned(out),
+                    self.width(),
+                    self.height(),
+                    ColorSpace::Rgba,
+                )
+            }
+            ColorSpace::Bayer(b) => {
+                let out = self
+                    .data
+                    .as_slice()
+                    .chunks_exact(1)
+                    .flat_map(|x| {
+                        let mut x = x.to_vec();
+                        x.push(luma);
+                        x
+                    })
+                    .collect();
+                Self::new(
+                    DataStor::from_owned(out),
+                    self.width(),
+                    self.height(),
+                    ColorSpace::BayerAlpha(*b),
+                )
+            }
+            ColorSpace::GrayAlpha | ColorSpace::Rgba | ColorSpace::BayerAlpha(_) => {
+                Ok(self.clone())
+            }
+            ColorSpace::Custom(_) => Err("Custom color space not supported."),
+        }
+    }
+
+    /// Remove the alpha channel from the image.
+    pub fn remove_alpha(&self) -> Result<Self, &'static str> {
+        match &self.cspace {
+            ColorSpace::Gray | ColorSpace::Rgb | ColorSpace::Bayer(_) => Ok(self.clone()),
+            ColorSpace::GrayAlpha => {
+                let new = self.channels - 1;
+                if new > self.channels {
+                    return Err("Too many channels.");
+                }
+                let out = self
+                    .data
+                    .as_slice()
+                    .chunks_exact(self.channels.into())
+                    .flat_map(|x| {
+                        let mut x = x.to_vec();
+                        x.pop();
+                        x
+                    })
+                    .collect();
+                Self::new(
+                    DataStor::from_owned(out),
+                    self.width(),
+                    self.height(),
+                    ColorSpace::Gray,
+                )
+            }
+            ColorSpace::Rgba => {
+                let out = self
+                    .data
+                    .as_slice()
+                    .chunks_exact(4)
+                    .flat_map(|x| {
+                        let mut x = x.to_vec();
+                        x.pop();
+                        x
+                    })
+                    .collect();
+                Self::new(
+                    DataStor::from_owned(out),
+                    self.width(),
+                    self.height(),
+                    ColorSpace::Rgb,
+                )
+            }
+            ColorSpace::BayerAlpha(b) => {
+                let out = self
+                    .data
+                    .as_slice()
+                    .chunks_exact(2)
+                    .flat_map(|x| {
+                        let mut x = x.to_vec();
+                        x.pop();
+                        x
+                    })
+                    .collect();
+                Self::new(
+                    DataStor::from_owned(out),
+                    self.width(),
+                    self.height(),
+                    ColorSpace::Bayer(*b),
+                )
+            }
+            ColorSpace::Custom(_) => Err("Custom color space not supported."),
+        }
     }
 }
 

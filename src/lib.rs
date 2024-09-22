@@ -177,23 +177,30 @@ pub enum DynamicImageOwned {
 /// The colorspace information is used to enable debayering of the image data, and
 /// for interpretation of single or multi-channel images.
 #[non_exhaustive]
+#[repr(u8)]
 #[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord, Serialize, Deserialize)]
 pub enum ColorSpace {
     /// Grayscale image.
-    Gray,
+    Gray = 0b000,
     /// Bayer mosaic image
-    Bayer(BayerPattern),
+    Bayer(BayerPattern) = 0b001,
+    /// Grayscale image with alpha channel.
+    GrayAlpha = 0b010,
+    /// Bayer mosaic image with alpha channel.
+    BayerAlpha(BayerPattern) = 0b011,
     /// RGB image.
-    Rgb,
+    Rgb = 0b100,
+    /// RGBA image.
+    Rgba = 0b101,
     /// Custom color space.
-    Custom(String),
+    Custom(String) = 0b111,
 }
 
 /// Enum to describe the Bayer pattern of the image.
 ///
 /// The Bayer pattern is used to interpret the raw image data from a Bayer mosaic image.
 #[non_exhaustive]
-#[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Copy, Clone, PartialOrd, Eq, Ord, Serialize, Deserialize)]
 pub enum BayerPattern {
     /// BGGR Bayer pattern.
     Bggr,

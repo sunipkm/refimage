@@ -28,12 +28,12 @@ A `GenericImage` can be obtained in a couple of ways. In the first case, the Rus
 itself generates the image. In that case, a `ImageData` object is first created with the
 appropriate, contiguous, backing storage and image format:
 ```rust
-use refimage::{ColorSpace, ImageData, Debayer, DemosaicMethod, DynamicImageData, GenericImage, GenericImageOwned};
+use refimage::{BayerPattern, ImageData, Debayer, DemosaicMethod, DynamicImageData, GenericImage, GenericImageOwned};
 use std::time::SystemTime;
 
 let mut data = vec![0u8; 256]; // this is the backing store
 // acquire(&mut data); // this function populates the backing store with the image pixels
-let img = ImageData::from_mut_ref(&mut data, 16, 16, ColorSpace::Grbg).unwrap(); // Create a 4x4 image backed by the vector
+let img = ImageData::from_mut_ref(&mut data, 16, 16, BayerPattern::Grbg.into()).unwrap(); // Create a 4x4 image backed by the vector
 let img = DynamicImageData::from(img); // convert the `ImageData` object to `DynamicImageData`
 let img = img.debayer(DemosaicMethod::Nearest).expect("Could not debayer"); // debayer the image using nearest neighbor method
 let mut img = GenericImage::new(SystemTime::now(), img); // Convert to a GenericImage

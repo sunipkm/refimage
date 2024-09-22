@@ -1,4 +1,7 @@
-use std::time::{Duration, SystemTime};
+use std::{
+    collections::HashMap,
+    time::{Duration, SystemTime},
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -43,7 +46,6 @@ pub const EXPOSURE_KEY: &str = "EXPOSURE";
 ///   seconds ([`u64`]) and microseconds ([`u32`]).
 ///
 pub struct GenericLineItem {
-    pub(crate) name: String,
     pub(crate) value: GenericValue,
     pub(crate) comment: Option<String>,
 }
@@ -106,7 +108,7 @@ pub enum GenericValue {
 /// ```
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GenericImage<'a> {
-    metadata: Vec<GenericLineItem>,
+    metadata: HashMap<String, GenericLineItem>,
     #[serde(borrow)]
     image: DynamicImageData<'a>,
 }
@@ -137,7 +139,7 @@ pub struct GenericImage<'a> {
 /// ```
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GenericImageOwned {
-    metadata: Vec<GenericLineItem>,
+    metadata: HashMap<String, GenericLineItem>,
     image: DynamicImageOwned,
 }
 
@@ -160,11 +162,14 @@ impl<'a> GenericImage<'a> {
     /// img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
     /// ```
     pub fn new(tstamp: SystemTime, image: DynamicImageData<'a>) -> Self {
-        let metadata = vec![GenericLineItem {
-            name: TIMESTAMP_KEY.to_string(),
-            value: tstamp.into(),
-            comment: Some("Timestamp of the image".to_owned()),
-        }];
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            TIMESTAMP_KEY.to_string(),
+            GenericLineItem {
+                value: tstamp.into(),
+                comment: Some("Timestamp of the image".to_owned()),
+            },
+        );
         Self { metadata, image }
     }
 
@@ -212,17 +217,8 @@ impl<'a> GenericImage<'a> {
             return Err("Cannot remove timestamp key");
         }
         name_check(name)?;
-        let mut not_found = true;
-        self.metadata.retain(|x| {
-            let found = x.name() == name;
-            not_found &= x.name() != name;
-            found
-        });
-        if not_found {
-            Err("Key not found")
-        } else {
-            Ok(())
-        }
+        self.metadata.remove(name).ok_or("Key not found")?;
+        Ok(())
     }
 
     /// Replace a metadata value in the [`GenericImage`].
@@ -255,7 +251,7 @@ impl<'a> GenericImage<'a> {
     ///
     /// # Returns
     /// A slice of [`GenericLineItem`]s containing the metadata.
-    pub fn get_metadata(&self) -> &[GenericLineItem] {
+    pub fn get_metadata(&self) -> &HashMap<String, GenericLineItem> {
         &self.metadata
     }
 
@@ -267,7 +263,7 @@ impl<'a> GenericImage<'a> {
     /// - `name`: The name of the metadata value.
     pub fn get_key(&self, name: &str) -> Option<&GenericLineItem> {
         name_check(name).ok()?;
-        self.metadata.iter().find(|x| x.name() == name)
+        self.metadata.get(name)
     }
 
     /// Convert the image to a [`GenericImageOwned`] with [`u8`] pixel type.
@@ -301,11 +297,14 @@ impl GenericImageOwned {
     /// img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
     /// ```
     pub fn new(tstamp: SystemTime, image: DynamicImageOwned) -> Self {
-        let metadata = vec![GenericLineItem {
-            name: TIMESTAMP_KEY.to_string(),
-            value: tstamp.into(),
-            comment: Some("Timestamp of the image".to_owned()),
-        }];
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            TIMESTAMP_KEY.to_string(),
+            GenericLineItem {
+                value: tstamp.into(),
+                comment: Some("Timestamp of the image".to_owned()),
+            },
+        );
         Self { metadata, image }
     }
 
@@ -353,17 +352,8 @@ impl GenericImageOwned {
             return Err("Cannot remove timestamp key");
         }
         name_check(name)?;
-        let mut not_found = true;
-        self.metadata.retain(|x| {
-            let found = x.name() == name;
-            not_found &= x.name() != name;
-            found
-        });
-        if not_found {
-            Err("Key not found")
-        } else {
-            Ok(())
-        }
+        self.metadata.remove(name).ok_or("Key not found")?;
+        Ok(())
     }
 
     /// Replace a metadata value in the [`GenericImageOwned`].
@@ -396,7 +386,7 @@ impl GenericImageOwned {
     ///
     /// # Returns
     /// A slice of [`GenericLineItem`]s containing the metadata.
-    pub fn get_metadata(&self) -> &[GenericLineItem] {
+    pub fn get_metadata(&self) -> &HashMap<String, GenericLineItem> {
         &self.metadata
     }
 
@@ -408,7 +398,7 @@ impl GenericImageOwned {
     /// - `name`: The name of the metadata value.
     pub fn get_key(&self, name: &str) -> Option<&GenericLineItem> {
         name_check(name).ok()?;
-        self.metadata.iter().find(|x| x.name() == name)
+        self.metadata.get(name)
     }
 
     /// Convert the image to a [`GenericImageOwned`] with [`u8`] pixel type.
@@ -484,15 +474,50 @@ impl<'a: 'b, 'b> GenericImage<'a> {
     /// Convert the image to a luminance image with custom coefficients.
     ///
     /// # Arguments
-    /// - `wts`: The weights to use for the conversion. The number of weights must match
-    ///   the number of channels in the image.
+    /// - `wts`: The weights to use for the conversion. The weights should be in the order
+    ///   `[R, G, B]`.
     ///
     /// # Errors
-    /// - If the number of weights does not match the number of channels in the image.
+    /// - If the image is not debayered and is not a grayscale image.
+    /// - If the image is not an RGB/RGBA image.
+    pub fn into_luma_custom(&'a self, coeffs: [f64; 3]) -> Result<GenericImage<'b>, &'static str> {
+        let img = self.image.into_luma_custom(coeffs)?;
+        Ok(GenericImage {
+            metadata: self.metadata.clone(),
+            image: img,
+        })
+    }
+
+    /// Convert the image to a grayscale image with alpha channel.
+    ///
+    /// In case the original image does not contain an alpha channel, the alpha channel will be
+    /// filled with the maximum value of the pixel type.
+    ///
+    /// # Errors
     /// - If the image is not debayered and is not a grayscale image.
     /// - If the image is not an RGB image.
-    pub fn into_luma_custom(&'a self, coeffs: &[f64]) -> Result<GenericImage<'b>, &'static str> {
-        let img = self.image.into_luma_custom(coeffs)?;
+    pub fn into_luma_alpha(&'a self) -> Result<GenericImage<'b>, &'static str> {
+        let img = self.image.into_luma_alpha()?;
+        Ok(GenericImage {
+            metadata: self.metadata.clone(),
+            image: img,
+        })
+    }
+
+    /// Convert the image to a grayscale image with alpha channel with custom coefficients.
+    ///
+    /// In case the original image does not contain an alpha channel, the alpha channel will be
+    /// filled with the maximum value of the pixel type.
+    ///
+    /// # Arguments
+    /// - `wts`: The weights to use for the conversion. The weights should be in the order
+    ///   `[R, G, B]`.
+    ///
+    /// # Errors
+    /// - If the image is not debayered and is not a grayscale image.
+    /// - If the image is not an RGB/RGBA image.
+    pub fn into_luma_alpha_custom(&self, coeffs: [f64; 3]) -> Result<Self, &'static str> {
+        let img = self.image.into_luma_alpha_custom(coeffs)?;
         Ok(GenericImage {
             metadata: self.metadata.clone(),
             image: img,
@@ -539,15 +564,50 @@ impl GenericImageOwned {
     /// Convert the image to a luminance image with custom coefficients.
     ///
     /// # Arguments
-    /// - `wts`: The weights to use for the conversion. The number of weights must match
-    ///   the number of channels in the image.
+    /// - `wts`: The weights to use for the conversion. The weights should be in the order
+    ///   `[R, G, B]`.
     ///
     /// # Errors
-    /// - If the number of weights does not match the number of channels in the image.
+    /// - If the image is not debayered and is not a grayscale image.
+    /// - If the image is not an RGB/RGBA image.
+    pub fn into_luma_custom(&self, coeffs: [f64; 3]) -> Result<Self, &'static str> {
+        let img = self.image.into_luma_custom(coeffs)?;
+        Ok(Self {
+            metadata: self.metadata.clone(),
+            image: img,
+        })
+    }
+
+    /// Convert the image to a grayscale image with alpha channel.
+    ///
+    /// In case the original image does not contain an alpha channel, the alpha channel will be
+    /// filled with the maximum value of the pixel type.
+    ///
+    /// # Errors
     /// - If the image is not debayered and is not a grayscale image.
     /// - If the image is not an RGB image.
-    pub fn into_luma_custom(&self, coeffs: &[f64]) -> Result<Self, &'static str> {
-        let img = self.image.into_luma_custom(coeffs)?;
+    pub fn into_luma_alpha(&self) -> Result<Self, &'static str> {
+        let img = self.image.into_luma_alpha()?;
+        Ok(Self {
+            metadata: self.metadata.clone(),
+            image: img,
+        })
+    }
+
+    /// Convert the image to a grayscale image with alpha channel with custom coefficients.
+    ///
+    /// In case the original image does not contain an alpha channel, the alpha channel will be
+    /// filled with the maximum value of the pixel type.
+    ///
+    /// # Arguments
+    /// - `wts`: The weights to use for the conversion. The weights should be in the order
+    ///   `[R, G, B]`.
+    ///
+    /// # Errors
+    /// - If the image is not debayered and is not a grayscale image.
+    /// - If the image is not an RGB/RGBA image.
+    pub fn into_luma_alpha_custom(&self, coeffs: [f64; 3]) -> Result<Self, &'static str> {
+        let img = self.image.into_luma_alpha_custom(coeffs)?;
         Ok(Self {
             metadata: self.metadata.clone(),
             image: img,
@@ -565,11 +625,6 @@ impl<'a> From<GenericImage<'a>> for GenericImageOwned {
 }
 
 impl GenericLineItem {
-    /// Get the name of the metadata value.
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
     /// Get the comment of the metadata value.
     pub fn get_comment(&self) -> Option<&str> {
         self.comment.as_deref()
@@ -665,11 +720,10 @@ macro_rules! insert_value_impl {
             ) -> Result<(), &'static str> {
                 name_check(name)?;
                 let line = GenericLineItem {
-                    name: name.to_string().to_uppercase(),
                     value: value.into(),
                     comment: None,
                 };
-                f.metadata.push(line);
+                f.metadata.insert(name.to_uppercase(), line);
                 Ok(())
             }
 
@@ -679,17 +733,8 @@ macro_rules! insert_value_impl {
                 value: Self,
             ) -> Result<(), &'static str> {
                 name_check(name)?;
-                let mut not_found = true;
-                f.metadata.retain(|x| {
-                    let found = x.name() != name;
-                    not_found &= found;
-                    found
-                });
-                if not_found {
-                    Err("Key not found")
-                } else {
-                    Self::insert_key_gi(f, name, value)
-                }
+                f.metadata.remove(name).ok_or("Key not found")?;
+                Self::insert_key_gi(f, name, value)
             }
 
             fn insert_key_go(
@@ -699,11 +744,10 @@ macro_rules! insert_value_impl {
             ) -> Result<(), &'static str> {
                 name_check(name)?;
                 let line = GenericLineItem {
-                    name: name.to_string().to_uppercase(),
                     value: value.into(),
                     comment: None,
                 };
-                f.metadata.push(line);
+                f.metadata.insert(name.to_uppercase(), line);
                 Ok(())
             }
 
@@ -713,17 +757,8 @@ macro_rules! insert_value_impl {
                 value: Self,
             ) -> Result<(), &'static str> {
                 name_check(name)?;
-                let mut not_found = true;
-                f.metadata.retain(|x| {
-                    let found = x.name() != name;
-                    not_found &= found;
-                    found
-                });
-                if not_found {
-                    Err("Key not found")
-                } else {
-                    Self::insert_key_go(f, name, value)
-                }
+                f.metadata.remove(name).ok_or("Key not found")?;
+                Self::insert_key_go(f, name, value)
             }
         }
 
@@ -736,11 +771,10 @@ macro_rules! insert_value_impl {
                 name_check(name)?;
                 comment_check(value.1)?;
                 let line = GenericLineItem {
-                    name: name.to_string().to_uppercase(),
                     value: value.0.into(),
                     comment: Some(value.1.to_owned()),
                 };
-                f.metadata.push(line);
+                f.metadata.insert(name.to_uppercase(), line);
                 Ok(())
             }
 
@@ -750,17 +784,9 @@ macro_rules! insert_value_impl {
                 value: Self,
             ) -> Result<(), &'static str> {
                 name_check(name)?;
-                let mut not_found = true;
-                f.metadata.retain(|x| {
-                    let found = x.name() != name;
-                    not_found &= found;
-                    found
-                });
-                if not_found {
-                    Err("Key not found")
-                } else {
-                    Self::insert_key_gi(f, name, value)
-                }
+                comment_check(value.1)?;
+                f.metadata.remove(name).ok_or("Key not found")?;
+                Self::insert_key_gi(f, name, value)
             }
 
             fn insert_key_go(
@@ -769,12 +795,12 @@ macro_rules! insert_value_impl {
                 value: Self,
             ) -> Result<(), &'static str> {
                 name_check(name)?;
+                comment_check(value.1)?;
                 let line = GenericLineItem {
-                    name: name.to_string().to_uppercase(),
                     value: value.0.into(),
-                    comment: None,
+                    comment: Some(value.1.to_owned()),
                 };
-                f.metadata.push(line);
+                f.metadata.insert(name.to_uppercase(), line);
                 Ok(())
             }
 
@@ -784,17 +810,9 @@ macro_rules! insert_value_impl {
                 value: Self,
             ) -> Result<(), &'static str> {
                 name_check(name)?;
-                let mut not_found = true;
-                f.metadata.retain(|x| {
-                    let found = x.name() != name;
-                    not_found &= found;
-                    found
-                });
-                if not_found {
-                    Err("Key not found")
-                } else {
-                    Self::insert_key_go(f, name, value)
-                }
+                comment_check(value.1)?;
+                f.metadata.remove(name).ok_or("Key not found")?;
+                Self::insert_key_go(f, name, value)
             }
         }
     };
@@ -850,27 +868,17 @@ impl InsertValue for &str {
         name_check(name)?;
         str_value_check(value)?;
         let line = GenericLineItem {
-            name: name.to_string().to_uppercase(),
             value: value.to_owned().into(),
             comment: None,
         };
-        f.metadata.push(line);
+        f.metadata.insert(name.to_uppercase(), line);
         Ok(())
     }
 
     fn replace_gi(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str> {
         name_check(name)?;
-        let mut not_found = true;
-        f.metadata.retain(|x| {
-            let found = x.name() != name;
-            not_found &= found;
-            found
-        });
-        if not_found {
-            Err("Key not found")
-        } else {
-            Self::insert_key_gi(f, name, value)
-        }
+        f.metadata.remove(name).ok_or("Key not found")?;
+        Self::insert_key_gi(f, name, value)
     }
 
     fn insert_key_go(
@@ -881,27 +889,17 @@ impl InsertValue for &str {
         name_check(name)?;
         str_value_check(value)?;
         let line = GenericLineItem {
-            name: name.to_string().to_uppercase(),
             value: value.to_owned().into(),
             comment: None,
         };
-        f.metadata.push(line);
+        f.metadata.insert(name.to_uppercase(), line);
         Ok(())
     }
 
     fn replace_go(f: &mut GenericImageOwned, name: &str, value: Self) -> Result<(), &'static str> {
         name_check(name)?;
-        let mut not_found = true;
-        f.metadata.retain(|x| {
-            let found = x.name() != name;
-            not_found &= found;
-            found
-        });
-        if not_found {
-            Err("Key not found")
-        } else {
-            Self::insert_key_go(f, name, value)
-        }
+        f.metadata.remove(name).ok_or("Key not found")?;
+        Self::insert_key_go(f, name, value)
     }
 }
 
@@ -911,27 +909,19 @@ impl InsertValue for (&str, &str) {
         str_value_check(value.0)?;
         comment_check(value.1)?;
         let line = GenericLineItem {
-            name: name.to_string().to_uppercase(),
             value: value.0.to_owned().into(),
             comment: Some(value.1.to_owned()),
         };
-        f.metadata.push(line);
+        f.metadata.insert(name.to_uppercase(), line);
         Ok(())
     }
 
     fn replace_gi(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str> {
         name_check(name)?;
-        let mut not_found = true;
-        f.metadata.retain(|x| {
-            let found = x.name() != name;
-            not_found &= found;
-            found
-        });
-        if not_found {
-            Err("Key not found")
-        } else {
-            Self::insert_key_gi(f, name, value)
-        }
+        str_value_check(value.0)?;
+        comment_check(value.1)?;
+        f.metadata.remove(name).ok_or("Key not found")?;
+        Self::insert_key_gi(f, name, value)
     }
 
     fn insert_key_go(
@@ -943,27 +933,19 @@ impl InsertValue for (&str, &str) {
         str_value_check(value.0)?;
         comment_check(value.1)?;
         let line = GenericLineItem {
-            name: name.to_string().to_uppercase(),
             value: value.0.to_owned().into(),
             comment: Some(value.1.to_owned()),
         };
-        f.metadata.push(line);
+        f.metadata.insert(name.to_uppercase(), line);
         Ok(())
     }
 
     fn replace_go(f: &mut GenericImageOwned, name: &str, value: Self) -> Result<(), &'static str> {
         name_check(name)?;
-        let mut not_found = true;
-        f.metadata.retain(|x| {
-            let found = x.name() != name;
-            not_found &= found;
-            found
-        });
-        if not_found {
-            Err("Key not found")
-        } else {
-            Self::insert_key_go(f, name, value)
-        }
+        str_value_check(value.0)?;
+        comment_check(value.1)?;
+        f.metadata.remove(name).ok_or("Key not found")?;
+        Self::insert_key_go(f, name, value)
     }
 }
 

@@ -62,7 +62,7 @@ impl DynamicImageOwned {
     /// # Errors
     /// - If the image is not debayered and is not a grayscale image.
     /// - If the image is not an RGB image.
-    pub fn into_luma(&self) -> Result<DynamicImageOwned, &'static str> {
+    pub fn into_luma(&self) -> Result<Self, &'static str> {
         use DynamicImageOwned::*;
         match self {
             U8(image) => Ok(U8(image.into_luma()?)),
@@ -74,19 +74,66 @@ impl DynamicImageOwned {
     /// Convert the image to a luminance image with custom coefficients.
     ///
     /// # Arguments
-    /// - `wts`: The weights to use for the conversion. The number of weights must match
-    ///   the number of channels in the image.
+    /// - `wts`: The weights to use for the conversion. The weights should be in the order
+    ///   `[R, G, B]`.
     ///
     /// # Errors
-    /// - If the number of weights does not match the number of channels in the image.
     /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB image.
-    pub fn into_luma_custom(&self, coeffs: &[f64]) -> Result<DynamicImageOwned, &'static str> {
+    /// - If the image is not an RGB/RGBA image.
+    pub fn into_luma_custom(&self, coeffs: [f64; 3]) -> Result<Self, &'static str> {
         use DynamicImageOwned::*;
         match self {
             U8(image) => Ok(U8(image.into_luma_custom(coeffs)?)),
             U16(image) => Ok(U16(image.into_luma_custom(coeffs)?)),
             F32(image) => Ok(F32(image.into_luma_custom(coeffs)?)),
+        }
+    }
+
+    /// Convert the image to a grayscale image with alpha channel.
+    ///
+    /// In case the original image does not contain an alpha channel, the alpha channel will be
+    /// filled with the maximum value of the pixel type.
+    ///
+    /// # Errors
+    /// - If the image is not debayered and is not a grayscale image.
+    /// - If the image is not an RGB image.
+    pub fn into_luma_alpha(&self) -> Result<Self, &'static str> {
+        use DynamicImageOwned::*;
+        match self {
+            U8(image) => Ok(U8(image.into_luma_alpha()?)),
+            U16(image) => Ok(U16(image.into_luma_alpha()?)),
+            F32(image) => Ok(F32(image.into_luma_alpha()?)),
+        }
+    }
+
+    /// Convert the image to a grayscale image with alpha channel with custom coefficients.
+    ///
+    /// In case the original image does not contain an alpha channel, the alpha channel will be
+    /// filled with the maximum value of the pixel type.
+    ///
+    /// # Arguments
+    /// - `wts`: The weights to use for the conversion. The weights should be in the order
+    ///   `[R, G, B]`.
+    ///
+    /// # Errors
+    /// - If the image is not debayered and is not a grayscale image.
+    /// - If the image is not an RGB/RGBA image.
+    pub fn into_luma_alpha_custom(&self, coeffs: [f64; 3]) -> Result<Self, &'static str> {
+        use DynamicImageOwned::*;
+        match self {
+            U8(image) => Ok(U8(image.into_luma_alpha_custom(coeffs)?)),
+            U16(image) => Ok(U16(image.into_luma_alpha_custom(coeffs)?)),
+            F32(image) => Ok(F32(image.into_luma_alpha_custom(coeffs)?)),
+        }
+    }
+
+    /// Remove the alpha channel from the image.
+    pub fn remove_alpha(&self) -> Result<Self, &'static str> {
+        use DynamicImageOwned::*;
+        match self {
+            U8(image) => Ok(U8(image.remove_alpha()?)),
+            U16(image) => Ok(U16(image.remove_alpha()?)),
+            F32(image) => Ok(F32(image.remove_alpha()?)),
         }
     }
 

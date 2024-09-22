@@ -3,6 +3,7 @@
 ## Changes
 
 ### 0.7.0 (2024-09-21)
+- Alpha channel support has been added.
 - API change: Bayer patterns moved to `BayerPattern` enum, `ColorSpace` now contains a variant `ColorSpace::Bayer(BayerPattern)`.
 - Enhancement: `BayerPattern` implements the `BayerShift` trait to allow `BayerPattern` selection for smaller, shifted ROIs.
 

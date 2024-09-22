@@ -43,6 +43,7 @@ flate2 = { version = "1.0", optional = true }
 fitsio = { version = "0.21", optional = true }
 image = { version = "0.25", optional = true }
 rayon = { version = "1.10", optional = true }
+itertools = "0.13.0"
 # rkyv = { version = "0.7", optional = true }
 
 [dev-dependencies]
@@ -54,7 +55,7 @@ serde_json = "1.0"
 serde-reflection = "0.4"
 
 [features]
-default = ["rayon", "serde_flate", "image", "fitsio"]
+default = ["rayon", "serde_flate", "fitsio", "image"]
 # rkyv = ["serialize", "dep:rkyv"]
 serde_flate = ["dep:flate2"]
 

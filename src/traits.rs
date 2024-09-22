@@ -263,8 +263,7 @@ pub(crate) fn cast_u8<T: PixelStor>(data: &[T]) -> Vec<u8> {
 
 /// Run the luminance conversion on a slice of pixel data.
 #[inline(never)]
-pub(crate) fn run_luma<T: PixelStor>(data: &[T], wts: &[f64]) -> Vec<T> {
-    let channels = wts.len();
+pub(crate) fn run_luma<T: PixelStor>(channels: usize, data: &[T], wts: &[f64]) -> Vec<T> {
     #[cfg(not(feature = "rayon"))]
     {
         data.chunks_exact(channels)
@@ -289,6 +288,43 @@ pub(crate) fn run_luma<T: PixelStor>(data: &[T], wts: &[f64]) -> Vec<T> {
                         .fold(0f64, |acc, (px, &w)| acc + (*px).to_f64() * w),
                 )
             })
+            .collect::<Vec<T>>()
+    }
+}
+
+/// Run the luminance conversion on a slice of pixel data.
+#[inline(never)]
+pub(crate) fn run_luma_alpha<T: PixelStor>(channels: usize, data: &[T], wts: &[f64]) -> Vec<T> {
+    #[cfg(not(feature = "rayon"))]
+    {
+        data.chunks_exact(channels)
+            .map(|chunk| {
+                let res = wts
+                    .iter()
+                    .zip(chunk.iter())
+                    .fold(0.0f64, |acc, (&w, &px)| acc + px.to_f64() * w);
+                (
+                    T::from_f64(res),
+                    chunk.get(3).copied().unwrap_or(T::DEFAULT_MAX_VALUE),
+                )
+            })
+            .flat_map(|(px, alpha)| [px, alpha])
+            .collect::<Vec<T>>()
+    }
+    #[cfg(feature = "rayon")]
+    {
+        data.par_chunks_exact(channels)
+            .map(|chunk| {
+                let res = wts
+                    .iter()
+                    .zip(chunk.iter())
+                    .fold(0.0f64, |acc, (&w, &px)| acc + px.to_f64() * w);
+                (
+                    T::from_f64(res),
+                    chunk.get(3).copied().unwrap_or(T::DEFAULT_MAX_VALUE),
+                )
+            })
+            .flat_map(|(px, alpha)| [px, alpha])
             .collect::<Vec<T>>()
     }
 }
