@@ -855,6 +855,7 @@ insert_value_impl!(i32, PrvGenLineItem::I32);
 insert_value_impl!(i64, PrvGenLineItem::I64);
 insert_value_impl!(f32, PrvGenLineItem::F32);
 insert_value_impl!(f64, PrvGenLineItem::F64);
+insert_value_impl!(ColorSpace, PrvGenLineItem::ColorSpace);
 insert_value_impl!(String, PrvGenLineItem::String);
 insert_value_impl!(Duration, PrvGenLineItem::Duration);
 insert_value_impl!(SystemTime, PrvGenLineItem::SystemTime);

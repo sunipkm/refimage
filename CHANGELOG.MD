@@ -2,6 +2,10 @@
 
 ## Changes
 
+### 0.8.2 (2024-09-22)
+- Added missing `InsertKey` implementation for `ColorSpace`.
+- Added [crates.io](https://crates.io/crates/refimage) documentation support for features.
+
 ### 0.8.0 (2024-09-22)
 - Added `from_u8` methods to `ImageData` and `ImageOwned` to get these images from a slice of `u8` data in machine-endian order.
 
