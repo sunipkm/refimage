@@ -79,7 +79,7 @@ pub(crate) use datastor::DataStor;
 use demosaic::ColorFilterArray;
 pub use demosaic::{BayerError, Debayer, DemosaicMethod};
 use serde::{Deserialize, Serialize};
-pub use traits::{Enlargeable, PixelStor};
+pub use traits::{BayerShift, Enlargeable, PixelStor};
 
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
@@ -181,18 +181,28 @@ pub enum DynamicImageOwned {
 pub enum ColorSpace {
     /// Grayscale image.
     Gray,
-    /// Bayer mosaic BGGR.
-    Bggr,
-    /// Bayer mosaic GBRG.
-    Gbrg,
-    /// Bayer mosaic GRBG.
-    Grbg,
-    /// Bayer mosaic RGGB.
-    Rggb,
+    /// Bayer mosaic image
+    Bayer(BayerPattern),
     /// RGB image.
     Rgb,
     /// Custom color space.
     Custom(String),
+}
+
+/// Enum to describe the Bayer pattern of the image.
+///
+/// The Bayer pattern is used to interpret the raw image data from a Bayer mosaic image.
+#[non_exhaustive]
+#[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord, Serialize, Deserialize)]
+pub enum BayerPattern {
+    /// BGGR Bayer pattern.
+    Bggr,
+    /// GBRG Bayer pattern.
+    Gbrg,
+    /// GRBG Bayer pattern.
+    Grbg,
+    /// RGGB Bayer pattern.
+    Rggb,
 }
 
 /// Enum to describe the primitive pixel type of the image.
@@ -227,12 +237,21 @@ impl TryInto<ColorFilterArray> for ColorSpace {
 
     fn try_into(self) -> Result<ColorFilterArray, Self::Error> {
         match self {
-            ColorSpace::Bggr => Ok(ColorFilterArray::Bggr),
-            ColorSpace::Gbrg => Ok(ColorFilterArray::Gbrg),
-            ColorSpace::Grbg => Ok(ColorFilterArray::Grbg),
-            ColorSpace::Rggb => Ok(ColorFilterArray::Rggb),
+            ColorSpace::Bayer(pat) => match pat {
+                BayerPattern::Bggr => Ok(ColorFilterArray::Bggr),
+                BayerPattern::Gbrg => Ok(ColorFilterArray::Gbrg),
+                BayerPattern::Grbg => Ok(ColorFilterArray::Grbg),
+                BayerPattern::Rggb => Ok(ColorFilterArray::Rggb),
+            },
             _ => Err(()),
         }
+    }
+}
+
+#[allow(clippy::from_over_into)]
+impl Into<ColorSpace> for BayerPattern {
+    fn into(self) -> ColorSpace {
+        ColorSpace::Bayer(self)
     }
 }
 
@@ -259,7 +278,7 @@ mod test {
             crate::DataStor::from_owned(src.into()),
             4,
             4,
-            crate::ColorSpace::Rggb,
+            crate::ColorSpace::Bayer(crate::BayerPattern::Rggb),
         )
         .expect("Failed to create ImageData");
         let a = img.debayer(crate::DemosaicMethod::None);

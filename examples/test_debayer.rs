@@ -11,7 +11,7 @@ fn main() {
         229, 0, 0, 0, 67, 0, 95, 0, 0, 0, 146, 0, 0, 232, 0, 0, 0, 51, 0, 229, 0, 0, 0, 241, 169,
         0, 0, 0, 161, 0, 15, 0, 0, 0, 52, 0, 0, 45, 0, 0, 0, 175, 0, 98, 0, 0, 0, 197,
     ];
-    let img = ImageData::from_owned(src.into(), 4, 4, crate::ColorSpace::Rggb)
+    let img = ImageData::from_owned(src.into(), 4, 4, crate::BayerPattern::Rggb.into())
         .expect("Failed to create ImageData");
     let a = img.debayer(DemosaicMethod::None);
     assert!(a.is_ok());

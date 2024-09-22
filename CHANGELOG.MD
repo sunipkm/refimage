@@ -2,6 +2,10 @@
 
 ## Changes
 
+### 0.7.0 (2024-09-21)
+- API change: Bayer patterns moved to `BayerPattern` enum, `ColorSpace` now contains a variant `ColorSpace::Bayer(BayerPattern)`.
+- Enhancement: `BayerPattern` implements the `BayerShift` trait to allow `BayerPattern` selection for smaller, shifted ROIs.
+
 ### 0.6.2 (2024-09-21)
 - Bugfix: `into_luma()` errored on a grayscale image.
 

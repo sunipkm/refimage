@@ -13,9 +13,9 @@ use fitsio::{
 };
 
 use crate::{
-    metadata::GenericValue, metadata::TIMESTAMP_KEY, ColorSpace, DynamicImageData,
-    DynamicImageOwned, GenericImage, GenericImageOwned, GenericLineItem, ImageData, ImageOwned,
-    PixelStor, PixelType,
+    metadata::{GenericValue, TIMESTAMP_KEY},
+    BayerPattern, ColorSpace, DynamicImageData, DynamicImageOwned, GenericImage, GenericImageOwned,
+    GenericLineItem, ImageData, ImageOwned, PixelStor, PixelType,
 };
 
 #[derive(Debug, Clone, PartialEq, Hash)]
@@ -598,10 +598,12 @@ impl WriteKey for PrvLineItem<ColorSpace> {
         let val = match self.value.clone() {
             ColorSpace::Gray => "GRAY",
             ColorSpace::Rgb => "RGB",
-            ColorSpace::Bggr => "BGGR",
-            ColorSpace::Gbrg => "GBRG",
-            ColorSpace::Grbg => "GRBG",
-            ColorSpace::Rggb => "RGGB",
+            ColorSpace::Bayer(b) => match b {
+                BayerPattern::Bggr => "BGGR",
+                BayerPattern::Gbrg => "GBRG",
+                BayerPattern::Grbg => "GRBG",
+                BayerPattern::Rggb => "RGGB",
+            },
             ColorSpace::Custom(val) => &format!("C({})", val),
         };
         match &self.comment {

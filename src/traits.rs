@@ -7,6 +7,8 @@ use rayon::{
 };
 use std::ops::AddAssign;
 
+use crate::BayerPattern;
+
 /// The type of each channel in a pixel. For example, this can be `u8`, `u16`, `f32`.
 pub trait PixelStor:
     Copy + NumCast + Num + PartialOrd<Self> + Clone + Bounded + Send + Sync + NoUninit
@@ -301,5 +303,46 @@ mod test {
         let v = 0.4f32;
         let u = v.cast_u8();
         assert_eq!(u, 102); // f32::round(v * 255.0) as u8);
+    }
+}
+
+/// A trait for shifting Bayer patterns.
+pub trait BayerShift {
+    /// Shift the Bayer pattern by `x` and `y` pixels.
+    fn shift(&self, x: usize, y: usize) -> Self;
+}
+
+impl BayerShift for BayerPattern {
+    fn shift(&self, x: usize, y: usize) -> Self {
+        match self {
+            BayerPattern::Rggb => match (x % 2, y % 2) {
+                (0, 0) => BayerPattern::Rggb,
+                (1, 0) => BayerPattern::Gbrg,
+                (0, 1) => BayerPattern::Grbg,
+                (1, 1) => BayerPattern::Bggr,
+                _ => unreachable!(),
+            },
+            BayerPattern::Gbrg => match (x % 2, y % 2) {
+                (0, 0) => BayerPattern::Gbrg,
+                (1, 0) => BayerPattern::Rggb,
+                (0, 1) => BayerPattern::Bggr,
+                (1, 1) => BayerPattern::Grbg,
+                _ => unreachable!(),
+            },
+            BayerPattern::Grbg => match (x % 2, y % 2) {
+                (0, 0) => BayerPattern::Grbg,
+                (1, 0) => BayerPattern::Bggr,
+                (0, 1) => BayerPattern::Rggb,
+                (1, 1) => BayerPattern::Gbrg,
+                _ => unreachable!(),
+            },
+            BayerPattern::Bggr => match (x % 2, y % 2) {
+                (0, 0) => BayerPattern::Bggr,
+                (1, 0) => BayerPattern::Grbg,
+                (0, 1) => BayerPattern::Gbrg,
+                (1, 1) => BayerPattern::Rggb,
+                _ => unreachable!(),
+            },
+        }
     }
 }

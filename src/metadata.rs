@@ -1039,14 +1039,15 @@ impl GenericValue {
 }
 
 mod test {
+
     #[test]
     fn test_operate_generic() {
         use crate::Debayer;
-        use crate::{ColorSpace, DynamicImageData, GenericImage, ImageData};
+        use crate::{BayerPattern, DynamicImageData, GenericImage, ImageData};
         use std::time::SystemTime;
 
         let data = vec![0u8; 256];
-        let img = ImageData::from_owned(data, 16, 16, ColorSpace::Grbg).unwrap();
+        let img = ImageData::from_owned(data, 16, 16, BayerPattern::Grbg.into()).unwrap();
         let img = DynamicImageData::from(img);
         let mut img = GenericImage::new(SystemTime::now(), img);
 
@@ -1071,11 +1072,11 @@ mod test {
     #[test]
     fn test_operate_owned() {
         use crate::Debayer;
-        use crate::{ColorSpace, DynamicImageOwned, GenericImageOwned, ImageOwned};
+        use crate::{BayerPattern, DynamicImageOwned, GenericImageOwned, ImageOwned};
         use std::time::SystemTime;
 
         let data = vec![0u8; 256];
-        let img = ImageOwned::from_owned(data, 16, 16, ColorSpace::Grbg).unwrap();
+        let img = ImageOwned::from_owned(data, 16, 16, BayerPattern::Grbg.into()).unwrap();
         let img = DynamicImageOwned::from(img);
         let mut img = GenericImageOwned::new(SystemTime::now(), img);
 

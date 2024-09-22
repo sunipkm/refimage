@@ -984,7 +984,7 @@ dependencies = [
 
 [[package]]
 name = "refimage"
-version = "0.5.1"
+version = "0.7.0"
 dependencies = [
  "bincode",
  "bytemuck",
