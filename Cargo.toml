@@ -1,6 +1,6 @@
 [package]
 name = "refimage"
-version = "0.8.0"
+version = "0.8.1"
 edition = "2021"
 resolver = "2"
 
@@ -58,6 +58,8 @@ serde-reflection = "0.4"
 default = ["rayon", "serde_flate"]
 # rkyv = ["serialize", "dep:rkyv"]
 serde_flate = ["dep:flate2"]
+image = ["dep:image"]
+fitsio = ["dep:fitsio"]
 
 [package.metadata.docs.rs]
 # document all features
