@@ -43,7 +43,7 @@ pub const EXPOSURE_KEY: &str = "EXPOSURE";
 /// - When saving to a FITS file, the metadata comment may be truncated.
 /// - Metadata of type [`std::time::Duration`] or [`std::time::SystemTime`] is split
 ///   and stored as two consecutive metadata items, with the same key, split into
-///   seconds ([`u64`]) and microseconds ([`u32`]).
+///   seconds ([`u64`]) and nanoseconds ([`u64`]).
 ///
 pub struct GenericLineItem {
     pub(crate) value: GenericValue,
@@ -90,8 +90,6 @@ pub enum GenericValue {
 /// [`GenericLineItem`] structs. The image data is stored as a [`DynamicImageData`].
 ///
 /// # Note
-/// - Alpha channels are not trivially supported. They can be added by using a custom
-///   color space.
 /// - Internally [`GenericImage`] and [`GenericImageOwned`] serialize to the same
 ///   representation, and can be deserialized into each other.
 ///
@@ -121,8 +119,6 @@ pub struct GenericImage<'a> {
 /// [`GenericLineItem`] structs. The image data is stored as a [`DynamicImageOwned`].
 ///
 /// /// # Note
-/// - Alpha channels are not trivially supported. They can be added by using a custom
-///   color space.
 /// - Internally [`GenericImage`] and [`GenericImageOwned`] serialize to the same
 ///   representation, and can be deserialized into each other.
 ///
@@ -193,7 +189,7 @@ impl<'a> GenericImage<'a> {
     /// - When saving to a FITS file, the metadata comment may be truncated.
     /// - Metadata of type [`std::time::Duration`] or [`std::time::SystemTime`] is split
     ///   and stored as two consecutive metadata items, with the same key, split into
-    ///   seconds ([`u64`]) and microseconds ([`u32`]).
+    ///   seconds ([`u64`]) and nanoseconds ([`u64`]).
     pub fn insert_key<T: InsertValue>(&mut self, name: &str, value: T) -> Result<(), &'static str> {
         if name.to_uppercase() == TIMESTAMP_KEY {
             return Err("Cannot re-insert timestamp key");
@@ -328,7 +324,7 @@ impl GenericImageOwned {
     /// - When saving to a FITS file, the metadata comment may be truncated.
     /// - Metadata of type [`std::time::Duration`] or [`std::time::SystemTime`] is split
     ///   and stored as two consecutive metadata items, with the same key, split into
-    ///   seconds ([`u64`]) and microseconds ([`u32`]).
+    ///   seconds ([`u64`]) and nanoseconds ([`u64`]).
     pub fn insert_key<T: InsertValue>(&mut self, name: &str, value: T) -> Result<(), &'static str> {
         if name.to_uppercase() == TIMESTAMP_KEY {
             return Err("Cannot re-insert timestamp key");

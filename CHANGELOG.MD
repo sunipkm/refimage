@@ -2,6 +2,9 @@
 
 ## Changes
 
+### 0.8.0 (2024-09-22)
+- Added `from_u8` methods to `ImageData` and `ImageOwned` to get these images from a slice of `u8` data in machine-endian order.
+
 ### 0.7.0 (2024-09-21)
 - Alpha channel support has been added.
 - API change: Bayer patterns moved to `BayerPattern` enum, `ColorSpace` now contains a variant `ColorSpace::Bayer(BayerPattern)`.

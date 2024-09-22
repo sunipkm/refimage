@@ -103,9 +103,6 @@ pub use optimumexposure::{CalcOptExp, OptimumExposure, OptimumExposureBuilder};
 /// reuse of allocated memory without re-allocation.
 ///
 /// # Note
-/// # Note
-/// - Alpha channels are not trivially supported. They can be added by using a custom
-///   color space.
 /// - Internally [`DynamicImageData`] and [`DynamicImageOwned`] serialize to the same
 ///   representation, and can be deserialized into each other.
 ///
@@ -143,8 +140,6 @@ pub enum DynamicImageData<'a> {
 /// reuse of allocated memory without re-allocation.
 ///
 /// # Note
-/// - Alpha channels are not trivially supported. They can be added by using a custom
-///   color space.
 /// - Internally [`DynamicImageData`] and [`DynamicImageOwned`] serialize to the same
 ///   representation, and can be deserialized into each other.
 ///

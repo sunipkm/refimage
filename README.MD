@@ -55,10 +55,6 @@ use image::open;
 let img = open("/path/to/image.png").expect("Could not load image");
 let img = DynamicImageData::try_from(img).expect("Could not convert image");
 ```
-Note, that the image being loaded must not contain an alpha channel for the conversion to be
-successful in the current implementation. However, the `image` crate provides methods to
-remove the alpha channel. A custom color space can be used for such an image, however,
-the user must keep track of the custom color space information.
 
 ## Loading and storing a `GenericImage`
 A `GenericImage` is intended to be loaded and stored in a standard format, e.g. [bincode](https://crates.io/crates/bincode) - which follows trivially from the serialization-

@@ -3,6 +3,7 @@ use crate::{
     traits::{cast_u8, Enlargeable},
     BayerError, ColorSpace, DataStor, DemosaicMethod, ImageOwned, PixelStor,
 };
+use bytemuck::{AnyBitPattern, PodCastError};
 use num_traits::CheckedEuclid;
 
 /// A structure that holds image data backed by a slice or a vector.
@@ -13,10 +14,6 @@ use num_traits::CheckedEuclid;
 /// [`ImageData`] supports arbitrary color spaces and number of channels, but the number
 /// of channels must be consistent across the image. The data is stored in a single
 /// contiguous buffer.
-///
-/// # Note
-/// Alpha channels are not trivially supported. They can be added by using a custom
-/// color space.
 ///
 /// # Usage
 /// ```
@@ -221,6 +218,56 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
     /// Get the color space of the image.
     pub fn color_space(&self) -> ColorSpace {
         self.cspace.clone() // in most cases, this is a cheap operation
+    }
+}
+
+impl <'a, T: PixelStor + AnyBitPattern> ImageData<'a, T> {
+        /// Create a new [`ImageData`] from a mutable slice of `u8` data.
+    ///
+    /// Images can not be larger than 65535x65535 pixels.
+    ///
+    /// `data` is cast to the pixel type `T` using [`bytemuck::try_cast_slice_mut`].
+    /// `data` must have length (`width` * `height` * `channels` * `sizeof(T)`), and
+    /// aligned to the size of `T`.
+    ///
+    /// # Safety
+    /// The endianness of the data is determined by the system, and the data is assumed
+    /// to be in native endianness. This function is not safe to use in a cross-platform
+    /// environment.
+    ///  
+    /// # Arguments
+    /// - `data`: The [`&mut [u8]`] data slice.
+    /// - `width`: The width of the image.
+    /// - `height`: The height of the image.
+    /// - `cspace`: The color space of the image ([`ColorSpace`]).
+    ///
+    /// # Errors
+    /// - Byte casting errors: [`PodCastError`].
+    /// - If the image is too large.
+    /// - If the data is empty.
+    /// - If the width is zero.
+    /// - If the height is zero.
+    /// - If the data length does not match the image size.
+    /// - If there are too many channels for grayscale/Bayer pattern images.
+    /// - If color space is RGB and number of channels is not 3.
+    pub fn from_u8_mut(
+        data: &'a mut [u8],
+        width: usize,
+        height: usize,
+        cspace: ColorSpace,
+    ) -> Result<Self, &'static str> {
+        let data = bytemuck::try_cast_slice_mut(data).map_err(|e| {
+            use PodCastError::*;
+            match e {
+                TargetAlignmentGreaterAndInputNotAligned => {
+                    "Target alignment greater and input not aligned"
+                }
+                OutputSliceWouldHaveSlop => "Output slice would have slop",
+                SizeMismatch => "Size mismatch",
+                AlignmentMismatch => "Alignment mismatch",
+            }
+        })?;
+        Self::from_mut_ref(data, width, height, cspace)
     }
 }
 
@@ -580,5 +627,26 @@ mod test {
             182, 23, 68, 206, 128, 113, 96, 131, 164, 111, 172, 97, 105, 99, 72,
         ];
         assert_eq!(luma.as_slice(), &expected[..]);
+    }
+
+    #[test]
+    fn test_u8_src() {
+        let mut data = vec![181u16, 178, 118, 183, 85, 131];
+        let img =
+            crate::ImageData::from_owned(data.clone(), 3, 2, crate::ColorSpace::Gray).unwrap();
+        let ptr = bytemuck::cast_slice_mut(&mut data);
+        let img2 =
+            crate::ImageData::<u16>::from_u8_mut(ptr, 3, 2, crate::ColorSpace::Gray).unwrap();
+        assert_eq!(img.as_slice(), img2.as_slice());
+        let mut data = vec![181u8, 178, 118, 183, 85, 131];
+        let img = crate::ImageData::from_mut_ref(&mut data, 3, 2, crate::ColorSpace::Gray).unwrap();
+        // let ptr = bytemuck::cast_slice_mut(&mut data);
+        drop(img);
+        let img2 =
+            crate::ImageData::<u8>::from_u8_mut(&mut data, 3, 2, crate::ColorSpace::Gray).unwrap();
+        assert_eq!(img2.as_slice(), &[181, 178, 118, 183, 85, 131]);
+        drop(img2);
+        let img = crate::ImageData::from_mut_ref(&mut data, 3, 2, crate::ColorSpace::Gray).unwrap();
+        assert_eq!(img.as_slice(), &[181, 178, 118, 183, 85, 131]);
     }
 }
