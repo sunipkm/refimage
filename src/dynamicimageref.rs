@@ -141,7 +141,7 @@ impl<'a: 'b, 'b> ToLuma<'a, 'b> for DynamicImageRef<'_> {
 
 macro_rules! impl_alphachannel {
     ($type:ty, $intype:ty, $variant_a:path, $variant_b:expr) => {
-        impl<'a: 'b, 'b> AlphaChannel<'a, 'b, $type, $intype> for DynamicImageRef<'_> {
+        impl<'a: 'b, 'b> AlphaChannel<'a, 'b, $intype> for DynamicImageRef<'_> {
             type ImageOutput = DynamicImageOwned;
             type AlphaOutput = Vec<$type>;
 

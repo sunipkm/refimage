@@ -52,8 +52,7 @@ impl BayerShift for BayerPattern {
 /// This trait is implemented for [`ImageRef`], [`DynamicImageRef`], [`GenericImageRef`] and
 /// their owned counterparts, [`ImageOwned`], [`DynamicImageOwned`], [`GenericImageOwned`]
 /// and [`GenericImage`].
-pub trait ToLuma<'b: 'a, 'a>
-{
+pub trait ToLuma<'b: 'a, 'a> {
     /// The output type of the conversion.
     type Output;
 
@@ -136,9 +135,8 @@ pub trait ImageProps {
 }
 
 /// A trait for adding/removing an alpha channel to/from an image.
-pub trait AlphaChannel<'b: 'a, 'a, T, U>
+pub trait AlphaChannel<'b: 'a, 'a, U>
 where
-    T: Sized,
     U: ?Sized,
 {
     /// The output type of the operation.

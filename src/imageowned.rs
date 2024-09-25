@@ -338,7 +338,7 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ToLuma<'a, 'b> for ImageOwned<T> {
     }
 }
 
-impl<'a: 'b, 'b, T: PixelStor + Enlargeable> AlphaChannel<'a, 'b, T, &[T]> for ImageOwned<T> {
+impl<'a: 'b, 'b, T: PixelStor + Enlargeable> AlphaChannel<'a, 'b, &[T]> for ImageOwned<T> {
     type ImageOutput = ImageOwned<T>;
 
     type AlphaOutput = Vec<T>;

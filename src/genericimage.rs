@@ -5,13 +5,10 @@ use serde::Serialize;
 
 use crate::imagetraits::ImageProps;
 use crate::metadata::InsertValue;
+use crate::{genericimageowned::GenericImageOwned, genericimageref::GenericImageRef};
 use crate::{
-    genericimageowned::GenericImageOwned, genericimageref::GenericImageRef, DynamicImageOwned,
-    DynamicImageRef,
-};
-use crate::{
-    AlphaChannel, BayerError, CalcOptExp, ColorSpace, Debayer, DemosaicMethod, GenericLineItem,
-    OptimumExposure, PixelType, ToLuma,
+    BayerError, CalcOptExp, ColorSpace, Debayer, DemosaicMethod, GenericLineItem, OptimumExposure,
+    PixelType, ToLuma,
 };
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -298,8 +295,7 @@ macro_rules! impl_toluma {
                 &'a self,
                 coeffs: [f64; 3],
             ) -> Result<Self::Output, &'static str> {
-                let img =
-                self.get_image().to_luma_alpha_custom(coeffs)?;
+                let img = self.get_image().to_luma_alpha_custom(coeffs)?;
                 let meta = self.metadata.clone();
                 Ok(Self::Output {
                     metadata: meta,
@@ -312,51 +308,6 @@ macro_rules! impl_toluma {
 
 impl_toluma!(GenericImageRef<'a>, DynamicImageRef<'_>);
 impl_toluma!(GenericImageOwned, DynamicImageOwned);
-
-macro_rules! impl_alphachannel {
-    ($type: ty, $inp: ty, $mid: ty) => {
-        impl<'a: 'b, 'b> AlphaChannel<'a, 'b, $type, &[$type]> for $inp {
-            type ImageOutput = GenericImageOwned;
-            type AlphaOutput = Vec<$type>;
-
-            fn remove_alpha(
-                &'b self,
-            ) -> Result<(Self::ImageOutput, Self::AlphaOutput), &'static str> {
-                let (img, alpha) = <$mid as AlphaChannel<'_, '_, $type, &[$type]>>::remove_alpha(
-                    self.get_image(),
-                )?;
-                let meta = self.metadata.clone();
-                Ok((
-                    Self::ImageOutput {
-                        metadata: meta,
-                        image: img,
-                    },
-                    alpha,
-                ))
-            }
-
-            fn add_alpha(&'a self, alpha: &[$type]) -> Result<Self::ImageOutput, &'static str> {
-                let img = <$mid as AlphaChannel<'_, '_, $type, &[$type]>>::add_alpha(
-                    self.get_image(),
-                    alpha,
-                )?;
-                let meta = self.metadata.clone();
-                Ok(Self::ImageOutput {
-                    metadata: meta,
-                    image: img,
-                })
-            }
-        }
-    };
-}
-
-impl_alphachannel!(u8, GenericImageRef<'a>, DynamicImageRef<'_>);
-impl_alphachannel!(u16, GenericImageRef<'a>, DynamicImageRef<'_>);
-impl_alphachannel!(f32, GenericImageRef<'a>, DynamicImageRef<'_>);
-
-impl_alphachannel!(u8, GenericImageOwned, DynamicImageOwned);
-impl_alphachannel!(u16, GenericImageOwned, DynamicImageOwned);
-impl_alphachannel!(f32, GenericImageOwned, DynamicImageOwned);
 
 impl<'a: 'b, 'b> Debayer<'a, 'b> for GenericImage<'b> {
     type Output = GenericImage<'a>;
