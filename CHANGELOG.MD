@@ -2,9 +2,9 @@
 
 ## Changes
 
-### 0.9.0 (2024-09-24)
+### 0.10.0 (2024-09-24)
 - Complete API overhaul. `DataStor` type has been removed.
-- `ImageData` and similar are renamed to `*ImageRef`, and only holds data backed by some storage.
+- `ImageData` and similar are renamed to `*ImageRef`, and only hold data backed by some storage.
 - `ImageOwned` and derivatives own the image data.
 - `GenericImageRef` and `DynamicImageRef` are only serializable. `*ImageRef` do not implement clone.
 - All methods that mutate an image (e.g. luminance calculation, alpha channel addition/removal, debayering) either fail when mutation is not necessary, or return an owned image on success.
