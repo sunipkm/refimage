@@ -1,4 +1,5 @@
-use crate::{ColorSpace, DynamicImageRef, DynamicImageOwned, ImageOwned, PixelType};
+use crate::imagetraits::ImageProps;
+use crate::{ColorSpace, DynamicImageOwned, DynamicImageRef, ImageOwned, PixelType};
 use crate::{Deserializer, Serializer};
 #[cfg(feature = "serde_flate")]
 use flate2::{write::ZlibDecoder, write::ZlibEncoder, Compress, Compression};
@@ -189,6 +190,7 @@ impl TryFrom<SerialImage> for DynamicImageOwned {
                 }
                 Ok(DynamicImageOwned::F32(img))
             }
+            _ => Err("Invalid pixel type."),
         }
     }
 }

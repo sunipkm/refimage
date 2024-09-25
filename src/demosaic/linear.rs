@@ -15,10 +15,10 @@
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
+use crate::coretraits::{get_mean, Enlargeable};
 use crate::demosaic::border_replicate::*;
 use crate::demosaic::{BayerError, BayerRead, BayerResult, ColorFilterArray, RasterMut};
-use crate::traits::{get_mean, Enlargeable};
-use crate::{ImageRef, ImageOwned, PixelStor};
+use crate::{ImageOwned, ImageProps, ImageRef, PixelStor};
 
 const PADDING: usize = 1;
 

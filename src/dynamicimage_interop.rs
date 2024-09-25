@@ -1,7 +1,7 @@
 //! Image interop
 use image::ImageBuffer;
 
-use crate::{ColorSpace, DynamicImage, DynamicImageRef};
+use crate::{ColorSpace, DynamicImage, DynamicImageRef, ImageProps};
 
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 impl<'a> TryFrom<DynamicImageRef<'a>> for DynamicImage {
@@ -223,6 +223,7 @@ mod test {
     #[test]
     fn test_dynamicimageowned() {
         use super::DynamicImageOwned;
+        use crate::ImageProps;
         use crate::{ColorSpace, ImageOwned};
         use image::DynamicImage;
         let data: Vec<u8> = vec![1, 2, 3, 4, 5, 6];

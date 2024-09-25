@@ -2,7 +2,7 @@ use std::time::SystemTime;
 
 use refimage::{
     BayerPattern, ColorSpace, Debayer, DemosaicMethod, DynamicImageOwned, GenericImageOwned,
-    ImageOwned,
+    ImageOwned, ImageProps,
 };
 
 fn main() {

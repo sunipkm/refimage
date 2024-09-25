@@ -7,7 +7,7 @@ use rayon::{
 };
 use std::ops::AddAssign;
 
-use crate::BayerPattern;
+use crate::PixelType;
 
 /// The type of each channel in a pixel. For example, this can be `u8`, `u16`, `f32`.
 pub trait PixelStor:
@@ -20,6 +20,9 @@ pub trait PixelStor:
     /// The minimum value for this type of primitive within the context of color.
     /// For floats, the minimum is `0.0`, whereas the integer types inherit their usual minimum values.
     const DEFAULT_MIN_VALUE: Self;
+
+    /// The pixel type of the primitive.
+    const PIXEL_TYPE: PixelType;
 
     /// Convert to f64.
     fn to_f64(self) -> f64 {
@@ -81,24 +84,25 @@ pub trait PixelStor:
 }
 
 macro_rules! declare_pixelstor {
-    ($base:ty: ($from:expr)..$to:expr) => {
+    ($base:ty: ($from:expr)..$to:expr, $pty: path) => {
         impl PixelStor for $base {
             const DEFAULT_MAX_VALUE: Self = $to;
             const DEFAULT_MIN_VALUE: Self = $from;
+            const PIXEL_TYPE: PixelType = $pty;
         }
     };
 }
 
-declare_pixelstor!(u8: (0)..Self::MAX);
-declare_pixelstor!(u16: (0)..Self::MAX);
-declare_pixelstor!(u32: (0)..Self::MAX);
+declare_pixelstor!(u8: (0)..Self::MAX, PixelType::U8);
+declare_pixelstor!(u16: (0)..Self::MAX, PixelType::U16);
+declare_pixelstor!(u32: (0)..Self::MAX, PixelType::U8);
 
-declare_pixelstor!(i8: (Self::MIN)..Self::MAX);
-declare_pixelstor!(i16: (Self::MIN)..Self::MAX);
-declare_pixelstor!(i32: (Self::MIN)..Self::MAX);
+declare_pixelstor!(i8: (Self::MIN)..Self::MAX, PixelType::U8);
+declare_pixelstor!(i16: (Self::MIN)..Self::MAX, PixelType::U8);
+declare_pixelstor!(i32: (Self::MIN)..Self::MAX, PixelType::U8);
 
-declare_pixelstor!(f32: (0.0)..1.0);
-declare_pixelstor!(f64: (0.0)..1.0);
+declare_pixelstor!(f32: (0.0)..1.0,  PixelType::F32);
+declare_pixelstor!(f64: (0.0)..1.0, PixelType::F32);
 
 /// An `Enlargable::Larger` value should be enough to calculate
 /// the sum (average) of a few hundred or thousand Enlargeable values.
@@ -332,53 +336,12 @@ pub(crate) fn run_luma_alpha<T: PixelStor>(channels: usize, data: &[T], wts: &[f
 mod test {
     #[test]
     fn test_pixelstor() {
-        use crate::traits::PixelStor;
+        use crate::coretraits::PixelStor;
         let v = 0.5f32;
         let u = v.cast_u8();
         assert_eq!(u, 128);
         let v = 0.4f32;
         let u = v.cast_u8();
         assert_eq!(u, 102); // f32::round(v * 255.0) as u8);
-    }
-}
-
-/// A trait for shifting Bayer patterns.
-pub trait BayerShift {
-    /// Shift the Bayer pattern by `x` and `y` pixels.
-    fn shift(&self, x: usize, y: usize) -> Self;
-}
-
-impl BayerShift for BayerPattern {
-    fn shift(&self, x: usize, y: usize) -> Self {
-        match self {
-            BayerPattern::Rggb => match (x % 2, y % 2) {
-                (0, 0) => BayerPattern::Rggb,
-                (1, 0) => BayerPattern::Gbrg,
-                (0, 1) => BayerPattern::Grbg,
-                (1, 1) => BayerPattern::Bggr,
-                _ => unreachable!(),
-            },
-            BayerPattern::Gbrg => match (x % 2, y % 2) {
-                (0, 0) => BayerPattern::Gbrg,
-                (1, 0) => BayerPattern::Rggb,
-                (0, 1) => BayerPattern::Bggr,
-                (1, 1) => BayerPattern::Grbg,
-                _ => unreachable!(),
-            },
-            BayerPattern::Grbg => match (x % 2, y % 2) {
-                (0, 0) => BayerPattern::Grbg,
-                (1, 0) => BayerPattern::Bggr,
-                (0, 1) => BayerPattern::Rggb,
-                (1, 1) => BayerPattern::Gbrg,
-                _ => unreachable!(),
-            },
-            BayerPattern::Bggr => match (x % 2, y % 2) {
-                (0, 0) => BayerPattern::Bggr,
-                (1, 0) => BayerPattern::Grbg,
-                (0, 1) => BayerPattern::Gbrg,
-                (1, 1) => BayerPattern::Rggb,
-                _ => unreachable!(),
-            },
-        }
     }
 }

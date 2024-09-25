@@ -1,7 +1,7 @@
 //! Demosaicing without any interpolation.
 use crate::demosaic::RasterMut;
 use crate::demosaic::{BayerError, BayerRead, BayerResult, ColorFilterArray};
-use crate::{ImageRef, ImageOwned, PixelStor};
+use crate::{ImageOwned, ImageProps, ImageRef, PixelStor};
 
 use super::border_none::BorderNone;
 

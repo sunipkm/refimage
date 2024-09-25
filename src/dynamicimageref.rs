@@ -1,6 +1,6 @@
 use crate::{
-    AlphaChannel, BayerError, ColorSpace, DemosaicMethod, DynamicImageRef, ImageRef, PixelType,
-    ToLuma,
+    AlphaChannel, BayerError, ColorSpace, DemosaicMethod, DynamicImageRef, ImageProps, ImageRef,
+    PixelType, ToLuma,
 };
 use crate::{Debayer, DynamicImageOwned};
 
@@ -45,9 +45,49 @@ impl<'a> DynamicImageRef<'a> {
     }
 }
 
-impl<'a: 'b, 'b> Debayer<'a, 'b> for DynamicImageRef<'b> {
+impl<'a> ImageProps for DynamicImageRef<'a> {
+    type OutputU8 = DynamicImageOwned;
+
+    fn width(&self) -> usize {
+        dynamic_map!(self, ref image, { image.width() })
+    }
+
+    fn height(&self) -> usize {
+        dynamic_map!(self, ref image, { image.height() })
+    }
+
+    fn channels(&self) -> u8 {
+        dynamic_map!(self, ref image, { image.channels() })
+    }
+
+    fn color_space(&self) -> ColorSpace {
+        dynamic_map!(self, ref image, { image.color_space() })
+    }
+
+    fn pixel_type(&self) -> PixelType {
+        dynamic_map!(self, ref image, { image.pixel_type() })
+    }
+
+    fn len(&self) -> usize {
+        dynamic_map!(self, ref image, { image.len() })
+    }
+
+    fn is_empty(&self) -> bool {
+        dynamic_map!(self, ref image, { image.is_empty() })
+    }
+
+    fn into_u8(&self) -> Self::OutputU8 {
+        match self {
+            DynamicImageRef::U8(data) => DynamicImageOwned::U8(data.into()),
+            DynamicImageRef::U16(data) => DynamicImageOwned::U8(data.into_u8()),
+            DynamicImageRef::F32(data) => DynamicImageOwned::U8(data.into_u8()),
+        }
+    }
+}
+
+impl<'a: 'b, 'b> Debayer<'a, 'b> for DynamicImageRef<'_> {
     type Output = DynamicImageOwned;
-    fn debayer(&'b self, alg: DemosaicMethod) -> Result<Self::Output, BayerError> {
+    fn debayer(&self, alg: DemosaicMethod) -> Result<Self::Output, BayerError> {
         use DynamicImageRef::*;
         match self {
             U8(image) => Ok(DynamicImageOwned::U8(image.debayer(alg)?)),
@@ -57,10 +97,10 @@ impl<'a: 'b, 'b> Debayer<'a, 'b> for DynamicImageRef<'b> {
     }
 }
 
-impl<'a: 'b, 'b, T> ToLuma<'a, 'b, T> for DynamicImageRef<'a> {
+impl<'a: 'b, 'b, T> ToLuma<'a, 'b, T> for DynamicImageRef<'_> {
     type Output = DynamicImageOwned;
 
-    fn to_luma(&'b self) -> Result<Self::Output, &'static str> {
+    fn to_luma(&self) -> Result<Self::Output, &'static str> {
         use DynamicImageRef::*;
         match self {
             U8(image) => Ok(DynamicImageOwned::U8(image.to_luma()?)),
@@ -69,7 +109,7 @@ impl<'a: 'b, 'b, T> ToLuma<'a, 'b, T> for DynamicImageRef<'a> {
         }
     }
 
-    fn to_luma_alpha(&'b self) -> Result<Self::Output, &'static str> {
+    fn to_luma_alpha(&self) -> Result<Self::Output, &'static str> {
         use DynamicImageRef::*;
         match self {
             U8(image) => Ok(DynamicImageOwned::U8(image.to_luma_alpha()?)),
@@ -78,7 +118,7 @@ impl<'a: 'b, 'b, T> ToLuma<'a, 'b, T> for DynamicImageRef<'a> {
         }
     }
 
-    fn to_luma_custom(&'b self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
+    fn to_luma_custom(&self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
         use DynamicImageRef::*;
         match self {
             U8(image) => Ok(DynamicImageOwned::U8(image.to_luma_custom(coeffs)?)),
@@ -87,7 +127,7 @@ impl<'a: 'b, 'b, T> ToLuma<'a, 'b, T> for DynamicImageRef<'a> {
         }
     }
 
-    fn to_luma_alpha_custom(&'b self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
+    fn to_luma_alpha_custom(&self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
         use DynamicImageRef::*;
         match self {
             U8(image) => Ok(DynamicImageOwned::U8(image.to_luma_alpha_custom(coeffs)?)),
@@ -99,11 +139,11 @@ impl<'a: 'b, 'b, T> ToLuma<'a, 'b, T> for DynamicImageRef<'a> {
 
 macro_rules! impl_alphachannel {
     ($type:ty, $intype:ty, $variant_a:path, $variant_b:expr) => {
-        impl<'a: 'b, 'b> AlphaChannel<'a, 'b, $type, $intype> for DynamicImageRef<'a> {
+        impl<'a: 'b, 'b> AlphaChannel<'a, 'b, $type, $intype> for DynamicImageRef<'_> {
             type ImageOutput = DynamicImageOwned;
             type AlphaOutput = Vec<$type>;
 
-            fn add_alpha(&'a self, alpha: $intype) -> Result<Self::ImageOutput, &'static str> {
+            fn add_alpha(&self, alpha: $intype) -> Result<Self::ImageOutput, &'static str> {
                 use DynamicImageRef::*;
                 match self {
                     $variant_a(image) => {
@@ -114,9 +154,7 @@ macro_rules! impl_alphachannel {
                 }
             }
 
-            fn remove_alpha(
-                &'a self,
-            ) -> Result<(Self::ImageOutput, Self::AlphaOutput), &'static str> {
+            fn remove_alpha(&self) -> Result<(Self::ImageOutput, Self::AlphaOutput), &'static str> {
                 use DynamicImageRef::*;
                 match self {
                     $variant_a(image) => {
@@ -134,8 +172,8 @@ impl_alphachannel!(u8, &[u8], U8, DynamicImageOwned::U8);
 impl_alphachannel!(u16, &[u16], U16, DynamicImageOwned::U16);
 impl_alphachannel!(f32, &[f32], F32, DynamicImageOwned::F32);
 
-impl<'a> From<&DynamicImageRef<'a>> for PixelType {
-    fn from(data: &DynamicImageRef<'a>) -> Self {
+impl<'a> From<&DynamicImageRef<'_>> for PixelType {
+    fn from(data: &DynamicImageRef<'_>) -> Self {
         match data {
             DynamicImageRef::U8(_) => PixelType::U8,
             DynamicImageRef::U16(_) => PixelType::U16,

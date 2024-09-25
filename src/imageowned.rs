@@ -1,8 +1,9 @@
 use crate::{
+    coretraits::cast_u8,
     demosaic::{run_demosaic_imageowned, Debayer, RasterMut},
-    traits::cast_u8,
+    imagetraits::ImageProps,
     AlphaChannel, BayerError, ColorSpace, DemosaicMethod, Enlargeable, ImageRef, PixelStor,
-    ToLuma,
+    PixelType, ToLuma,
 };
 use bytemuck::{AnyBitPattern, PodCastError};
 use itertools::{Either, Itertools};
@@ -190,45 +191,42 @@ impl<T: PixelStor> ImageOwned<T> {
     pub fn as_u8_slice_checked(&self) -> Option<&[u8]> {
         bytemuck::try_cast_slice(self.as_slice()).ok()
     }
+}
 
-    /// Get the length of the data.
-    pub fn len(&self) -> usize {
-        self.data.len()
+impl<T: PixelStor> ImageProps for ImageOwned<T> {
+    type OutputU8 = ImageOwned<u8>;
+
+    fn width(&self) -> usize {
+        self.width as usize
     }
 
-    /// Check if the data is empty.
-    pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
+    fn height(&self) -> usize {
+        self.height as usize
     }
 
-    /// Get the width of the image.
-    pub fn width(&self) -> usize {
-        self.width.into()
-    }
-
-    /// Get the height of the image.
-    pub fn height(&self) -> usize {
-        self.height.into()
-    }
-
-    /// Get the number of channels in the image.
-    pub fn channels(&self) -> u8 {
+    fn channels(&self) -> u8 {
         self.channels
     }
 
-    /// Get the color space of the image.
-    pub fn color_space(&self) -> ColorSpace {
-        self.cspace.clone() // In most cases, this is a cheap operation
+    fn color_space(&self) -> ColorSpace {
+        self.cspace.clone()
     }
 
-    /// Convert the image to a [`ImageOwned`] with [`u8`] pixel type.
-    ///
-    /// Conversion is done by scaling the pixel values to the range `[0, 255]`.
-    ///
-    /// Note: This operation is parallelized if the `rayon` feature is enabled.
-    pub fn into_u8(&self) -> ImageOwned<u8> {
+    fn pixel_type(&self) -> PixelType {
+        T::PIXEL_TYPE
+    }
+
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    fn into_u8(&self) -> Self::OutputU8 {
         let out = cast_u8(self.data.as_slice());
-        ImageOwned {
+        Self::OutputU8 {
             data: out,
             width: self.width() as _,
             height: self.height() as _,
@@ -308,7 +306,7 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ToLuma<'a, 'b, T> for ImageOwned<T>
                 Self::Output::new(out, self.width(), self.height(), ColorSpace::Gray)
             }
             ColorSpace::Rgb | ColorSpace::Rgba => {
-                let out = crate::traits::run_luma(self.channels.into(), &self.data, &coeffs);
+                let out = crate::coretraits::run_luma(self.channels.into(), &self.data, &coeffs);
                 Self::Output::new(out, self.width(), self.height(), ColorSpace::Gray)
             }
             ColorSpace::Bayer(_) => Err("Image is not debayered."),
@@ -328,7 +326,8 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ToLuma<'a, 'b, T> for ImageOwned<T>
             }
             ColorSpace::GrayAlpha => Err("Image is already grayscale with alpha."),
             ColorSpace::Rgb | ColorSpace::Rgba => {
-                let out = crate::traits::run_luma_alpha(self.channels.into(), &self.data, &coeffs);
+                let out =
+                    crate::coretraits::run_luma_alpha(self.channels.into(), &self.data, &coeffs);
                 Self::Output::new(out, self.width(), self.height(), ColorSpace::GrayAlpha)
             }
             ColorSpace::Bayer(_) => Err("Image is not debayered."),

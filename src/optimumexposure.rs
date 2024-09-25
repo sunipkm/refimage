@@ -1,7 +1,7 @@
 #![warn(missing_docs)]
 use std::{cmp::Ord, time::Duration};
 
-use crate::{DynamicImageRef, DynamicImageOwned, ImageRef, ImageOwned, PixelStor};
+use crate::{DynamicImageOwned, DynamicImageRef, ImageOwned, ImageRef, PixelStor};
 
 #[derive(Debug, Clone, PartialEq)]
 /// Builder for the [`OptimumExposure`] calculator.

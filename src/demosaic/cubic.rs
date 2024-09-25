@@ -23,12 +23,12 @@
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
+use crate::coretraits::{do_div_float, do_prod, get_mean, large_to_f64, Enlargeable};
 use crate::demosaic::{BayerError, BayerRead, BayerResult, ColorFilterArray, RasterMut};
-use crate::traits::{do_div_float, do_prod, get_mean, large_to_f64, Enlargeable};
 
 #[cfg(feature = "rayon")]
 use crate::demosaic::border_mirror::BorderMirror;
-use crate::{ImageRef, ImageOwned, PixelStor};
+use crate::{ImageOwned, ImageProps, ImageRef, PixelStor};
 
 const PADDING: usize = 3;
 

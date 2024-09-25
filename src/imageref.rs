@@ -1,7 +1,8 @@
 use crate::{
+    coretraits::{cast_u8, Enlargeable},
     demosaic::{run_demosaic_imagedata, Debayer, RasterMut},
-    traits::{cast_u8, Enlargeable},
-    AlphaChannel, BayerError, ColorSpace, DemosaicMethod, ImageOwned, PixelStor, ToLuma,
+    imagetraits::ImageProps,
+    AlphaChannel, BayerError, ColorSpace, DemosaicMethod, ImageOwned, PixelStor, PixelType, ToLuma,
 };
 use bytemuck::{AnyBitPattern, PodCastError};
 use itertools::{Either, Itertools};
@@ -162,35 +163,48 @@ impl<'a, T: PixelStor> ImageRef<'a, T> {
     pub fn as_u8_slice_checked(&self) -> Option<&[u8]> {
         bytemuck::try_cast_slice(self.as_slice()).ok()
     }
+}
 
-    /// Get the length of the data.
-    pub fn len(&self) -> usize {
-        self.data.len()
+impl<T: PixelStor> ImageProps for ImageRef<'_, T> {
+    type OutputU8 = ImageOwned<u8>;
+
+    fn width(&self) -> usize {
+        self.width as usize
     }
 
-    /// Check if the data is empty.
-    pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
+    fn height(&self) -> usize {
+        self.height as usize
     }
 
-    /// Get the width of the image.
-    pub fn width(&self) -> usize {
-        self.width.into()
-    }
-
-    /// Get the height of the image.
-    pub fn height(&self) -> usize {
-        self.height.into()
-    }
-
-    /// Get the number of channels in the image.
-    pub fn channels(&self) -> u8 {
+    fn channels(&self) -> u8 {
         self.channels
     }
 
-    /// Get the color space of the image.
-    pub fn color_space(&self) -> ColorSpace {
-        self.cspace.clone() // in most cases, this is a cheap operation
+    fn color_space(&self) -> ColorSpace {
+        self.cspace.clone()
+    }
+
+    fn pixel_type(&self) -> PixelType {
+        T::PIXEL_TYPE
+    }
+
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    fn into_u8(&self) -> Self::OutputU8 {
+        let out = cast_u8(self.data);
+        Self::OutputU8 {
+            data: out,
+            width: self.width() as _,
+            height: self.height() as _,
+            cspace: self.cspace.clone(),
+            channels: self.channels(),
+        }
     }
 }
 
@@ -262,18 +276,18 @@ impl<T: PixelStor> ImageRef<'_, T> {
     }
 }
 
-impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ToLuma<'a, 'b, T> for ImageRef<'a, T> {
+impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ToLuma<'a, 'b, T> for ImageRef<'_, T> {
     type Output = ImageOwned<T>;
 
-    fn to_luma(&'a self) -> Result<Self::Output, &'static str> {
+    fn to_luma(&self) -> Result<Self::Output, &'static str> {
         self.to_luma_custom([0.299, 0.587, 0.114])
     }
 
-    fn to_luma_alpha(&'a self) -> Result<Self::Output, &'static str> {
+    fn to_luma_alpha(&self) -> Result<Self::Output, &'static str> {
         self.to_luma_alpha_custom([0.299, 0.587, 0.114])
     }
 
-    fn to_luma_custom(&'a self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
+    fn to_luma_custom(&self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
         // at this point, number of channels must match number of weights
         match self.cspace {
             ColorSpace::Gray => Err("Image is already grayscale."),
@@ -282,7 +296,7 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ToLuma<'a, 'b, T> for ImageRef<'a, 
                 Self::Output::new(out, self.width(), self.height(), ColorSpace::Gray)
             }
             ColorSpace::Rgb | ColorSpace::Rgba => {
-                let out = crate::traits::run_luma(self.channels.into(), self.data, &coeffs);
+                let out = crate::coretraits::run_luma(self.channels.into(), self.data, &coeffs);
                 Self::Output::new(out, self.width(), self.height(), ColorSpace::Gray)
             }
             ColorSpace::Bayer(_) => Err("Image is not debayered."),
@@ -290,7 +304,7 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ToLuma<'a, 'b, T> for ImageRef<'a, 
         }
     }
 
-    fn to_luma_alpha_custom(&'a self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
+    fn to_luma_alpha_custom(&self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
         match self.cspace {
             ColorSpace::Gray => {
                 let out: Vec<_> = self
@@ -302,7 +316,8 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ToLuma<'a, 'b, T> for ImageRef<'a, 
             }
             ColorSpace::GrayAlpha => Err("Image is already grayscale with alpha."),
             ColorSpace::Rgb | ColorSpace::Rgba => {
-                let out = crate::traits::run_luma_alpha(self.channels.into(), self.data, &coeffs);
+                let out =
+                    crate::coretraits::run_luma_alpha(self.channels.into(), self.data, &coeffs);
                 Self::Output::new(out, self.width(), self.height(), ColorSpace::GrayAlpha)
             }
             ColorSpace::Bayer(_) => Err("Image is not debayered."),
@@ -311,12 +326,12 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ToLuma<'a, 'b, T> for ImageRef<'a, 
     }
 }
 
-impl<'a: 'b, 'b, T: PixelStor + Enlargeable> AlphaChannel<'a, 'b, T, &[T]> for ImageRef<'a, T> {
+impl<'a: 'b, 'b, T: PixelStor + Enlargeable> AlphaChannel<'a, 'b, T, &[T]> for ImageRef<'_, T> {
     type ImageOutput = ImageOwned<T>;
 
     type AlphaOutput = Vec<T>;
 
-    fn add_alpha(&'a self, alpha: &[T]) -> Result<Self::ImageOutput, &'static str> {
+    fn add_alpha(&self, alpha: &[T]) -> Result<Self::ImageOutput, &'static str> {
         match &self.cspace {
             ColorSpace::Gray => {
                 if self.channels != 1 {
@@ -354,7 +369,7 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> AlphaChannel<'a, 'b, T, &[T]> for I
         }
     }
 
-    fn remove_alpha(&'a self) -> Result<(Self::ImageOutput, Self::AlphaOutput), &'static str> {
+    fn remove_alpha(&self) -> Result<(Self::ImageOutput, Self::AlphaOutput), &'static str> {
         remove_alpha_impl(self)
     }
 }
@@ -400,7 +415,7 @@ where
     }
 }
 
-impl<'a: 'b, 'b, T: PixelStor + Enlargeable> Debayer<'a, 'b> for ImageRef<'b, T> {
+impl<'a: 'b, 'b, T: PixelStor + Enlargeable> Debayer<'a, 'b> for ImageRef<'_, T> {
     type Output = ImageOwned<T>;
     fn debayer(&self, alg: DemosaicMethod) -> Result<Self::Output, BayerError> {
         let cfa = self
@@ -499,8 +514,7 @@ mod test {
         let mut data2 = data.clone();
         let img = crate::ImageRef::new(&mut data, 3, 2, crate::ColorSpace::Gray).unwrap();
         let ptr = bytemuck::cast_slice_mut(&mut data2);
-        let img2 =
-            crate::ImageRef::<u16>::from_u8_mut(ptr, 3, 2, crate::ColorSpace::Gray).unwrap();
+        let img2 = crate::ImageRef::<u16>::from_u8_mut(ptr, 3, 2, crate::ColorSpace::Gray).unwrap();
         assert_eq!(img.as_slice(), img2.as_slice());
         let mut data = vec![181u8, 178, 118, 183, 85, 131];
         let img = crate::ImageRef::new(&mut data, 3, 2, crate::ColorSpace::Gray).unwrap();

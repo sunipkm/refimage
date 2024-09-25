@@ -50,11 +50,13 @@
 //! - `image`: Enables [`TryFrom`] conversions between [`DynamicImage`] and [`DynamicImageRef`], [`DynamicImageOwned`] (<b>disabled</b> by default).
 //!
 
-mod traits;
+mod coreimpls;
+mod coretraits;
+mod imagetraits;
 #[macro_use]
 mod demosaic;
-mod imageref;
 mod imageowned;
+mod imageref;
 #[macro_use]
 mod dynamicimageref;
 #[macro_use]
@@ -64,20 +66,26 @@ mod dynamicimage_interop;
 mod dynamicimage_serde;
 #[cfg(feature = "fitsio")]
 mod fitsio_interop;
+mod genericimage;
+mod genericimageowned;
+mod genericimageref;
 #[cfg(feature = "fitsio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
 pub use fitsio_interop::{FitsCompression, FitsError, FitsWrite};
 
+pub use genericimageowned::GenericImageOwned;
+pub use genericimageref::GenericImageRef;
+
 mod metadata;
 pub use metadata::{
-    GenericImageRef, GenericImageOwned, GenericLineItem, GenericValue, CAMERANAME_KEY, EXPOSURE_KEY,
-    PROGRAMNAME_KEY, TIMESTAMP_KEY,
+    GenericLineItem, GenericValue, CAMERANAME_KEY, EXPOSURE_KEY, PROGRAMNAME_KEY, TIMESTAMP_KEY,
 };
 
-use demosaic::ColorFilterArray;
+pub use coretraits::{Enlargeable, PixelStor};
 pub use demosaic::{BayerError, Debayer, DemosaicMethod};
+pub use genericimage::GenericImage;
+pub use imagetraits::{AlphaChannel, BayerShift, ImageProps, ToLuma};
 use serde::{Deserialize, Serialize};
-pub use traits::{BayerShift, Enlargeable, PixelStor};
 
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
@@ -85,8 +93,8 @@ pub use image::DynamicImage; // Used for image interop
 
 pub use serde::{Deserializer, Serializer};
 
-pub use imageref::ImageRef;
 pub use imageowned::ImageOwned;
+pub use imageref::ImageRef;
 
 mod optimumexposure;
 pub use optimumexposure::{CalcOptExp, OptimumExposure, OptimumExposureBuilder};
@@ -213,130 +221,29 @@ pub enum PixelType {
     U8 = 8,
     /// 16-bit unsigned integer.
     U16 = 16,
+    /// 32-bit unsigned integer.
+    U32 = 32,
+    /// 64-bit unsigned integer.
+    U64 = 64,
+    /// 8-bit signed integer.
+    I8 = -8,
+    /// 16-bit signed integer.
+    I16 = -16,
+    /// 32-bit signed integer.
+    I32 = -128,
+    /// 64-bit signed integer.
+    I64 = -78,
     /// 32-bit floating point.
     F32 = -32,
-}
-
-impl TryFrom<i8> for PixelType {
-    type Error = &'static str;
-
-    fn try_from(value: i8) -> Result<Self, Self::Error> {
-        match value {
-            8 => Ok(Self::U8),
-            16 => Ok(Self::U16),
-            -32 => Ok(Self::F32),
-            _ => Err("Invalid value for PixelType"),
-        }
-    }
-}
-
-impl TryInto<ColorFilterArray> for ColorSpace {
-    type Error = &'static str;
-
-    fn try_into(self) -> Result<ColorFilterArray, Self::Error> {
-        match self {
-            ColorSpace::Bayer(pat) => match pat {
-                BayerPattern::Bggr => Ok(ColorFilterArray::Bggr),
-                BayerPattern::Gbrg => Ok(ColorFilterArray::Gbrg),
-                BayerPattern::Grbg => Ok(ColorFilterArray::Grbg),
-                BayerPattern::Rggb => Ok(ColorFilterArray::Rggb),
-            },
-            ColorSpace::Gray | ColorSpace::GrayAlpha => {
-                Err("Gray color space not supported for Bayer images.")
-            }
-            ColorSpace::Rgb | ColorSpace::Rgba => {
-                Err("RGB color space not supported for Bayer images.")
-            }
-            ColorSpace::Custom(_) => Err("Custom color space not supported for Bayer images."),
-        }
-    }
-}
-
-#[allow(clippy::from_over_into)]
-impl Into<ColorSpace> for BayerPattern {
-    fn into(self) -> ColorSpace {
-        ColorSpace::Bayer(self)
-    }
-}
-
-/// A trait for converting an image to a luminance image.
-///
-/// This trait is implemented for [`ImageRef`], [`DynamicImageRef`], [`GenericImageRef`] and
-/// their owned counterparts, [`ImageOwned`], [`DynamicImageOwned`] and [`GenericImageOwned`].
-pub trait ToLuma<'b: 'a, 'a, T>
-where
-    T: Sized,
-{
-    /// The output type of the conversion.
-    type Output;
-
-    /// Convert the image to a luminance image.
-    ///
-    /// This function uses the formula `Y = 0.299R + 0.587G + 0.114B` to calculate the
-    /// corresponding luminance image.
-    ///
-    /// # Errors
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB image.
-    fn to_luma(&'b self) -> Result<Self::Output, &'static str>;
-
-    /// Convert the image to a luminance alpha image.
-    ///
-    /// This function uses the formula `Y = 0.299R + 0.587G + 0.114B` to calculate the
-    /// corresponding luminance image.
-    ///
-    /// The alpha channel is copied from the original image, if present.
-    /// Otherwise, the alpha channel is set to maximum value.
-    ///
-    /// # Errors
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB image.
-    fn to_luma_alpha(&'b self) -> Result<Self::Output, &'static str>;
-
-    /// Convert the image to a luminance image with custom coefficients.
-    ///
-    /// # Arguments
-    /// - `wts`: The weights to use for the conversion.
-    ///
-    /// # Errors
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB image.
-    fn to_luma_custom(&'b self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str>;
-
-    /// Convert the image to a luminance image with custom coefficients.
-    ///
-    /// # Arguments
-    /// - `wts`: The weights to use for the conversion. The number of weights must be 3.
-    ///
-    /// # Errors
-    /// - If the number of weights is not 3.
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB image.
-    fn to_luma_alpha_custom(&'b self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str>;
-}
-
-/// A trait for adding/removing an alpha channel to/from an image.
-pub trait AlphaChannel<'b: 'a, 'a, T, U>
-where
-    T: Sized,
-    U: ?Sized,
-{
-    /// The output type of the operation.
-    type ImageOutput;
-    /// The output type of the alpha channel.
-    type AlphaOutput;
-
-    /// Add an alpha channel to the image.
-    fn add_alpha(&'b self, alpha: U) -> Result<Self::ImageOutput, &'static str>;
-
-    /// Remove the alpha channel from the image.
-    fn remove_alpha(&'b self) -> Result<(Self::ImageOutput, Self::AlphaOutput), &'static str>;
+    /// 64-bit floating point.
+    F64 = -64,
 }
 
 mod test {
     #[test]
     fn test_debayer() {
         use crate::demosaic::Debayer;
+        use crate::ImageProps;
         // color_backtrace::install();
         let mut src = [
             229, 67, 95, 146, 232, 51, 229, 241, 169, 161, 15, 52, 45, 175, 98, 197,

@@ -13,9 +13,10 @@ use fitsio::{
 };
 
 use crate::{
+    genericimageref::GenericImageRef,
     metadata::{GenericValue, TIMESTAMP_KEY},
-    BayerPattern, ColorSpace, DynamicImageRef, DynamicImageOwned, GenericImageRef, GenericImageOwned,
-    GenericLineItem, ImageRef, ImageOwned, PixelStor, PixelType,
+    BayerPattern, ColorSpace, DynamicImageOwned, DynamicImageRef, GenericImageOwned,
+    GenericLineItem, ImageOwned, ImageProps, ImageRef, PixelStor, PixelType,
 };
 
 #[derive(Debug, Clone, PartialEq, Hash)]
@@ -447,6 +448,13 @@ impl From<PixelType> for ImageType {
             PixelType::U8 => ImageType::UnsignedByte,
             PixelType::U16 => ImageType::UnsignedShort,
             PixelType::F32 => ImageType::Float,
+            PixelType::I8 => ImageType::Byte,
+            PixelType::I16 => ImageType::Short,
+            PixelType::I32 => ImageType::Long,
+            PixelType::I64 => ImageType::LongLong,
+            PixelType::U32 => ImageType::UnsignedLong,
+            PixelType::F64 => ImageType::Double,
+            PixelType::U64 => ImageType::UnsignedLong, // FITS does not support unsigned long long
         }
     }
 }

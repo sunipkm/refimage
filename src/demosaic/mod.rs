@@ -16,12 +16,12 @@ pub use bayer::{BayerRead, ColorFilterArray};
 pub use errcode::BayerError;
 pub use errcode::BayerResult;
 
-use crate::traits::Enlargeable;
-use crate::ImageRef;
+use crate::coretraits::Enlargeable;
 use crate::ImageOwned;
+use crate::ImageRef;
 use crate::PixelStor;
 #[allow(unused_imports)]
-use crate::{DynamicImageRef, DynamicImageOwned, GenericImageRef, GenericImageOwned};
+use crate::{DynamicImageOwned, DynamicImageRef, GenericImageOwned, GenericImageRef};
 
 /// Mutable raster structure.
 pub(crate) struct RasterMut<'a, T: PixelStor> {
