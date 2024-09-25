@@ -17,11 +17,11 @@ pub use errcode::BayerError;
 pub use errcode::BayerResult;
 
 use crate::traits::Enlargeable;
-use crate::ImageData;
+use crate::ImageRef;
 use crate::ImageOwned;
 use crate::PixelStor;
 #[allow(unused_imports)]
-use crate::{DynamicImageData, DynamicImageOwned, GenericImage, GenericImageOwned};
+use crate::{DynamicImageRef, DynamicImageOwned, GenericImageRef, GenericImageOwned};
 
 /// Mutable raster structure.
 pub(crate) struct RasterMut<'a, T: PixelStor> {
@@ -47,7 +47,7 @@ pub enum DemosaicMethod {
 }
 
 pub(crate) fn run_demosaic_imagedata<T>(
-    r: &ImageData<T>,
+    r: &ImageRef<T>,
     cfa: ColorFilterArray,
     alg: DemosaicMethod,
     dst: &mut RasterMut<'_, T>,
@@ -82,7 +82,7 @@ where
 
 /// Trait to apply a Demosaic algorithm to an image.
 ///
-/// This trait is implemented for [`ImageData`], [`DynamicImageData`], [`GenericImage`] and
+/// This trait is implemented for [`ImageRef`], [`DynamicImageRef`], [`GenericImageRef`] and
 /// their owned counterparts, [`ImageOwned`], [`DynamicImageOwned`] and [`GenericImageOwned`].
 pub trait Debayer<'b: 'a, 'a>
 where

@@ -1,7 +1,7 @@
 #![warn(missing_docs)]
 use std::{cmp::Ord, time::Duration};
 
-use crate::{DynamicImageData, DynamicImageOwned, ImageData, ImageOwned, PixelStor};
+use crate::{DynamicImageRef, DynamicImageOwned, ImageRef, ImageOwned, PixelStor};
 
 #[derive(Debug, Clone, PartialEq)]
 /// Builder for the [`OptimumExposure`] calculator.
@@ -354,7 +354,7 @@ pub trait CalcOptExp {
     ) -> Result<(Duration, u16), &'static str>;
 }
 
-impl<'a, T: PixelStor + Ord> CalcOptExp for ImageData<'a, T> {
+impl<'a, T: PixelStor + Ord> CalcOptExp for ImageRef<'a, T> {
     fn calc_opt_exp(
         self,
         eval: &OptimumExposure,
@@ -376,14 +376,14 @@ impl<T: PixelStor + Ord> CalcOptExp for ImageOwned<T> {
     }
 }
 
-impl<'a> CalcOptExp for DynamicImageData<'a> {
+impl<'a> CalcOptExp for DynamicImageRef<'a> {
     fn calc_opt_exp(
         mut self,
         eval: &OptimumExposure,
         exposure: Duration,
         bin: u8,
     ) -> Result<(Duration, u16), &'static str> {
-        use DynamicImageData::*;
+        use DynamicImageRef::*;
         match self {
             U8(ref mut img) => eval.calculate(img.as_mut_slice(), exposure, bin),
             U16(ref mut img) => eval.calculate(img.as_mut_slice(), exposure, bin),

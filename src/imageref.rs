@@ -12,19 +12,20 @@ use num_traits::CheckedEuclid;
 /// This represents a _matrix_ of _pixels_ which are composed of primitive and common
 /// types, i.e. `u8`, `u16`, and `f32`. The matrix is stored in a _row-major_ order.
 ///
-/// [`ImageData`] supports arbitrary color spaces and number of channels, but the number
+/// [`ImageRef`] supports arbitrary color spaces and number of channels, but the number
 /// of channels must be consistent across the image. The data is stored in a single
 /// contiguous buffer.
+/// Alpha channels are not supported.
 ///
 /// # Usage
 /// ```
-/// use refimage::{ImageData, ColorSpace};
+/// use refimage::{ImageRef, ColorSpace};
 ///
 /// let mut data = vec![1u8, 2, 3, 4, 5, 6];
-/// let img = ImageData::new(&mut data, 3, 2, ColorSpace::Gray).unwrap();
+/// let img = ImageRef::new(&mut data, 3, 2, ColorSpace::Gray).unwrap();
 /// ```
 #[derive(Debug, PartialEq)]
-pub struct ImageData<'a, T: PixelStor> {
+pub struct ImageRef<'a, T: PixelStor> {
     pub(crate) data: &'a mut [T],
     pub(crate) width: u16,
     pub(crate) height: u16,
@@ -32,7 +33,7 @@ pub struct ImageData<'a, T: PixelStor> {
     pub(crate) cspace: ColorSpace,
 }
 
-impl<'a, T: PixelStor> ImageData<'a, T> {
+impl<'a, T: PixelStor> ImageRef<'a, T> {
     pub(crate) fn create(
         data: &'a mut [T],
         width: usize,
@@ -65,9 +66,7 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
 
         if let Some(exp_channels) = match cspace {
             ColorSpace::Gray | ColorSpace::Bayer(_) => Some(1),
-            ColorSpace::GrayAlpha => Some(2),
             ColorSpace::Rgb => Some(3),
-            ColorSpace::Rgba => Some(4),
             _ => None,
         } {
             if channels != exp_channels {
@@ -84,7 +83,7 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
         })
     }
 
-    /// Create a new [`ImageData`] from a mutable slice of data.
+    /// Create a new [`ImageRef`] from a mutable slice of data.
     ///
     /// Images can not be larger than 65535x65535 pixels.
     ///
@@ -195,8 +194,8 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
     }
 }
 
-impl<'a, T: PixelStor + AnyBitPattern> ImageData<'a, T> {
-    /// Create a new [`ImageData`] from a mutable slice of `u8` data.
+impl<'a, T: PixelStor + AnyBitPattern> ImageRef<'a, T> {
+    /// Create a new [`ImageRef`] from a mutable slice of `u8` data.
     ///
     /// Images can not be larger than 65535x65535 pixels.
     ///
@@ -245,7 +244,7 @@ impl<'a, T: PixelStor + AnyBitPattern> ImageData<'a, T> {
     }
 }
 
-impl<T: PixelStor> ImageData<'_, T> {
+impl<T: PixelStor> ImageRef<'_, T> {
     /// Convert the image to a [`ImageOwned`] with [`u8`] pixel type.
     ///
     /// Conversion is done by scaling the pixel values to the range `[0, 255]`.
@@ -263,7 +262,7 @@ impl<T: PixelStor> ImageData<'_, T> {
     }
 }
 
-impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ToLuma<'a, 'b, T> for ImageData<'a, T> {
+impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ToLuma<'a, 'b, T> for ImageRef<'a, T> {
     type Output = ImageOwned<T>;
 
     fn to_luma(&'a self) -> Result<Self::Output, &'static str> {
@@ -312,7 +311,7 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ToLuma<'a, 'b, T> for ImageData<'a,
     }
 }
 
-impl<'a: 'b, 'b, T: PixelStor + Enlargeable> AlphaChannel<'a, 'b, T, &[T]> for ImageData<'a, T> {
+impl<'a: 'b, 'b, T: PixelStor + Enlargeable> AlphaChannel<'a, 'b, T, &[T]> for ImageRef<'a, T> {
     type ImageOutput = ImageOwned<T>;
 
     type AlphaOutput = Vec<T>;
@@ -360,7 +359,7 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> AlphaChannel<'a, 'b, T, &[T]> for I
     }
 }
 
-fn remove_alpha_impl<T>(inp: &ImageData<T>) -> Result<(ImageOwned<T>, Vec<T>), &'static str>
+fn remove_alpha_impl<T>(inp: &ImageRef<T>) -> Result<(ImageOwned<T>, Vec<T>), &'static str>
 where
     T: PixelStor + Enlargeable,
 {
@@ -401,7 +400,7 @@ where
     }
 }
 
-impl<'a: 'b, 'b, T: PixelStor + Enlargeable> Debayer<'a, 'b> for ImageData<'b, T> {
+impl<'a: 'b, 'b, T: PixelStor + Enlargeable> Debayer<'a, 'b> for ImageRef<'b, T> {
     type Output = ImageOwned<T>;
     fn debayer(&self, alg: DemosaicMethod) -> Result<Self::Output, BayerError> {
         let cfa = self
@@ -429,7 +428,7 @@ mod test {
 
     #[test]
     fn test_into_luma() {
-        use crate::{ColorSpace, ImageData, ToLuma};
+        use crate::{ColorSpace, ImageRef, ToLuma};
         let mut data = vec![
             181u8, 178, 118, 183, 85, 131, 82, 143, 196, 108, 64, 33, 174, 43, 18, 236, 19, 179,
             178, 132, 14, 32, 82, 1, 185, 221, 160, 112, 67, 179, 248, 104, 31, 105, 33, 100, 73,
@@ -473,7 +472,7 @@ mod test {
             91, 171, 247, 88, 158, 95, 220, 127, 126, 12, 3, 124, 198, 134, 151, 21, 98, 200, 157,
             131, 82, 216, 142, 218, 19, 142, 73, 108, 155, 51, 254, 221, 41, 85, 57, 60, 176,
         ];
-        let img = ImageData::new(&mut data, 16, 16, ColorSpace::Rgb).unwrap();
+        let img = ImageRef::new(&mut data, 16, 16, ColorSpace::Rgb).unwrap();
         let rgb = img.to_luma().unwrap();
         let expected = vec![
             172, 119, 130, 73, 79, 102, 132, 57, 203, 93, 138, 62, 112, 159, 116, 155, 78, 85, 165,
@@ -498,20 +497,20 @@ mod test {
     fn test_u8_src() {
         let mut data = vec![181u16, 178, 118, 183, 85, 131];
         let mut data2 = data.clone();
-        let img = crate::ImageData::new(&mut data, 3, 2, crate::ColorSpace::Gray).unwrap();
+        let img = crate::ImageRef::new(&mut data, 3, 2, crate::ColorSpace::Gray).unwrap();
         let ptr = bytemuck::cast_slice_mut(&mut data2);
         let img2 =
-            crate::ImageData::<u16>::from_u8_mut(ptr, 3, 2, crate::ColorSpace::Gray).unwrap();
+            crate::ImageRef::<u16>::from_u8_mut(ptr, 3, 2, crate::ColorSpace::Gray).unwrap();
         assert_eq!(img.as_slice(), img2.as_slice());
         let mut data = vec![181u8, 178, 118, 183, 85, 131];
-        let img = crate::ImageData::new(&mut data, 3, 2, crate::ColorSpace::Gray).unwrap();
+        let img = crate::ImageRef::new(&mut data, 3, 2, crate::ColorSpace::Gray).unwrap();
         // let ptr = bytemuck::cast_slice_mut(&mut data);
         drop(img);
         let img2 =
-            crate::ImageData::<u8>::from_u8_mut(&mut data, 3, 2, crate::ColorSpace::Gray).unwrap();
+            crate::ImageRef::<u8>::from_u8_mut(&mut data, 3, 2, crate::ColorSpace::Gray).unwrap();
         assert_eq!(img2.as_slice(), &[181, 178, 118, 183, 85, 131]);
         drop(img2);
-        let img = crate::ImageData::new(&mut data, 3, 2, crate::ColorSpace::Gray).unwrap();
+        let img = crate::ImageRef::new(&mut data, 3, 2, crate::ColorSpace::Gray).unwrap();
         assert_eq!(img.as_slice(), &[181, 178, 118, 183, 85, 131]);
     }
 }

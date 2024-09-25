@@ -15,10 +15,10 @@ fn main() {
         0, 0, 0, 161, 0, 15, 0, 0, 0, 52, 0, 0, 45, 0, 0, 0, 175, 0, 98, 0, 0, 0, 197,
     ];
     let img = ImageOwned::from_owned(src.into(), 4, 4, BayerPattern::Rggb.into())
-        .expect("Failed to create ImageData");
+        .expect("Failed to create ImageRef");
     let a = img.debayer(DemosaicMethod::None);
     assert!(a.is_ok());
-    let a = a.unwrap(); // at this point, a is an ImageData struct
+    let a = a.unwrap(); // at this point, a is an ImageRef struct
     assert!(a.channels() == 3);
     assert!(a.width() == 4);
     assert!(a.height() == 4);

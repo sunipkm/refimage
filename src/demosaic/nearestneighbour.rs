@@ -2,14 +2,14 @@
 
 use crate::demosaic::RasterMut;
 use crate::demosaic::{BayerError, BayerRead, BayerResult, ColorFilterArray};
-use crate::{ImageData, ImageOwned, PixelStor};
+use crate::{ImageRef, ImageOwned, PixelStor};
 
 use super::border_replicate::BorderReplicate;
 
 const PADDING: usize = 1;
 
 pub fn run_imagedata<T>(
-    src: &ImageData<'_, T>,
+    src: &ImageRef<'_, T>,
     cfa: ColorFilterArray,
     dst: &mut RasterMut<'_, T>,
 ) -> BayerResult<()>

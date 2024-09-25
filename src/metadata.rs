@@ -6,12 +6,12 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AlphaChannel, BayerError, ColorSpace, Debayer, DemosaicMethod, DynamicImageData,
-    DynamicImageOwned, ToLuma,
+    AlphaChannel, BayerError, ColorSpace, Debayer, DemosaicMethod, DynamicImageOwned,
+    DynamicImageRef, ToLuma,
 };
 
 /// Key for the timestamp metadata.
-/// This key is inserted by default when creating a new [`GenericImage`].
+/// This key is inserted by default when creating a new [`GenericImageRef`].
 pub const TIMESTAMP_KEY: &str = "TIMESTAMP";
 /// Key for the camera name metadata.
 pub const CAMERANAME_KEY: &str = "CAMERA";
@@ -26,7 +26,7 @@ pub const EXPOSURE_KEY: &str = "EXPOSURE";
 /// This struct holds a metadata item, which is a key-value pair with an optional comment.
 ///
 /// # Usage
-/// This struct is not meant to be used directly. Instead, use the [`crate::GenericImage`]
+/// This struct is not meant to be used directly. Instead, use the [`crate::GenericImageRef`]
 /// struct and associated methods to insert new metadata items, or to get existing
 /// metadata items.
 ///
@@ -87,51 +87,51 @@ pub enum GenericValue {
     String(String),
 }
 
-/// A serializable, generic image with metadata, backed by [`DynamicImageData`].
+/// A serializable, generic image with metadata, backed by [`DynamicImageRef`].
 ///
 /// This struct holds an image with associated metadata. The metadata is stored as a vector of
-/// [`GenericLineItem`] structs. The image data is stored as a [`DynamicImageData`].
+/// [`GenericLineItem`] structs. The image data is stored as a [`DynamicImageRef`].
 ///
 /// # Note
-/// - Internally [`GenericImage`] and [`GenericImageOwned`] serialize to the same
+/// - Internally [`GenericImageRef`] and [`GenericImageOwned`] serialize to the same
 ///   representation, and can be deserialized into each other.
 ///
 /// # Usage
 /// ```
-/// use refimage::{ImageData, DynamicImageData, GenericImage, ColorSpace};
+/// use refimage::{ImageRef, DynamicImageRef, GenericImageRef, ColorSpace};
 /// use std::time::SystemTime;
 /// let mut data = vec![1u8, 2, 3, 4, 5, 6];
-/// let img = ImageData::new(&mut data, 3, 2, ColorSpace::Gray).unwrap();
-/// let img = DynamicImageData::from(img);
-/// let mut img = GenericImage::new(std::time::SystemTime::now(), img);
+/// let img = ImageRef::new(&mut data, 3, 2, ColorSpace::Gray).unwrap();
+/// let img = DynamicImageRef::from(img);
+/// let mut img = GenericImageRef::new(std::time::SystemTime::now(), img);
 ///
 /// img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
 /// ```
 #[derive(Debug, PartialEq, Serialize)]
-pub struct GenericImage<'a> {
+pub struct GenericImageRef<'a> {
     metadata: HashMap<String, GenericLineItem>,
     #[serde(borrow)]
-    image: DynamicImageData<'a>,
+    image: DynamicImageRef<'a>,
 }
 
 /// A serializable, generic image with metadata, backed by [`DynamicImageOwned`].
 ///
-/// The image data is backed either by owned data, or a slice.
+/// The image data is backed by a slice.
 ///
 /// This struct holds an image with associated metadata. The metadata is stored as a vector of
 /// [`GenericLineItem`] structs. The image data is stored as a [`DynamicImageOwned`].
 ///
-/// /// # Note
-/// - Internally [`GenericImage`] and [`GenericImageOwned`] serialize to the same
-///   representation, and can be deserialized into each other.
+/// # Note
+/// - Internally [`GenericImageRef`] and [`GenericImageOwned`] serialize to the same
+///   representation, and [`GenericImageRef`] can be deserialized to [`GenericImageOwned`].
 ///
 /// # Usage
 /// ```
-/// use refimage::{ImageData, DynamicImageData, GenericImageOwned, ColorSpace};
+/// use refimage::{ImageRef, DynamicImageRef, GenericImageOwned, ColorSpace};
 /// use std::time::SystemTime;
 /// let mut data = vec![1u8, 2, 3, 4, 5, 6];
-/// let img = ImageData::new(&mut data, 3, 2, ColorSpace::Gray).unwrap();
-/// let img = DynamicImageData::from(img);
+/// let img = ImageRef::new(&mut data, 3, 2, ColorSpace::Gray).unwrap();
+/// let img = DynamicImageRef::from(img);
 /// let mut img = GenericImageOwned::new(std::time::SystemTime::now(), (&img).into());
 ///
 /// img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
@@ -142,25 +142,25 @@ pub struct GenericImageOwned {
     image: DynamicImageOwned,
 }
 
-impl<'a> GenericImage<'a> {
-    /// Create a new [`GenericImage`] with metadata.
+impl<'a> GenericImageRef<'a> {
+    /// Create a new [`GenericImageRef`] with metadata.
     ///
     /// # Arguments
     /// - `tstamp`: The timestamp of the image.
-    /// - `image`: The image data, of type [`DynamicImageData`].
+    /// - `image`: The image data, of type [`DynamicImageRef`].
     ///
     /// # Example
     /// ```
-    /// use refimage::{ImageData, DynamicImageData, GenericImage, ColorSpace};
+    /// use refimage::{ImageRef, DynamicImageRef, GenericImageRef, ColorSpace};
     /// use std::time::SystemTime;
     /// let mut data = vec![1u8, 2, 3, 4, 5, 6];
-    /// let img = ImageData::new(&mut data, 3, 2, ColorSpace::Gray).unwrap();
-    /// let img = DynamicImageData::from(img);
-    /// let mut img = GenericImage::new(std::time::SystemTime::now(), img);
+    /// let img = ImageRef::new(&mut data, 3, 2, ColorSpace::Gray).unwrap();
+    /// let img = DynamicImageRef::from(img);
+    /// let mut img = GenericImageRef::new(std::time::SystemTime::now(), img);
     ///
     /// img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
     /// ```
-    pub fn new(tstamp: SystemTime, image: DynamicImageData<'a>) -> Self {
+    pub fn new(tstamp: SystemTime, image: DynamicImageRef<'a>) -> Self {
         let mut metadata = HashMap::new();
         metadata.insert(
             TIMESTAMP_KEY.to_string(),
@@ -172,7 +172,22 @@ impl<'a> GenericImage<'a> {
         Self { metadata, image }
     }
 
-    /// Insert a metadata value into the [`GenericImage`].
+    /// Get the timestamp of the image.
+    pub fn get_timestamp(&self) -> SystemTime {
+        self.metadata
+            .get(TIMESTAMP_KEY)
+            .and_then(|x| x.get_value().clone().try_into().ok())
+            .unwrap() // Safe to unwrap, as the timestamp key is always inserted
+    }
+
+    /// Get the exposure time of the image.
+    pub fn get_exposure(&self) -> Option<Duration> {
+        self.metadata
+            .get(EXPOSURE_KEY)
+            .and_then(|x| x.get_value().clone().try_into().ok())
+    }
+
+    /// Insert a metadata value into the [`GenericImageRef`].
     ///
     /// # Arguments
     /// - `name`: The name of the metadata value. The name must be non-empty and less than 80 characters.
@@ -200,7 +215,7 @@ impl<'a> GenericImage<'a> {
         T::insert_key_gi(self, name, value)
     }
 
-    /// Remove a metadata value from the [`GenericImage`].
+    /// Remove a metadata value from the [`GenericImageRef`].
     ///
     /// # Arguments
     /// - `name`: The name of the metadata value to remove.
@@ -220,7 +235,7 @@ impl<'a> GenericImage<'a> {
         Ok(())
     }
 
-    /// Replace a metadata value in the [`GenericImage`].
+    /// Replace a metadata value in the [`GenericImageRef`].
     ///
     /// # Arguments
     /// - `name`: The name of the metadata value to replace.
@@ -238,11 +253,11 @@ impl<'a> GenericImage<'a> {
         T::replace_gi(self, name, value)
     }
 
-    /// Get the underlying [`DynamicImageData`].
+    /// Get the underlying [`DynamicImageRef`].
     ///
     /// # Returns
-    /// The underlying [`DynamicImageData`] of the [`GenericImage`].
-    pub fn get_image(&self) -> &DynamicImageData<'a> {
+    /// The underlying [`DynamicImageRef`] of the [`GenericImageRef`].
+    pub fn get_image(&self) -> &DynamicImageRef<'a> {
         &self.image
     }
 
@@ -305,6 +320,21 @@ impl GenericImageOwned {
             },
         );
         Self { metadata, image }
+    }
+
+    /// Get the timestamp of the image.
+    pub fn get_timestamp(&self) -> SystemTime {
+        self.metadata
+            .get(TIMESTAMP_KEY)
+            .and_then(|x| x.get_value().clone().try_into().ok())
+            .unwrap() // Safe to unwrap, as the timestamp key is always inserted
+    }
+
+    /// Get the exposure time of the image.
+    pub fn get_exposure(&self) -> Option<Duration> {
+        self.metadata
+            .get(EXPOSURE_KEY)
+            .and_then(|x| x.get_value().clone().try_into().ok())
     }
 
     /// Insert a metadata value into the [`GenericImageOwned`].
@@ -412,7 +442,7 @@ impl GenericImageOwned {
     }
 }
 
-impl<'a: 'b, 'b> Debayer<'a, 'b> for GenericImage<'b> {
+impl<'a: 'b, 'b> Debayer<'a, 'b> for GenericImageRef<'b> {
     type Output = GenericImageOwned;
     fn debayer(&'b self, method: DemosaicMethod) -> Result<Self::Output, BayerError> {
         let img = self.image.debayer(method)?;
@@ -484,7 +514,7 @@ macro_rules! impl_toluma {
     };
 }
 
-impl_toluma!(GenericImage<'a>, DynamicImageData<'_>);
+impl_toluma!(GenericImageRef<'a>, DynamicImageRef<'_>);
 impl_toluma!(GenericImageOwned, DynamicImageOwned);
 
 macro_rules! impl_alphachannel {
@@ -524,9 +554,9 @@ macro_rules! impl_alphachannel {
     };
 }
 
-impl_alphachannel!(u8, GenericImage<'a>, DynamicImageData<'_>);
-impl_alphachannel!(u16, GenericImage<'a>, DynamicImageData<'_>);
-impl_alphachannel!(f32, GenericImage<'a>, DynamicImageData<'_>);
+impl_alphachannel!(u8, GenericImageRef<'a>, DynamicImageRef<'_>);
+impl_alphachannel!(u16, GenericImageRef<'a>, DynamicImageRef<'_>);
+impl_alphachannel!(f32, GenericImageRef<'a>, DynamicImageRef<'_>);
 
 impl_alphachannel!(u8, GenericImageOwned, DynamicImageOwned);
 impl_alphachannel!(u16, GenericImageOwned, DynamicImageOwned);
@@ -540,7 +570,7 @@ impl GenericImageOwned {
     ///
     /// # Arguments
     /// - `f`: The function to apply to the image data.
-    ///   The function must take a reference to an [`DynamicImageOwned`] and return a [`DynamicImageData`].
+    ///   The function must take a reference to an [`DynamicImageOwned`] and return a [`DynamicImageRef`].
     pub fn operate<F>(&self, f: F) -> Result<Self, &'static str>
     where
         F: FnOnce(&DynamicImageOwned) -> Result<DynamicImageOwned, &'static str>,
@@ -553,8 +583,8 @@ impl GenericImageOwned {
     }
 }
 
-impl<'a> From<GenericImage<'a>> for GenericImageOwned {
-    fn from(img: GenericImage<'a>) -> Self {
+impl<'a> From<GenericImageRef<'a>> for GenericImageOwned {
+    fn from(img: GenericImageRef<'a>) -> Self {
         Self {
             metadata: img.metadata,
             image: (&img.image).into(),
@@ -629,10 +659,10 @@ impl_tryinto_genericvalue!(Duration, GenericValue::Duration);
 impl_tryinto_genericvalue!(SystemTime, GenericValue::SystemTime);
 impl_tryinto_genericvalue!(String, GenericValue::String);
 
-/// Trait to insert a metadata value into a [`GenericImage`].
+/// Trait to insert a metadata value into a [`GenericImageRef`].
 pub trait InsertValue {
-    /// Insert a metadata value into a [`GenericImage`] by name.
-    fn insert_key_gi(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str>;
+    /// Insert a metadata value into a [`GenericImageRef`] by name.
+    fn insert_key_gi(f: &mut GenericImageRef, name: &str, value: Self) -> Result<(), &'static str>;
 
     /// Insert a metadata value into a [`GenericImageOwned`] by name.
     fn insert_key_go(
@@ -641,8 +671,8 @@ pub trait InsertValue {
         value: Self,
     ) -> Result<(), &'static str>;
 
-    /// Replace a metadata value in a [`GenericImage`] by name.
-    fn replace_gi(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str>;
+    /// Replace a metadata value in a [`GenericImageRef`] by name.
+    fn replace_gi(f: &mut GenericImageRef, name: &str, value: Self) -> Result<(), &'static str>;
 
     /// Replace a metadata value in a [`GenericImageOwned`] by name.
     fn replace_go(f: &mut GenericImageOwned, name: &str, value: Self) -> Result<(), &'static str>;
@@ -652,7 +682,7 @@ macro_rules! insert_value_impl {
     ($t:ty, $datatype:expr) => {
         impl InsertValue for $t {
             fn insert_key_gi(
-                f: &mut GenericImage,
+                f: &mut GenericImageRef,
                 name: &str,
                 value: Self,
             ) -> Result<(), &'static str> {
@@ -666,7 +696,7 @@ macro_rules! insert_value_impl {
             }
 
             fn replace_gi(
-                f: &mut GenericImage,
+                f: &mut GenericImageRef,
                 name: &str,
                 value: Self,
             ) -> Result<(), &'static str> {
@@ -702,7 +732,7 @@ macro_rules! insert_value_impl {
 
         impl InsertValue for ($t, &str) {
             fn insert_key_gi(
-                f: &mut GenericImage,
+                f: &mut GenericImageRef,
                 name: &str,
                 value: Self,
             ) -> Result<(), &'static str> {
@@ -717,7 +747,7 @@ macro_rules! insert_value_impl {
             }
 
             fn replace_gi(
-                f: &mut GenericImage,
+                f: &mut GenericImageRef,
                 name: &str,
                 value: Self,
             ) -> Result<(), &'static str> {
@@ -803,7 +833,7 @@ insert_value_impl!(Duration, PrvGenLineItem::Duration);
 insert_value_impl!(SystemTime, PrvGenLineItem::SystemTime);
 
 impl InsertValue for &str {
-    fn insert_key_gi(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str> {
+    fn insert_key_gi(f: &mut GenericImageRef, name: &str, value: Self) -> Result<(), &'static str> {
         name_check(name)?;
         str_value_check(value)?;
         let line = GenericLineItem {
@@ -814,7 +844,7 @@ impl InsertValue for &str {
         Ok(())
     }
 
-    fn replace_gi(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str> {
+    fn replace_gi(f: &mut GenericImageRef, name: &str, value: Self) -> Result<(), &'static str> {
         name_check(name)?;
         f.metadata.remove(name).ok_or("Key not found")?;
         Self::insert_key_gi(f, name, value)
@@ -843,7 +873,7 @@ impl InsertValue for &str {
 }
 
 impl InsertValue for (&str, &str) {
-    fn insert_key_gi(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str> {
+    fn insert_key_gi(f: &mut GenericImageRef, name: &str, value: Self) -> Result<(), &'static str> {
         name_check(name)?;
         str_value_check(value.0)?;
         comment_check(value.1)?;
@@ -855,7 +885,7 @@ impl InsertValue for (&str, &str) {
         Ok(())
     }
 
-    fn replace_gi(f: &mut GenericImage, name: &str, value: Self) -> Result<(), &'static str> {
+    fn replace_gi(f: &mut GenericImageRef, name: &str, value: Self) -> Result<(), &'static str> {
         name_check(name)?;
         str_value_check(value.0)?;
         comment_check(value.1)?;

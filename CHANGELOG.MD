@@ -2,6 +2,13 @@
 
 ## Changes
 
+### 0.9.0 (2024-09-24)
+- Complete API overhaul. `DataStor` type has been removed.
+- `ImageData` and similar are renamed to `*ImageRef`, and only holds data backed by some storage.
+- `ImageOwned` and derivatives own the image data.
+- `GenericImageRef` and `DynamicImageRef` are only serializable. `*ImageRef` do not implement clone.
+- All methods that mutate an image (e.g. luminance calculation, alpha channel addition/removal, debayering) either fail when mutation is not necessary, or return an owned image on success.
+
 ### 0.8.2 (2024-09-22)
 - Added missing `InsertKey` implementation for `ColorSpace`.
 - Added [crates.io](https://crates.io/crates/refimage) documentation support for features.

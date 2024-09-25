@@ -1,12 +1,12 @@
 //! Demosaicing without any interpolation.
 use crate::demosaic::RasterMut;
 use crate::demosaic::{BayerError, BayerRead, BayerResult, ColorFilterArray};
-use crate::{ImageData, ImageOwned, PixelStor};
+use crate::{ImageRef, ImageOwned, PixelStor};
 
 use super::border_none::BorderNone;
 
 pub fn run_imagedata<T>(
-    src: &ImageData<'_, T>,
+    src: &ImageRef<'_, T>,
     cfa: ColorFilterArray,
     dst: &mut RasterMut<'_, T>,
 ) -> BayerResult<()>

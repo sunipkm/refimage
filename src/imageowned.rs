@@ -1,7 +1,7 @@
 use crate::{
     demosaic::{run_demosaic_imageowned, Debayer, RasterMut},
     traits::cast_u8,
-    AlphaChannel, BayerError, ColorSpace, DemosaicMethod, Enlargeable, ImageData, PixelStor,
+    AlphaChannel, BayerError, ColorSpace, DemosaicMethod, Enlargeable, ImageRef, PixelStor,
     ToLuma,
 };
 use bytemuck::{AnyBitPattern, PodCastError};
@@ -450,8 +450,8 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> Debayer<'a, 'b> for ImageOwned<T> {
     }
 }
 
-impl<'a, T: PixelStor> From<&ImageData<'a, T>> for ImageOwned<T> {
-    fn from(data: &ImageData<'a, T>) -> Self {
+impl<'a, T: PixelStor> From<&ImageRef<'a, T>> for ImageOwned<T> {
+    fn from(data: &ImageRef<'a, T>) -> Self {
         Self {
             data: data.data.to_vec(),
             width: data.width,

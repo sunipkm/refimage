@@ -28,12 +28,12 @@ use crate::traits::{do_div_float, do_prod, get_mean, large_to_f64, Enlargeable};
 
 #[cfg(feature = "rayon")]
 use crate::demosaic::border_mirror::BorderMirror;
-use crate::{ImageData, ImageOwned, PixelStor};
+use crate::{ImageRef, ImageOwned, PixelStor};
 
 const PADDING: usize = 3;
 
 pub fn run_imagedata<T>(
-    src: &ImageData<'_, T>,
+    src: &ImageRef<'_, T>,
     cfa: ColorFilterArray,
     dst: &mut RasterMut<'_, T>,
 ) -> BayerResult<()>

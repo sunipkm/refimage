@@ -1,4 +1,4 @@
-use crate::{ColorSpace, DynamicImageData, DynamicImageOwned, ImageOwned, PixelType};
+use crate::{ColorSpace, DynamicImageRef, DynamicImageOwned, ImageOwned, PixelType};
 use crate::{Deserializer, Serializer};
 #[cfg(feature = "serde_flate")]
 use flate2::{write::ZlibDecoder, write::ZlibEncoder, Compress, Compression};
@@ -18,10 +18,10 @@ struct SerialImage {
     crc: u32,
 }
 
-impl<'a> TryFrom<&'a DynamicImageData<'a>> for SerialImage {
+impl<'a> TryFrom<&'a DynamicImageRef<'a>> for SerialImage {
     type Error = &'static str;
 
-    fn try_from(data: &'a DynamicImageData<'a>) -> Result<Self, Self::Error> {
+    fn try_from(data: &'a DynamicImageRef<'a>) -> Result<Self, Self::Error> {
         let width = data.width();
         let height = data.height();
         let channels = data.channels();
@@ -63,13 +63,13 @@ impl<'a> TryFrom<&'a DynamicImageData<'a>> for SerialImage {
     }
 }
 
-impl Serialize for DynamicImageData<'_> {
+impl Serialize for DynamicImageRef<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         SerialImage::try_from(self)
-            .map_err(|_| serde::ser::Error::custom("Could not serialize DynamicImageData"))
+            .map_err(|_| serde::ser::Error::custom("Could not serialize DynamicImageRef"))
             .and_then(|img| img.serialize(serializer))
     }
 }
@@ -295,7 +295,7 @@ mod test {
         if let Ok(registry) = tracer.registry() {
             let mut src = Vec::new();
             let cfg =
-                serde_generate::CodeGeneratorConfig::new("refimage::DynamicImageData".to_string())
+                serde_generate::CodeGeneratorConfig::new("refimage::DynamicImageRef".to_string())
                     .with_encodings(vec![serde_generate::Encoding::Bincode]);
 
             let gen = serde_generate::python3::CodeGenerator::new(&cfg);
@@ -313,7 +313,7 @@ mod test {
                     }
                 }
             }
-            std::fs::write(outdir.join("DynamicImageData.py"), src)
+            std::fs::write(outdir.join("DynamicImageRef.py"), src)
                 .expect("Could not write to file.");
         }
     }

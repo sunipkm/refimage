@@ -18,12 +18,12 @@ use rayon::prelude::*;
 use crate::demosaic::border_replicate::*;
 use crate::demosaic::{BayerError, BayerRead, BayerResult, ColorFilterArray, RasterMut};
 use crate::traits::{get_mean, Enlargeable};
-use crate::{ImageData, ImageOwned, PixelStor};
+use crate::{ImageRef, ImageOwned, PixelStor};
 
 const PADDING: usize = 1;
 
 pub fn run_imagedata<T>(
-    src: &ImageData<'_, T>,
+    src: &ImageRef<'_, T>,
     cfa: ColorFilterArray,
     dst: &mut RasterMut<'_, T>,
 ) -> BayerResult<()>

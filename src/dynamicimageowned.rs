@@ -2,7 +2,7 @@ use crate::{
     AlphaChannel, BayerError, ColorSpace, DemosaicMethod, DynamicImageOwned, ImageOwned, PixelType,
     ToLuma,
 };
-use crate::{Debayer, DynamicImageData};
+use crate::{Debayer, DynamicImageRef};
 
 macro_rules! dynamic_map(
     ($dynimage: expr, $image: pat => $action: expr) => ({
@@ -250,12 +250,12 @@ impl DynamicImageOwned {
     }
 }
 
-impl<'a> From<&DynamicImageData<'a>> for DynamicImageOwned {
-    fn from(data: &DynamicImageData<'a>) -> Self {
+impl<'a> From<&DynamicImageRef<'a>> for DynamicImageOwned {
+    fn from(data: &DynamicImageRef<'a>) -> Self {
         match data {
-            DynamicImageData::U8(data) => DynamicImageOwned::U8(data.into()),
-            DynamicImageData::U16(data) => DynamicImageOwned::U16(data.into()),
-            DynamicImageData::F32(data) => DynamicImageOwned::F32(data.into()),
+            DynamicImageRef::U8(data) => DynamicImageOwned::U8(data.into()),
+            DynamicImageRef::U16(data) => DynamicImageOwned::U16(data.into()),
+            DynamicImageRef::F32(data) => DynamicImageOwned::F32(data.into()),
         }
     }
 }

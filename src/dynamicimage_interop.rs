@@ -1,14 +1,14 @@
 //! Image interop
 use image::ImageBuffer;
 
-use crate::{ColorSpace, DynamicImage, DynamicImageData};
+use crate::{ColorSpace, DynamicImage, DynamicImageRef};
 
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
-impl<'a> TryFrom<DynamicImageData<'a>> for DynamicImage {
+impl<'a> TryFrom<DynamicImageRef<'a>> for DynamicImage {
     type Error = &'static str;
 
-    fn try_from(value: DynamicImageData<'a>) -> Result<Self, Self::Error> {
-        use DynamicImageData::*;
+    fn try_from(value: DynamicImageRef<'a>) -> Result<Self, Self::Error> {
+        use DynamicImageRef::*;
         let width = value.width() as u32;
         let height = value.height() as u32;
         let cspace = value.color_space();
@@ -209,13 +209,13 @@ mod test {
 
     #[test]
     fn test_dynamicimagedata() {
-        use super::DynamicImageData;
-        use crate::{ColorSpace, ImageData};
+        use super::DynamicImageRef;
+        use crate::{ColorSpace, ImageRef};
         use image::DynamicImage;
         let mut data: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
         let a =
-            ImageData::new(&mut data, 3, 2, ColorSpace::Gray).expect("Failed to create ImageData");
-        let b = DynamicImageData::from(a);
+            ImageRef::new(&mut data, 3, 2, ColorSpace::Gray).expect("Failed to create ImageRef");
+        let b = DynamicImageRef::from(a);
         let c = DynamicImage::try_from(b).unwrap();
         assert_eq!(c.width(), 3);
     }
@@ -226,7 +226,7 @@ mod test {
         use crate::{ColorSpace, ImageOwned};
         use image::DynamicImage;
         let data: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
-        let a = ImageOwned::new(data, 3, 2, ColorSpace::Gray).expect("Failed to create ImageData");
+        let a = ImageOwned::new(data, 3, 2, ColorSpace::Gray).expect("Failed to create ImageRef");
         let b = DynamicImageOwned::from(a.clone());
         let c = DynamicImage::try_from(b).unwrap();
         let c_ = c.resize(128, 128, image::imageops::FilterType::Nearest);

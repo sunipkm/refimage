@@ -16,52 +16,52 @@
 //! crate to compress the data before serialization. The compression can be disabled
 //! by setting the `serde_flate` feature to `false`.
 //!
-//! The crate provides a concrete type [`ImageData`] to store image data and a type-erased
-//! version [`DynamicImageData`] to store image data with different pixel types.
-//! Additionally, the crate provides a [`GenericImage`] type to store a [`DynamicImageData`]
+//! The crate provides a concrete type [`ImageRef`] to store image data and a type-erased
+//! version [`DynamicImageRef`] to store image data with different pixel types.
+//! Additionally, the crate provides a [`GenericImageRef`] type to store a [`DynamicImageRef`]
 //! with additional metadata, such as the image creation timestamp, and many more. The
 //! metadata keys must be 80 characters or less. Uniqueness of the keys is not enforced,
 //! but is strongly recommended; the keys are case-insensitive.
 //!
 //! The crate, with the optional `image` feature, provides can convert between
-//! [`DynamicImageData`] and [`DynamicImage`] from the [`image`] crate.
-//! With the optional `fitsio` feature, the crate can write a [`GenericImage`], with
+//! [`DynamicImageRef`] and [`DynamicImage`] from the [`image`] crate.
+//! With the optional `fitsio` feature, the crate can write a [`GenericImageRef`], with
 //! all associated metadata, to a [FITS](https://fits.gsfc.nasa.gov/fits_primer.html) file.
 //!
 //! # Usage
 //! ```
-//! use refimage::{ImageData, ColorSpace, DynamicImageData, GenericImage, GenericImageOwned};
+//! use refimage::{ImageRef, ColorSpace, DynamicImageRef, GenericImageRef, GenericImageOwned};
 //! use std::time::SystemTime;
 //! use std::path::Path;
 //!
 //! let mut data = vec![1u8, 2, 3, 4, 5, 6]; // 3x2 grayscale image
-//! let img = ImageData::new(&mut data, 3, 2, ColorSpace::Gray).unwrap(); // Create ImageData
-//! let img = DynamicImageData::from(img); // Convert to DynamicImageData
-//! let mut img = GenericImage::new(SystemTime::now(), img); // Create GenericImage with creation time info
+//! let img = ImageRef::new(&mut data, 3, 2, ColorSpace::Gray).unwrap(); // Create ImageRef
+//! let img = DynamicImageRef::from(img); // Convert to DynamicImageRef
+//! let mut img = GenericImageRef::new(SystemTime::now(), img); // Create GenericImageRef with creation time info
 //! img.insert_key("CAMERANAME", "Canon EOS 5D Mark IV".to_string()).unwrap(); // Insert metadata
 //! let serialized = bincode::serialize(&img).unwrap(); // Serialize the image
 //! let deserialized: GenericImageOwned = bincode::deserialize(&serialized).unwrap(); // Deserialize the image
 //! ```
 //! # Optional Features
 //! Features are available to extend the functionalities of the core `refimage` data types:
-//! - `rayon`: Parallelizes [`GenericImage::to_luma`] (and similar), [`GenericImage::to_luma_custom`], [`GenericImage::into_u8`] and [`GenericImage::debayer`] functions (<b>enabled</b> by default).
+//! - `rayon`: Parallelizes [`GenericImageRef::to_luma`] (and similar), [`GenericImageRef::to_luma_custom`], [`GenericImageRef::into_u8`] and [`GenericImageRef::debayer`] functions (<b>enabled</b> by default).
 //! - `serde_flate`: Compresses the data using deflate during serialization (<b>enabled</b> by default).
-//! - `fitsio`: Exposes [`FitsWrite`] trait to write [`GenericImage`] and [`GenericImageOwned`] (<b>disabled</b> by default).
-//! - `image`: Enables [`TryFrom`] conversions between [`DynamicImage`] and [`DynamicImageData`], [`DynamicImageOwned`] (<b>disabled</b> by default).
+//! - `fitsio`: Exposes [`FitsWrite`] trait to write [`GenericImageRef`] and [`GenericImageOwned`] (<b>disabled</b> by default).
+//! - `image`: Enables [`TryFrom`] conversions between [`DynamicImage`] and [`DynamicImageRef`], [`DynamicImageOwned`] (<b>disabled</b> by default).
 //!
 
 mod traits;
 #[macro_use]
 mod demosaic;
-mod imagedata;
+mod imageref;
 mod imageowned;
 #[macro_use]
-mod dynamicimagedata;
+mod dynamicimageref;
 #[macro_use]
 mod dynamicimageowned;
 #[cfg(feature = "image")]
 mod dynamicimage_interop;
-mod dynamicimagedata_serde;
+mod dynamicimage_serde;
 #[cfg(feature = "fitsio")]
 mod fitsio_interop;
 #[cfg(feature = "fitsio")]
@@ -70,7 +70,7 @@ pub use fitsio_interop::{FitsCompression, FitsError, FitsWrite};
 
 mod metadata;
 pub use metadata::{
-    GenericImage, GenericImageOwned, GenericLineItem, GenericValue, CAMERANAME_KEY, EXPOSURE_KEY,
+    GenericImageRef, GenericImageOwned, GenericLineItem, GenericValue, CAMERANAME_KEY, EXPOSURE_KEY,
     PROGRAMNAME_KEY, TIMESTAMP_KEY,
 };
 
@@ -85,7 +85,7 @@ pub use image::DynamicImage; // Used for image interop
 
 pub use serde::{Deserializer, Serializer};
 
-pub use imagedata::ImageData;
+pub use imageref::ImageRef;
 pub use imageowned::ImageOwned;
 
 mod optimumexposure;
@@ -97,35 +97,36 @@ pub use optimumexposure::{CalcOptExp, OptimumExposure, OptimumExposureBuilder};
 /// types, i.e. `u8`, `u16`, and `f32`. The matrix is stored in a _row-major_ order.
 /// More variants that adhere to these principles may get added in the future, in
 /// particular to cover other combinations typically used. The data is stored in a single
-/// contiguous buffer, which is either backed by a slice or a vector, and aims to enable
+/// contiguous buffer, which is backed by a mutable slice, and aims to enable
 /// reuse of allocated memory without re-allocation.
 ///
 /// # Note
-/// - Internally [`DynamicImageData`] and [`DynamicImageOwned`] serialize to the same
-///   representation, and can be deserialized into each other.
+/// - Does not support alpha channel natively.
+/// - Internally [`DynamicImageRef`] and [`DynamicImageOwned`] serialize to the same
+///   representation, and [`DynamicImageRef`] can be deserialized into [`DynamicImageOwned`] only.
 ///
 /// # Usage
 ///
 /// ```
-/// use refimage::{ImageData, ColorSpace, DynamicImageData};
+/// use refimage::{ImageRef, ColorSpace, DynamicImageRef};
 ///
 /// let mut data = vec![1u8, 2, 3, 4, 5, 6];
-/// let img = ImageData::new(&mut data, 3, 2, ColorSpace::Gray).unwrap();
-/// let img = DynamicImageData::from(img);
+/// let img = ImageRef::new(&mut data, 3, 2, ColorSpace::Gray).unwrap();
+/// let img = DynamicImageRef::from(img);
 ///
 /// ```
 ///
-/// This type acts as a type-erased version of `ImageData` and can be used to store
+/// This type acts as a type-erased version of `ImageRef` and can be used to store
 /// image data with different pixel types. The pixel type is determined at runtime.
 #[derive(Debug, PartialEq)]
 #[non_exhaustive]
-pub enum DynamicImageData<'a> {
+pub enum DynamicImageRef<'a> {
     /// Image data with a `u8` primitive type.
-    U8(ImageData<'a, u8>),
+    U8(ImageRef<'a, u8>),
     /// Image data with a `u16` primitive type.
-    U16(ImageData<'a, u16>),
+    U16(ImageRef<'a, u16>),
     /// Image data with a `f32` primitive type.
-    F32(ImageData<'a, f32>),
+    F32(ImageRef<'a, f32>),
 }
 
 /// Image data with a dynamic pixel type, backed by owned data.
@@ -134,12 +135,11 @@ pub enum DynamicImageData<'a> {
 /// types, i.e. `u8`, `u16`, and `f32`. The matrix is stored in a _row-major_ order.
 /// More variants that adhere to these principles may get added in the future, in
 /// particular to cover other combinations typically used. The data is stored in a single
-/// contiguous buffer, which is either backed by a slice or a vector, and aims to enable
-/// reuse of allocated memory without re-allocation.
+/// contiguous buffer, which is backed by a vector.
 ///
 /// # Note
-/// - Internally [`DynamicImageData`] and [`DynamicImageOwned`] serialize to the same
-///   representation, and can be deserialized into each other.
+/// - [`DynamicImageRef`] implements [`Serialize`] and [`Deserialize`] traits, and can be
+///   deserialized from a [`DynamicImageRef`].
 ///
 /// # Usage
 ///
@@ -152,7 +152,7 @@ pub enum DynamicImageData<'a> {
 ///
 /// ```
 ///
-/// This type acts as a type-erased version of `ImageData` and can be used to store
+/// This type acts as a type-erased version of `ImageRef` and can be used to store
 /// image data with different pixel types. The pixel type is determined at runtime.
 #[derive(Debug, PartialEq, Clone)]
 #[non_exhaustive]
@@ -261,7 +261,7 @@ impl Into<ColorSpace> for BayerPattern {
 
 /// A trait for converting an image to a luminance image.
 ///
-/// This trait is implemented for [`ImageData`], [`DynamicImageData`], [`GenericImage`] and
+/// This trait is implemented for [`ImageRef`], [`DynamicImageRef`], [`GenericImageRef`] and
 /// their owned counterparts, [`ImageOwned`], [`DynamicImageOwned`] and [`GenericImageOwned`].
 pub trait ToLuma<'b: 'a, 'a, T>
 where
@@ -345,16 +345,16 @@ mod test {
             229, 0, 0, 0, 67, 0, 95, 0, 0, 0, 146, 0, 0, 232, 0, 0, 0, 51, 0, 229, 0, 0, 0, 241,
             169, 0, 0, 0, 161, 0, 15, 0, 0, 0, 52, 0, 0, 45, 0, 0, 0, 175, 0, 98, 0, 0, 0, 197,
         ];
-        let img = crate::ImageData::create(
+        let img = crate::ImageRef::create(
             &mut src,
             4,
             4,
             crate::ColorSpace::Bayer(crate::BayerPattern::Rggb),
         )
-        .expect("Failed to create ImageData");
+        .expect("Failed to create ImageRef");
         let a = img.debayer(crate::DemosaicMethod::None);
         assert!(a.is_ok());
-        let a = a.unwrap(); // at this point, a is an ImageData struct
+        let a = a.unwrap(); // at this point, a is an ImageRef struct
         assert!(a.channels() == 3);
         assert!(a.width() == 4);
         assert!(a.height() == 4);

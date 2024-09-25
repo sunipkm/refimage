@@ -14,8 +14,8 @@ use fitsio::{
 
 use crate::{
     metadata::{GenericValue, TIMESTAMP_KEY},
-    BayerPattern, ColorSpace, DynamicImageData, DynamicImageOwned, GenericImage, GenericImageOwned,
-    GenericLineItem, ImageData, ImageOwned, PixelStor, PixelType,
+    BayerPattern, ColorSpace, DynamicImageRef, DynamicImageOwned, GenericImageRef, GenericImageOwned,
+    GenericLineItem, ImageRef, ImageOwned, PixelStor, PixelType,
 };
 
 #[derive(Debug, Clone, PartialEq, Hash)]
@@ -124,7 +124,7 @@ pub trait FitsWrite {
     ) -> Result<PathBuf, FitsError>;
 }
 
-impl FitsWrite for GenericImage<'_> {
+impl FitsWrite for GenericImageRef<'_> {
     fn write_fits(
         &self,
         path: &Path,
@@ -264,13 +264,13 @@ impl FitsWrite for GenericImageOwned {
     }
 }
 
-impl<'a> DynamicImageData<'a> {
+impl<'a> DynamicImageRef<'a> {
     fn write_fits(
         &self,
         path: PathBuf,
         compress: FitsCompression,
     ) -> Result<(FitsHdu, FitsFile), FitsError> {
-        use DynamicImageData::*;
+        use DynamicImageRef::*;
         match self {
             U8(data) => data.write_fits(path, compress, PixelType::U8),
             U16(data) => data.write_fits(path, compress, PixelType::U16),
@@ -294,7 +294,7 @@ impl DynamicImageOwned {
     }
 }
 
-impl<'a, T: PixelStor + WriteImage> ImageData<'a, T> {
+impl<'a, T: PixelStor + WriteImage> ImageRef<'a, T> {
     /// Write the image data to a FITS file.
     fn write_fits(
         &self,
@@ -502,10 +502,10 @@ mod test {
     fn test_fitsio() {
         use crate::FitsWrite;
         let mut data = vec![1u8, 2, 3, 4, 5, 6];
-        let img = crate::ImageData::new(&mut data, 3, 2, crate::ColorSpace::Gray)
-            .expect("Failed to create ImageData");
-        let img = crate::DynamicImageData::from(img);
-        let mut img = crate::GenericImage::new(std::time::SystemTime::now(), img);
+        let img = crate::ImageRef::new(&mut data, 3, 2, crate::ColorSpace::Gray)
+            .expect("Failed to create ImageRef");
+        let img = crate::DynamicImageRef::from(img);
+        let mut img = crate::GenericImageRef::new(std::time::SystemTime::now(), img);
         img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
         img.insert_key(
             "TESTING_THIS_LONG_KEY_VERY_VERY_VERY_VERYLONG",

@@ -4,47 +4,41 @@
 
 ## A Serializable Image Container
 
-This crate provides a type-erased image container (`GenericImage`), backed by a contiguous
-slice (owned or referenced) of primitive (`u8`, `u16`, `f32`) pixels, with arbitrary
-color space (grayscale, Bayer pattern, RGB, ...) and color channels support (max. 255).
+This crate provides a type-erased image container (`GenericImageRef`), backed by a contiguous slice (owned or referenced) of primitive (`u8`, `u16`, `f32`) pixels, with arbitrary color space (grayscale, Bayer pattern, RGB, ...) and color channels support (max. 255).
 Image sizes are limited to 65536 &times; 65536 for practical reasons.
 
-`GenericImage` and `GenericImageOwned` are powerful, since it supports metadata in the form of (`key`, `value`) pairs,
-with optional comments. Valid metadata keys are case-insensitive, 80-character strings, and
-values are up to 64-bit integer types, 32- and 64-bit floating point numbers, strings up-to 
-4096 characters, or `std::time::{SystemTime, Duration}`.
+`GenericImageRef` and `GenericImageOwned` are powerful, since these metadata in the form of (`key`, `value`) pairs, with optional comments. Valid metadata keys are case-insensitive, 80-character strings, and values are up to 64-bit integer types, 32- and 64-bit floating point numbers, strings up-to 4096 characters, or `std::time::{SystemTime, Duration}`.
 
-`GenericImage` and `GenericImageOwned` also support serialization and deserialization, and, optionally can be saved
-in the open [Flexible Image Transport System (FITS)](https://fits.gsfc.nasa.gov/fits_standard.html)
-format by enabling the optional `fitsio` feature. FITS files support lossless compression,
-and saving of arbitrary metadata.
+`GenericImageRef` supports serialization, and, optionally can be saved in the open [Flexible Image Transport System (FITS)](https://fits.gsfc.nasa.gov/fits_standard.html) through the `FitsWrite` trait, exposed through the `fitsio` optional feature.
+FITS files support lossless compression, and saving of arbitrary metadata.
 
-`GenericImage` and `GenericImageOwned` are represented by the same underlying object
-after serialization, and can be deserialized as either type at the deserializer end.
+`GenericImageRef` serializes to an internal representation which allows <i>de</i>serialization to `GenericImageOwned`.
+`GenericImageOwned` contains owned data, and is freely <i>ser</i>ialized-<i>de</i>serialized. 
 
-## The path to a `GenericImage`
+## The path to a `GenericImageRef`
 
-A `GenericImage` can be obtained in a couple of ways. In the first case, the Rust program
-itself generates the image. In that case, a `ImageData` object is first created with the
+A `GenericImageRef` is obtained from a `ImageRef` object, created with the
 appropriate, contiguous, backing storage and image format:
 ```rust
-use refimage::{BayerPattern, ImageData, Debayer, DemosaicMethod, DynamicImageData, GenericImage, GenericImageOwned};
+use refimage::{BayerPattern, ImageRef, Debayer, DemosaicMethod, DynamicImageRef, GenericImageRef, GenericImageOwned};
 use std::time::SystemTime;
 
 let mut data = vec![0u8; 256]; // this is the backing store
 // acquire(&mut data); // this function populates the backing store with the image pixels
-let img = ImageData::new(&mut data, 16, 16, BayerPattern::Grbg.into()).unwrap(); // Create a 4x4 image backed by the vector
-let img = DynamicImageData::from(img); // convert the `ImageData` object to `DynamicImageData`
+let img = ImageRef::new(&mut data, 16, 16, BayerPattern::Grbg.into()).unwrap(); // Create a 4x4 image backed by the vector
+let img = DynamicImageRef::from(img); // convert the `ImageRef` object to `DynamicImageRef`
 let img = img.debayer(DemosaicMethod::Nearest).expect("Could not debayer"); // debayer the image using nearest neighbor method
-let mut img = GenericImageOwned::new(SystemTime::now(), img); // Convert to a GenericImage
+let mut img = GenericImageOwned::new(SystemTime::now(), img); // Convert to a GenericImageRef
 // insert the camera information as metadata
 img.insert_key("CAMERA", ("Rust Test Program", "Name of the camera used to capture the image"));
 let json = serde_json::to_string(&img).unwrap(); // serialize the image to JSON
-let rimg: GenericImageOwned = serde_json::from_str(&json).unwrap(); // deserialize to GenericImage
+let rimg: GenericImageOwned = serde_json::from_str(&json).unwrap(); // deserialize to GenericImageOwned
 assert_eq!(&img, &rimg); // Confirm that deserialized image matches the original
 ```
+The intention behind `*ImageRef` is to minimize unnecessary allocations.
 
-In the second case, an image can be loaded using the [`image`](https://crates.io/crates/image) crate from disk, by enabling the `image` feature:
+## `GenericImageOwned` and other `ImageOwned` types
+An image can be loaded using the [`image`](https://crates.io/crates/image) crate from disk, by enabling the `image` feature:
 ```rust,no_run
 use refimage::DynamicImageOwned;
 use image::open;
@@ -53,21 +47,24 @@ let img = open("/path/to/image.png").expect("Could not load image");
 let img = DynamicImageOwned::try_from(img).expect("Could not convert image");
 ```
 
-## Loading and storing a `GenericImage`
-A `GenericImage` is intended to be loaded and stored in a standard format, e.g. [bincode](https://crates.io/crates/bincode) - which follows trivially from the serialization-
-deserialization of `GenericImage`. However, for more portable applications, with the `fitsio`
-feature, a `GenericImage` can be stored as a FITS file by importing the `FitsWrite` trait. 
+## Loading and storing a `GenericImageRef`
+A `GenericImageRef` is intended to be loaded and stored in a standard format, e.g. [bincode](https://crates.io/crates/bincode) - which follows trivially from the serialization of `GenericImageRef`. However, for more portable applications, with the `fitsio` feature, a `GenericImageRef` can be stored as a FITS file by importing the `FitsWrite` trait. 
 The FITS file is stored using the [`fitsio`](https://crates.io/crates/fitsio) crate, which is a thin wrapper around the `cfitsio` library.
 ```rust,no_run
-use refimage::{FitsCompression, FitsWrite, GenericImage}; // we need the FitsWrite trait to be able to use the `write_fits` method.
+use refimage::{FitsCompression, FitsWrite, GenericImageRef}; // we need the FitsWrite trait to be able to use the `write_fits` method.
 use std::path::Path;
-let img: GenericImage = { todo!() }; // obtain a GenericImage
+let img: GenericImageRef = { todo!() }; // obtain a GenericImageRef
 img.write_fits(Path::new("/path/to/fitsimage.fit"), FitsCompression::None, true) // no compression, overwrite
     .expect("Could not write FITS file.");
 ```
+
+## Additional Features
+`ToLuma` and `AlphaChannel` traits are implemented on all image functions.
+The methods in these traits succeed only when allocation is required, and return a corresponding `*ImageOwned` object.
+
 # Optional Features
 Features are available to extend the functionalities of the core `refimage` data types:
-- `rayon`: Parallelizes `into_luma`, `into_luma_custom`, `into_u8` and `debayer` functions (<b>enabled</b> by default).
+- `rayon`: Parallelizes `to_luma`, `to_luma_custom`, `to_u8` and `debayer` functions (<b>enabled</b> by default).
 - `serde_flate`: Compresses the data using deflate during serialization (<b>enabled</b> by default).
-- `fitsio`: Exposes `FitsWrite` trait to write `GenericImage` and `GenericImageOwned` (<b>disabled</b> by default).
-- `image`: Enables `TryFrom` conversions between `image::DynamicImage` and `refimage::DynamicImageData`, `refimage::DynamicImageOwned` (<b>disabled</b> by default).
+- `fitsio`: Exposes `FitsWrite` trait to write `GenericImageRef` and `GenericImageOwned` (<b>disabled</b> by default).
+- `image`: Enables `TryFrom` conversions between `image::DynamicImage` and `refimage::DynamicImageRef`, `refimage::DynamicImageOwned` (<b>disabled</b> by default).
