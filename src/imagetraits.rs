@@ -131,7 +131,7 @@ pub trait ImageProps {
     /// Conversion is done by scaling the pixel values to the range `[0, 255]`.
     ///
     /// # Note: This operation is parallelized if the `rayon` feature is enabled.
-    fn into_u8(&self) -> Self::OutputU8;
+    fn cast_u8(&self) -> Self::OutputU8;
 }
 
 /// A trait for adding/removing an alpha channel to/from an image.

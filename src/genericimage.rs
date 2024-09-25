@@ -180,7 +180,7 @@ impl ImageProps for GenericImage<'_> {
         dynamic_map!(self, ref image, { image.image.is_empty() })
     }
 
-    fn into_u8(&self) -> Self::OutputU8 {
+    fn cast_u8(&self) -> Self::OutputU8 {
         let meta = self.get_metadata().clone();
         match self {
             GenericImage::Ref(image) => GenericImageOwned {
@@ -207,9 +207,9 @@ impl<'a> From<GenericImageRef<'a>> for GenericImage<'a> {
     }
 }
 
-impl Into<GenericImageOwned> for GenericImage<'_> {
-    fn into(self) -> GenericImageOwned {
-        match self {
+impl From<GenericImage<'_>> for GenericImageOwned {
+    fn from(val: GenericImage<'_>) -> Self {
+        match val {
             GenericImage::Own(data) => data,
             GenericImage::Ref(data) => data.into(),
         }
@@ -232,29 +232,29 @@ impl<'a: 'b, 'b> ToLuma<'a, 'b> for GenericImage<'b> {
 
     fn to_luma(&'b self) -> Result<Self::Output, &'static str> {
         match self {
-            GenericImage::Ref(image) => Ok(image.to_luma()?.into()),
-            GenericImage::Own(image) => Ok(image.to_luma()?.into()),
+            GenericImage::Ref(image) => Ok(image.to_luma()?),
+            GenericImage::Own(image) => Ok(image.to_luma()?),
         }
     }
 
     fn to_luma_alpha(&'b self) -> Result<Self::Output, &'static str> {
         match self {
-            GenericImage::Ref(image) => Ok(image.to_luma_alpha()?.into()),
-            GenericImage::Own(image) => Ok(image.to_luma_alpha()?.into()),
+            GenericImage::Ref(image) => Ok(image.to_luma_alpha()?),
+            GenericImage::Own(image) => Ok(image.to_luma_alpha()?),
         }
     }
 
     fn to_luma_custom(&'b self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
         match self {
-            GenericImage::Ref(image) => Ok(image.to_luma_custom(coeffs)?.into()),
-            GenericImage::Own(image) => Ok(image.to_luma_custom(coeffs)?.into()),
+            GenericImage::Ref(image) => Ok(image.to_luma_custom(coeffs)?),
+            GenericImage::Own(image) => Ok(image.to_luma_custom(coeffs)?),
         }
     }
 
     fn to_luma_alpha_custom(&'b self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
         match self {
-            GenericImage::Ref(image) => Ok(image.to_luma_alpha_custom(coeffs)?.into()),
-            GenericImage::Own(image) => Ok(image.to_luma_alpha_custom(coeffs)?.into()),
+            GenericImage::Ref(image) => Ok(image.to_luma_alpha_custom(coeffs)?),
+            GenericImage::Own(image) => Ok(image.to_luma_alpha_custom(coeffs)?),
         }
     }
 }

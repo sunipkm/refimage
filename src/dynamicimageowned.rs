@@ -48,11 +48,11 @@ impl ImageProps for DynamicImageOwned {
         dynamic_map!(self, ref image, { image.pixel_type() })
     }
 
-    fn into_u8(&self) -> Self::OutputU8 {
+    fn cast_u8(&self) -> Self::OutputU8 {
         match self {
             DynamicImageOwned::U8(_) => self.clone(),
-            DynamicImageOwned::U16(data) => DynamicImageOwned::U8(data.into_u8()),
-            DynamicImageOwned::F32(data) => DynamicImageOwned::U8(data.into_u8()),
+            DynamicImageOwned::U16(data) => DynamicImageOwned::U8(data.cast_u8()),
+            DynamicImageOwned::F32(data) => DynamicImageOwned::U8(data.cast_u8()),
         }
     }
 
@@ -159,8 +159,8 @@ impl DynamicImageOwned {
     pub fn into_u8(self) -> DynamicImageOwned {
         match self {
             DynamicImageOwned::U8(data) => DynamicImageOwned::U8(data),
-            DynamicImageOwned::U16(data) => DynamicImageOwned::U8(data.into_u8()),
-            DynamicImageOwned::F32(data) => DynamicImageOwned::U8(data.into_u8()),
+            DynamicImageOwned::U16(data) => DynamicImageOwned::U8(data.cast_u8()),
+            DynamicImageOwned::F32(data) => DynamicImageOwned::U8(data.cast_u8()),
         }
     }
 }
@@ -268,7 +268,7 @@ impl DynamicImageOwned {
     }
 }
 
-impl<'a> From<&DynamicImageRef<'_>> for DynamicImageOwned {
+impl From<&DynamicImageRef<'_>> for DynamicImageOwned {
     fn from(data: &DynamicImageRef<'_>) -> Self {
         match data {
             DynamicImageRef::U8(data) => DynamicImageOwned::U8(data.into()),

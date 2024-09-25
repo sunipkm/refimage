@@ -236,10 +236,10 @@ impl ImageProps for GenericImageOwned {
         self.image.is_empty()
     }
 
-    fn into_u8(&self) -> Self::OutputU8 {
+    fn cast_u8(&self) -> Self::OutputU8 {
         Self::OutputU8 {
             metadata: self.metadata.clone(),
-            image: (&self.image).into_u8(),
+            image: self.image.clone().into_u8(),
         }
     }
 }

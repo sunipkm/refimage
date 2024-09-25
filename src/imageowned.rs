@@ -226,7 +226,7 @@ impl<T: PixelStor> ImageProps for ImageOwned<T> {
         self.data.is_empty()
     }
 
-    fn into_u8(&self) -> Self::OutputU8 {
+    fn cast_u8(&self) -> Self::OutputU8 {
         let out = cast_u8(self.data.as_slice());
         Self::OutputU8 {
             data: out,

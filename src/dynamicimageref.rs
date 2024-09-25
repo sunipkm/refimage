@@ -78,7 +78,7 @@ impl<'a> ImageProps for DynamicImageRef<'a> {
         dynamic_map!(self, ref image, { image.is_empty() })
     }
 
-    fn into_u8(&self) -> Self::OutputU8 {
+    fn cast_u8(&self) -> Self::OutputU8 {
         match self {
             DynamicImageRef::U8(data) => DynamicImageOwned::U8(data.into()),
             DynamicImageRef::U16(data) => DynamicImageOwned::U8(data.into_u8()),
@@ -174,7 +174,7 @@ impl_alphachannel!(u8, &[u8], U8, DynamicImageOwned::U8);
 impl_alphachannel!(u16, &[u16], U16, DynamicImageOwned::U16);
 impl_alphachannel!(f32, &[f32], F32, DynamicImageOwned::F32);
 
-impl<'a> From<&DynamicImageRef<'_>> for PixelType {
+impl From<&DynamicImageRef<'_>> for PixelType {
     fn from(data: &DynamicImageRef<'_>) -> Self {
         match data {
             DynamicImageRef::U8(_) => PixelType::U8,
