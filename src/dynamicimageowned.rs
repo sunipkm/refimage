@@ -1,4 +1,4 @@
-use crate::{BayerError, ColorSpace, DemosaicMethod, DynamicImageOwned, ImageOwned, PixelType};
+use crate::{BayerError, ColorSpace, DemosaicMethod, DynamicImageOwned, ImageOwned, PixelType, ToLuma, AlphaChannel};
 use crate::{Debayer, DynamicImageData};
 
 macro_rules! dynamic_map(
@@ -43,7 +43,8 @@ impl DynamicImageOwned {
 }
 
 impl<'a: 'b, 'b> Debayer<'a, 'b> for DynamicImageOwned {
-    fn debayer(&self, alg: DemosaicMethod) -> Result<Self, BayerError> {
+    type Output = DynamicImageOwned;
+    fn debayer(&self, alg: DemosaicMethod) -> Result<Self::Output, BayerError> {
         use DynamicImageOwned::*;
         match self {
             U8(image) => Ok(U8(image.debayer(alg)?)),
@@ -53,90 +54,84 @@ impl<'a: 'b, 'b> Debayer<'a, 'b> for DynamicImageOwned {
     }
 }
 
+impl<'a: 'b, 'b, T> ToLuma<'a, 'b, T> for DynamicImageOwned {
+    type Output = DynamicImageOwned;
+    
+    fn to_luma(&'a self) -> Result<Self::Output, &'static str> {
+        use DynamicImageOwned::*;
+        match self {
+            U8(image) => Ok(U8(image.to_luma()?)),
+            U16(image) => Ok(U16(image.to_luma()?)),
+            F32(image) => Ok(F32(image.to_luma()?)),
+        }
+    }
+    
+    fn to_luma_alpha(&'a self) -> Result<Self::Output, &'static str> {
+        use DynamicImageOwned::*;
+        match self {
+            U8(image) => Ok(U8(image.to_luma_alpha()?)),
+            U16(image) => Ok(U16(image.to_luma_alpha()?)),
+            F32(image) => Ok(F32(image.to_luma_alpha()?)),
+        }
+    }
+    
+    fn to_luma_custom(&'a self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
+        use DynamicImageOwned::*;
+        match self {
+            U8(image) => Ok(U8(image.to_luma_custom(coeffs)?)),
+            U16(image) => Ok(U16(image.to_luma_custom(coeffs)?)),
+            F32(image) => Ok(F32(image.to_luma_custom(coeffs)?)),
+        }
+    }
+    
+    fn to_luma_alpha_custom(&'a self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
+        use DynamicImageOwned::*;
+        match self {
+            U8(image) => Ok(U8(image.to_luma_alpha_custom(coeffs)?)),
+            U16(image) => Ok(U16(image.to_luma_alpha_custom(coeffs)?)),
+            F32(image) => Ok(F32(image.to_luma_alpha_custom(coeffs)?)),
+        }
+    }
+}
+
+macro_rules! impl_alphachannel
+{
+    ($type:ty, $intype:ty, $variant:path) => {
+        impl<'a: 'b, 'b> AlphaChannel<'a, 'b, $type, $intype> for DynamicImageOwned {
+            type ImageOutput = DynamicImageOwned;
+            type AlphaOutput = Vec<$type>;
+
+            fn add_alpha(&'a self, alpha: $intype) -> Result<Self::ImageOutput, &'static str> {
+                use DynamicImageOwned::*;
+                match self {
+                    $variant(image) => {
+                        let image = image.add_alpha(alpha)?;
+                        Ok($variant(image))
+                    }
+                    _ => Err("Data is not of type u8"),
+                }
+            }
+
+            fn remove_alpha(&'a self) -> Result<(Self::ImageOutput, Self::AlphaOutput), &'static str> {
+                use DynamicImageOwned::*;
+                match self {
+                    $variant(image) => {
+                        let (image, alpha) =
+                            image.remove_alpha()?;
+                        Ok(($variant(image), alpha))
+                    }
+                    _ => Err("Data is not of type u8"),
+                }
+            }
+        }
+    };
+}
+
+impl_alphachannel!(u8, &[u8], U8);
+impl_alphachannel!(u16, &[u16], U16);
+impl_alphachannel!(f32, &[f32], F32);
+
 impl DynamicImageOwned {
-    /// Convert the image to a luminance image.
-    ///
-    /// This function uses the formula `Y = 0.299R + 0.587G + 0.114B` to calculate the
-    /// corresponding luminance image.
-    ///
-    /// # Errors
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB image.
-    pub fn into_luma(&self) -> Result<Self, &'static str> {
-        use DynamicImageOwned::*;
-        match self {
-            U8(image) => Ok(U8(image.into_luma()?)),
-            U16(image) => Ok(U16(image.into_luma()?)),
-            F32(image) => Ok(F32(image.into_luma()?)),
-        }
-    }
-
-    /// Convert the image to a luminance image with custom coefficients.
-    ///
-    /// # Arguments
-    /// - `wts`: The weights to use for the conversion. The weights should be in the order
-    ///   `[R, G, B]`.
-    ///
-    /// # Errors
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB/RGBA image.
-    pub fn into_luma_custom(&self, coeffs: [f64; 3]) -> Result<Self, &'static str> {
-        use DynamicImageOwned::*;
-        match self {
-            U8(image) => Ok(U8(image.into_luma_custom(coeffs)?)),
-            U16(image) => Ok(U16(image.into_luma_custom(coeffs)?)),
-            F32(image) => Ok(F32(image.into_luma_custom(coeffs)?)),
-        }
-    }
-
-    /// Convert the image to a grayscale image with alpha channel.
-    ///
-    /// In case the original image does not contain an alpha channel, the alpha channel will be
-    /// filled with the maximum value of the pixel type.
-    ///
-    /// # Errors
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB image.
-    pub fn into_luma_alpha(&self) -> Result<Self, &'static str> {
-        use DynamicImageOwned::*;
-        match self {
-            U8(image) => Ok(U8(image.into_luma_alpha()?)),
-            U16(image) => Ok(U16(image.into_luma_alpha()?)),
-            F32(image) => Ok(F32(image.into_luma_alpha()?)),
-        }
-    }
-
-    /// Convert the image to a grayscale image with alpha channel with custom coefficients.
-    ///
-    /// In case the original image does not contain an alpha channel, the alpha channel will be
-    /// filled with the maximum value of the pixel type.
-    ///
-    /// # Arguments
-    /// - `wts`: The weights to use for the conversion. The weights should be in the order
-    ///   `[R, G, B]`.
-    ///
-    /// # Errors
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB/RGBA image.
-    pub fn into_luma_alpha_custom(&self, coeffs: [f64; 3]) -> Result<Self, &'static str> {
-        use DynamicImageOwned::*;
-        match self {
-            U8(image) => Ok(U8(image.into_luma_alpha_custom(coeffs)?)),
-            U16(image) => Ok(U16(image.into_luma_alpha_custom(coeffs)?)),
-            F32(image) => Ok(F32(image.into_luma_alpha_custom(coeffs)?)),
-        }
-    }
-
-    /// Remove the alpha channel from the image.
-    pub fn remove_alpha(&self) -> Result<Self, &'static str> {
-        use DynamicImageOwned::*;
-        match self {
-            U8(image) => Ok(U8(image.remove_alpha()?)),
-            U16(image) => Ok(U16(image.remove_alpha()?)),
-            F32(image) => Ok(F32(image.remove_alpha()?)),
-        }
-    }
-
     /// Convert the image to a [`DynamicImageOwned`] with [`u8`] pixel type.
     ///
     /// Note: This operation is parallelized if the `rayon` feature is enabled.
@@ -252,8 +247,8 @@ impl DynamicImageOwned {
     }
 }
 
-impl<'a> From<DynamicImageData<'a>> for DynamicImageOwned {
-    fn from(data: DynamicImageData<'a>) -> Self {
+impl<'a> From<&DynamicImageData<'a>> for DynamicImageOwned {
+    fn from(data: &DynamicImageData<'a>) -> Self {
         match data {
             DynamicImageData::U8(data) => DynamicImageOwned::U8(data.into()),
             DynamicImageData::U16(data) => DynamicImageOwned::U16(data.into()),

@@ -53,7 +53,6 @@
 mod traits;
 #[macro_use]
 mod demosaic;
-mod datastor;
 mod imagedata;
 mod imageowned;
 #[macro_use]
@@ -75,7 +74,6 @@ pub use metadata::{
     PROGRAMNAME_KEY, TIMESTAMP_KEY,
 };
 
-pub(crate) use datastor::DataStor;
 use demosaic::ColorFilterArray;
 pub use demosaic::{BayerError, Debayer, DemosaicMethod};
 use serde::{Deserialize, Serialize};
@@ -119,7 +117,7 @@ pub use optimumexposure::{CalcOptExp, OptimumExposure, OptimumExposureBuilder};
 ///
 /// This type acts as a type-erased version of `ImageData` and can be used to store
 /// image data with different pixel types. The pixel type is determined at runtime.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 #[non_exhaustive]
 pub enum DynamicImageData<'a> {
     /// Image data with a `u8` primitive type.
@@ -235,7 +233,7 @@ impl TryFrom<i8> for PixelType {
 }
 
 impl TryInto<ColorFilterArray> for ColorSpace {
-    type Error = ();
+    type Error = &'static str;
 
     fn try_into(self) -> Result<ColorFilterArray, Self::Error> {
         match self {
@@ -245,7 +243,14 @@ impl TryInto<ColorFilterArray> for ColorSpace {
                 BayerPattern::Grbg => Ok(ColorFilterArray::Grbg),
                 BayerPattern::Rggb => Ok(ColorFilterArray::Rggb),
             },
-            _ => Err(()),
+            ColorSpace::BayerAlpha(_) => Err("Alpha channel not supported for Bayer images."),
+            ColorSpace::Gray | ColorSpace::GrayAlpha => {
+                Err("Gray color space not supported for Bayer images.")
+            }
+            ColorSpace::Rgb | ColorSpace::Rgba => {
+                Err("RGB color space not supported for Bayer images.")
+            }
+            ColorSpace::Custom(_) => Err("Custom color space not supported for Bayer images."),
         }
     }
 }
@@ -257,27 +262,94 @@ impl Into<ColorSpace> for BayerPattern {
     }
 }
 
-mod test {
-    #[test]
-    fn test_datastor() {
-        let mut data = vec![1, 2, 3, 4, 5];
-        let ds = crate::DataStor::from_mut_ref(data.as_mut_slice());
-        let _a = ds.to_owned();
-    }
+/// A trait for converting an image to a luminance image.
+///
+/// This trait is implemented for [`ImageData`], [`DynamicImageData`], [`GenericImage`] and
+/// their owned counterparts, [`ImageOwned`], [`DynamicImageOwned`] and [`GenericImageOwned`].
+pub trait ToLuma<'b: 'a, 'a, T>
+where
+    T: Sized,
+{
+    /// The output type of the conversion.
+    type Output;
 
+    /// Convert the image to a luminance image.
+    ///
+    /// This function uses the formula `Y = 0.299R + 0.587G + 0.114B` to calculate the
+    /// corresponding luminance image.
+    ///
+    /// # Errors
+    /// - If the image is not debayered and is not a grayscale image.
+    /// - If the image is not an RGB image.
+    fn to_luma(&'b self) -> Result<Self::Output, &'static str>;
+
+    /// Convert the image to a luminance alpha image.
+    ///
+    /// This function uses the formula `Y = 0.299R + 0.587G + 0.114B` to calculate the
+    /// corresponding luminance image.
+    ///
+    /// The alpha channel is copied from the original image, if present.
+    /// Otherwise, the alpha channel is set to maximum value.
+    ///
+    /// # Errors
+    /// - If the image is not debayered and is not a grayscale image.
+    /// - If the image is not an RGB image.
+    fn to_luma_alpha(&'b self) -> Result<Self::Output, &'static str>;
+
+    /// Convert the image to a luminance image with custom coefficients.
+    ///
+    /// # Arguments
+    /// - `wts`: The weights to use for the conversion.
+    ///
+    /// # Errors
+    /// - If the image is not debayered and is not a grayscale image.
+    /// - If the image is not an RGB image.
+    fn to_luma_custom(&'b self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str>;
+
+    /// Convert the image to a luminance image with custom coefficients.
+    ///
+    /// # Arguments
+    /// - `wts`: The weights to use for the conversion. The number of weights must be 3.
+    ///
+    /// # Errors
+    /// - If the number of weights is not 3.
+    /// - If the image is not debayered and is not a grayscale image.
+    /// - If the image is not an RGB image.
+    fn to_luma_alpha_custom(&'b self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str>;
+}
+
+/// A trait for adding/removing an alpha channel to/from an image.
+pub trait AlphaChannel<'b: 'a, 'a, T, U>
+where
+    T: Sized,
+    U: ?Sized,
+{
+    /// The output type of the operation.
+    type ImageOutput;
+    /// The output type of the alpha channel.
+    type AlphaOutput;
+
+    /// Add an alpha channel to the image.
+    fn add_alpha(&'b self, alpha: U) -> Result<Self::ImageOutput, &'static str>;
+
+    /// Remove the alpha channel from the image.
+    fn remove_alpha(&'b self) -> Result<(Self::ImageOutput, Self::AlphaOutput), &'static str>;
+}
+
+mod test {
     #[test]
     fn test_debayer() {
         use crate::demosaic::Debayer;
         // color_backtrace::install();
-        let src = [
+        let mut src = [
             229, 67, 95, 146, 232, 51, 229, 241, 169, 161, 15, 52, 45, 175, 98, 197,
         ];
         let expected = [
             229, 0, 0, 0, 67, 0, 95, 0, 0, 0, 146, 0, 0, 232, 0, 0, 0, 51, 0, 229, 0, 0, 0, 241,
             169, 0, 0, 0, 161, 0, 15, 0, 0, 0, 52, 0, 0, 45, 0, 0, 0, 175, 0, 98, 0, 0, 0, 197,
         ];
-        let img = crate::ImageData::new(
-            crate::DataStor::from_owned(src.into()),
+        let img = crate::ImageData::create(
+            &mut src,
             4,
             4,
             crate::ColorSpace::Bayer(crate::BayerPattern::Rggb),
@@ -291,24 +363,6 @@ mod test {
         assert!(a.height() == 4);
         assert!(a.color_space() == crate::ColorSpace::Rgb);
         assert_eq!(a.as_slice(), &expected);
-    }
-
-    #[cfg(feature = "image")]
-    #[test]
-    fn test_dynamicimagedata() {
-        use crate::{ColorSpace, DynamicImageData, ImageData};
-        use image::DynamicImage;
-
-        let mut data: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
-        let ds = crate::DataStor::from_mut_ref(data.as_mut_slice());
-        let a = ImageData::new(ds, 3, 2, ColorSpace::Gray).expect("Failed to create ImageData");
-        let b = DynamicImageData::from(a.clone());
-        let c = DynamicImage::try_from(b).unwrap();
-        let c_ = c.resize(128, 128, image::imageops::FilterType::Nearest);
-        let _d: DynamicImageData = c_
-            .try_into()
-            .expect("Failed to convert DynamicImage to DynamicImageData");
-        assert_eq!(_d.width(), 128);
     }
 }
 

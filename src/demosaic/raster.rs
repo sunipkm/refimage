@@ -49,11 +49,6 @@ impl<'a, T: PixelStor> RasterMut<'a, T> {
         let end = start + bytes_per_pixel * self.w;
         &mut self.buf[start..end]
     }
-
-    /// Get a mutable slice
-    pub fn as_mut_slice(&mut self) -> &mut [T] {
-        self.buf
-    }
 }
 
 #[cfg(test)]

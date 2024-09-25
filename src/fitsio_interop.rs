@@ -302,7 +302,6 @@ impl<'a, T: PixelStor + WriteImage> ImageData<'a, T> {
         compress: FitsCompression,
         pxltype: PixelType,
     ) -> Result<(FitsHdu, FitsFile), FitsError> {
-        let data = self.data.as_slice();
         let desc = ImageDescription {
             data_type: pxltype.into(),
             dimensions: if self.channels() > 1 {
@@ -328,7 +327,7 @@ impl<'a, T: PixelStor + WriteImage> ImageData<'a, T> {
             fptr.create_image("IMAGE", &desc)?
         };
 
-        hdu.write_image(&mut fptr, data)?;
+        hdu.write_image(&mut fptr, self.data)?;
         Ok((hdu, fptr))
     }
 }
@@ -506,8 +505,8 @@ mod test {
     #[test]
     fn test_fitsio() {
         use crate::FitsWrite;
-        let data = vec![1u8, 2, 3, 4, 5, 6];
-        let img = crate::ImageData::from_owned(data, 3, 2, crate::ColorSpace::Gray)
+        let mut data = vec![1u8, 2, 3, 4, 5, 6];
+        let img = crate::ImageData::new(&mut data, 3, 2, crate::ColorSpace::Gray)
             .expect("Failed to create ImageData");
         let img = crate::DynamicImageData::from(img);
         let mut img = crate::GenericImage::new(std::time::SystemTime::now(), img);

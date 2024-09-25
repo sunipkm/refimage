@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{BayerError, ColorSpace, Debayer, DemosaicMethod, DynamicImageData, DynamicImageOwned};
+use crate::{AlphaChannel, BayerError, ColorSpace, Debayer, DemosaicMethod, DynamicImageData, DynamicImageOwned, ToLuma};
 
 /// Key for the timestamp metadata.
 /// This key is inserted by default when creating a new [`GenericImage`].
@@ -104,7 +104,7 @@ pub enum GenericValue {
 ///
 /// img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
 /// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct GenericImage<'a> {
     metadata: HashMap<String, GenericLineItem>,
     #[serde(borrow)]
@@ -410,10 +410,11 @@ impl GenericImageOwned {
 }
 
 impl<'a: 'b, 'b> Debayer<'a, 'b> for GenericImage<'b> {
-    fn debayer(&'b self, method: DemosaicMethod) -> Result<Self, BayerError> {
+    type Output = GenericImageOwned;
+    fn debayer(&'b self, method: DemosaicMethod) -> Result<Self::Output, BayerError> {
         let img = self.image.debayer(method)?;
         let meta = self.metadata.clone();
-        Ok(GenericImage {
+        Ok(Self::Output {
             metadata: meta,
             image: img,
         })
@@ -421,105 +422,141 @@ impl<'a: 'b, 'b> Debayer<'a, 'b> for GenericImage<'b> {
 }
 
 impl<'a: 'b, 'b> Debayer<'a, 'b> for GenericImageOwned {
-    fn debayer(&self, method: DemosaicMethod) -> Result<Self, BayerError> {
+    type Output = GenericImageOwned;
+    fn debayer(&'b self, method: DemosaicMethod) -> Result<Self::Output, BayerError> {
         let img = self.image.debayer(method)?;
         let meta = self.metadata.clone();
-        Ok(Self {
+        Ok(Self::Output {
             metadata: meta,
             image: img,
         })
     }
 }
 
-impl<'a: 'b, 'b> GenericImage<'a> {
-    /// Apply a function to the image data.
-    ///
-    /// This function copies the metadata of the current image, and replaces the underlying
-    /// image data with the result of the function.
-    ///
-    /// # Arguments
-    /// - `f`: The function to apply to the image data.
-    ///   The function must take a reference to an [`DynamicImageData`] and return a [`DynamicImageData`].
-    pub fn operate<F>(&'a self, f: F) -> Result<GenericImage<'b>, &'static str>
-    where
-        F: FnOnce(&'a DynamicImageData<'a>) -> Result<DynamicImageData<'b>, &'static str>,
-    {
-        let img = f(&(self.image))?;
-        Ok(GenericImage {
-            metadata: self.metadata.clone(),
-            image: img,
-        })
-    }
+// impl<'a: 'b, 'b, T> ToLuma<'a, 'b, T> for GenericImage<'a> {
+//     type Output = GenericImageOwned;
 
-    /// Convert the image to a luminance image.
-    ///
-    /// This function uses the formula `Y = 0.299R + 0.587G + 0.114B` to calculate the
-    /// corresponding luminance image.
-    ///
-    /// # Errors
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB image.
-    pub fn into_luma(&'a self) -> Result<GenericImage<'b>, &'static str> {
-        let img = self.image.into_luma()?;
-        Ok(GenericImage {
-            metadata: self.metadata.clone(),
-            image: img,
-        })
-    }
+//     fn to_luma(&'a self) -> Result<Self::Output, &'static str> {
+//         let img = <DynamicImageData<'_> as ToLuma<'_, '_, T>>::to_luma(self.get_image())?;
+//         let meta = self.metadata.clone();
+//         Ok(Self::Output {
+//             metadata: meta,
+//             image: img,
+//         })
+//     }
+    
+//     fn to_luma_alpha(&'a self) -> Result<Self::Output, &'static str> {
+//         let img = <DynamicImageData<'_> as ToLuma<'_, '_, T>>::to_luma_alpha(self.get_image())?;
+//         let meta = self.metadata.clone();
+//         Ok(Self::Output {
+//             metadata: meta,
+//             image: img,
+//         })
+//     }
+    
+//     fn to_luma_custom(&'a self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
+//         let img = <DynamicImageData<'_> as ToLuma<'_, '_, T>>::to_luma_custom(self.get_image(), coeffs)?;
+//         let meta = self.metadata.clone();
+//         Ok(Self::Output {
+//             metadata: meta,
+//             image: img,
+//         })
+//     }
+    
+//     fn to_luma_alpha_custom(&'a self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
+//         let img = <DynamicImageData<'_> as ToLuma<'_, '_, T>>::to_luma_alpha_custom(self.get_image(), coeffs)?;
+//         let meta = self.metadata.clone();
+//         Ok(Self::Output {
+//             metadata: meta,
+//             image: img,
+//         })
+//     }
+// }
 
-    /// Convert the image to a luminance image with custom coefficients.
-    ///
-    /// # Arguments
-    /// - `wts`: The weights to use for the conversion. The weights should be in the order
-    ///   `[R, G, B]`.
-    ///
-    /// # Errors
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB/RGBA image.
-    pub fn into_luma_custom(&'a self, coeffs: [f64; 3]) -> Result<GenericImage<'b>, &'static str> {
-        let img = self.image.into_luma_custom(coeffs)?;
-        Ok(GenericImage {
-            metadata: self.metadata.clone(),
-            image: img,
-        })
-    }
+macro_rules! impl_toluma {
+    ($inp: ty, $mid: ty) => {
+        impl<'a:'b, 'b, T> ToLuma<'a, 'b, T> for $inp {
+            type Output = GenericImageOwned;
 
-    /// Convert the image to a grayscale image with alpha channel.
-    ///
-    /// In case the original image does not contain an alpha channel, the alpha channel will be
-    /// filled with the maximum value of the pixel type.
-    ///
-    /// # Errors
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB image.
-    pub fn into_luma_alpha(&'a self) -> Result<GenericImage<'b>, &'static str> {
-        let img = self.image.into_luma_alpha()?;
-        Ok(GenericImage {
-            metadata: self.metadata.clone(),
-            image: img,
-        })
-    }
+            fn to_luma(&'a self) -> Result<Self::Output, &'static str> {
+                let img = <$mid as ToLuma<'_, '_, T>>::to_luma(self.get_image())?;
+                let meta = self.metadata.clone();
+                Ok(Self::Output {
+                    metadata: meta,
+                    image: img,
+                })
+            }
 
-    /// Convert the image to a grayscale image with alpha channel with custom coefficients.
-    ///
-    /// In case the original image does not contain an alpha channel, the alpha channel will be
-    /// filled with the maximum value of the pixel type.
-    ///
-    /// # Arguments
-    /// - `wts`: The weights to use for the conversion. The weights should be in the order
-    ///   `[R, G, B]`.
-    ///
-    /// # Errors
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB/RGBA image.
-    pub fn into_luma_alpha_custom(&self, coeffs: [f64; 3]) -> Result<Self, &'static str> {
-        let img = self.image.into_luma_alpha_custom(coeffs)?;
-        Ok(GenericImage {
-            metadata: self.metadata.clone(),
-            image: img,
-        })
+            fn to_luma_alpha(&'a self) -> Result<Self::Output, &'static str> {
+                let img = <$mid as ToLuma<'_, '_, T>>::to_luma_alpha(self.get_image())?;
+                let meta = self.metadata.clone();
+                Ok(Self::Output {
+                    metadata: meta,
+                    image: img,
+                })
+            }
+
+            fn to_luma_custom(&'a self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
+                let img = <$mid as ToLuma<'_, '_, T>>::to_luma_custom(self.get_image(), coeffs)?;
+                let meta = self.metadata.clone();
+                Ok(Self::Output {
+                    metadata: meta,
+                    image: img,
+                })
+            }
+
+            fn to_luma_alpha_custom(&'a self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
+                let img = <$mid as ToLuma<'_, '_, T>>::to_luma_alpha_custom(self.get_image(), coeffs)?;
+                let meta = self.metadata.clone();
+                Ok(Self::Output {
+                    metadata: meta,
+                    image: img,
+                })
+            }
+        }
     }
 }
+
+impl_toluma!(GenericImage<'a>, DynamicImageData<'_>);
+impl_toluma!(GenericImageOwned, DynamicImageOwned);
+
+macro_rules! impl_alphachannel {
+    ($type: ty, $inp: ty, $mid: ty) => {
+        impl<'a: 'b, 'b> AlphaChannel<'a, 'b, $type, &[$type]> for $inp {
+            type ImageOutput = GenericImageOwned;
+            type AlphaOutput = Vec<$type>;
+
+            fn remove_alpha(&'b self) -> Result<(Self::ImageOutput, Self::AlphaOutput), &'static str> {
+                let (img, alpha) = <$mid as AlphaChannel<'_, '_, $type, &[$type]>>::remove_alpha(self.get_image())?;
+                let meta = self.metadata.clone();
+                Ok(
+                    (Self::ImageOutput {
+                        metadata: meta,
+                        image: img,
+                    },
+                    alpha,)
+                )
+            }
+
+            fn add_alpha(&'a self, alpha: &[$type]) -> Result<Self::ImageOutput, &'static str> {
+                let img = <$mid as AlphaChannel<'_, '_, $type, &[$type]>>::add_alpha(self.get_image(), alpha)?;
+                let meta = self.metadata.clone();
+                Ok(Self::ImageOutput {
+                    metadata: meta,
+                    image: img,
+                })
+            }
+        }
+    }
+}
+
+impl_alphachannel!(u8, GenericImage<'a>, DynamicImageData<'_>);
+impl_alphachannel!(u16, GenericImage<'a>, DynamicImageData<'_>);
+impl_alphachannel!(f32, GenericImage<'a>, DynamicImageData<'_>);
+
+impl_alphachannel!(u8, GenericImageOwned, DynamicImageOwned);
+impl_alphachannel!(u16, GenericImageOwned, DynamicImageOwned);
+impl_alphachannel!(f32, GenericImageOwned, DynamicImageOwned);
 
 impl GenericImageOwned {
     /// Apply a function to the image data.
@@ -529,7 +566,7 @@ impl GenericImageOwned {
     ///
     /// # Arguments
     /// - `f`: The function to apply to the image data.
-    ///   The function must take a reference to an [`DynamicImageData`] and return a [`DynamicImageData`].
+    ///   The function must take a reference to an [`DynamicImageOwned`] and return a [`DynamicImageData`].
     pub fn operate<F>(&self, f: F) -> Result<Self, &'static str>
     where
         F: FnOnce(&DynamicImageOwned) -> Result<DynamicImageOwned, &'static str>,
@@ -540,82 +577,13 @@ impl GenericImageOwned {
             image: img,
         })
     }
-
-    /// Convert the image to a luminance image.
-    ///
-    /// This function uses the formula `Y = 0.299R + 0.587G + 0.114B` to calculate the
-    /// corresponding luminance image.
-    ///
-    /// # Errors
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB image.
-    pub fn into_luma(&self) -> Result<Self, &'static str> {
-        let img = self.image.into_luma()?;
-        Ok(Self {
-            metadata: self.metadata.clone(),
-            image: img,
-        })
-    }
-
-    /// Convert the image to a luminance image with custom coefficients.
-    ///
-    /// # Arguments
-    /// - `wts`: The weights to use for the conversion. The weights should be in the order
-    ///   `[R, G, B]`.
-    ///
-    /// # Errors
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB/RGBA image.
-    pub fn into_luma_custom(&self, coeffs: [f64; 3]) -> Result<Self, &'static str> {
-        let img = self.image.into_luma_custom(coeffs)?;
-        Ok(Self {
-            metadata: self.metadata.clone(),
-            image: img,
-        })
-    }
-
-    /// Convert the image to a grayscale image with alpha channel.
-    ///
-    /// In case the original image does not contain an alpha channel, the alpha channel will be
-    /// filled with the maximum value of the pixel type.
-    ///
-    /// # Errors
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB image.
-    pub fn into_luma_alpha(&self) -> Result<Self, &'static str> {
-        let img = self.image.into_luma_alpha()?;
-        Ok(Self {
-            metadata: self.metadata.clone(),
-            image: img,
-        })
-    }
-
-    /// Convert the image to a grayscale image with alpha channel with custom coefficients.
-    ///
-    /// In case the original image does not contain an alpha channel, the alpha channel will be
-    /// filled with the maximum value of the pixel type.
-    ///
-    /// # Arguments
-    /// - `wts`: The weights to use for the conversion. The weights should be in the order
-    ///   `[R, G, B]`.
-    ///
-    /// # Errors
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB/RGBA image.
-    pub fn into_luma_alpha_custom(&self, coeffs: [f64; 3]) -> Result<Self, &'static str> {
-        let img = self.image.into_luma_alpha_custom(coeffs)?;
-        Ok(Self {
-            metadata: self.metadata.clone(),
-            image: img,
-        })
-    }
 }
 
 impl<'a> From<GenericImage<'a>> for GenericImageOwned {
     fn from(img: GenericImage<'a>) -> Self {
         Self {
             metadata: img.metadata,
-            image: img.image.into(),
+            image: (&img.image).into(),
         }
     }
 }
@@ -1018,35 +986,6 @@ impl GenericValue {
 }
 
 mod test {
-
-    #[test]
-    fn test_operate_generic() {
-        use crate::Debayer;
-        use crate::{BayerPattern, DynamicImageData, GenericImage, ImageData};
-        use std::time::SystemTime;
-
-        let data = vec![0u8; 256];
-        let img = ImageData::from_owned(data, 16, 16, BayerPattern::Grbg.into()).unwrap();
-        let img = DynamicImageData::from(img);
-        let mut img = GenericImage::new(SystemTime::now(), img);
-
-        img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
-        img.insert_key("TESTING_THIS_LONG_KEY", "This is a long key")
-            .unwrap();
-
-        let img2 = img
-            .operate(|x| {
-                let x = x.debayer(crate::DemosaicMethod::Linear).unwrap();
-                Ok(x)
-            })
-            .unwrap();
-        let img3 = img.operate(|x| Ok(x.clone())).unwrap();
-        assert_eq!(img, img3);
-        assert_eq!(img.get_metadata(), img2.get_metadata());
-        assert_eq!(img.get_image().width(), img2.get_image().width());
-        assert_eq!(img.get_image().height(), img2.get_image().height());
-        assert_eq!(img.get_image().channels() * 3, img2.get_image().channels());
-    }
 
     #[test]
     fn test_operate_owned() {

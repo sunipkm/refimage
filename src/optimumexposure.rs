@@ -356,12 +356,12 @@ pub trait CalcOptExp {
 
 impl<'a, T: PixelStor + Ord> CalcOptExp for ImageData<'a, T> {
     fn calc_opt_exp(
-        mut self,
+        self,
         eval: &OptimumExposure,
         exposure: Duration,
         bin: u8,
     ) -> Result<(Duration, u16), &'static str> {
-        eval.calculate(self.data.as_mut_slice(), exposure, bin)
+        eval.calculate(self.data, exposure, bin)
     }
 }
 

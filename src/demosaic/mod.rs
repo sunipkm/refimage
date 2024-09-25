@@ -88,6 +88,8 @@ pub trait Debayer<'b: 'a, 'a>
 where
     Self: Sized,
 {
+    /// The output type of the debayering process.
+    type Output;
     /// Debayer the image.
     ///
     /// This function returns an error if the image is not a Bayer pattern image.
@@ -104,5 +106,5 @@ where
     /// # Errors
     /// - If the image is not a Bayer pattern image.
     /// - If the image is not a single channel image.
-    fn debayer(&'b self, alg: DemosaicMethod) -> Result<Self, BayerError>;
+    fn debayer(&'b self, alg: DemosaicMethod) -> Result<Self::Output, BayerError>;
 }

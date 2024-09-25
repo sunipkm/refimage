@@ -1,26 +1,20 @@
 //! Bayer error codes.
 
-use quick_error::quick_error;
+use thiserror::Error;
 
 pub type BayerResult<T> = Result<T, BayerError>;
 
-quick_error! {
-
-#[derive(Debug)]
+#[derive(Debug, Error)]
 /// Error codes for the Bayer demosaicing.
 pub enum BayerError {
+    #[error("Invalid Color Filter Array: {0}")]
     /// Generic failure.  Please try to make something more meaningful.
-    NoGood {
-        display("No good")
-    }
+    InvalidColorSpace(&'static str),
+    #[error("Wrong color resolution")]
     /// The image is not the right size.
-    WrongResolution {
-        display("Wrong resolution")
-    }
+    WrongResolution,
+    #[error("Wrong color depth")]
     /// The image is not the right depth.
-    WrongDepth {
-        display("Wrong depth")
-    }
+    WrongDepth,
 }
 
-}
