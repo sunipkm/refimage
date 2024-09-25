@@ -6,10 +6,7 @@ use std::{
 use serde::Serialize;
 
 use crate::{
-    genericimageowned::GenericImageOwned,
-    metadata::{name_check, InsertValue},
-    BayerError, CalcOptExp, Debayer, DemosaicMethod, DynamicImageRef, GenericLineItem,
-    OptimumExposure, EXPOSURE_KEY, TIMESTAMP_KEY,
+    genericimageowned::GenericImageOwned, metadata::{name_check, InsertValue}, BayerError, CalcOptExp, Debayer, DemosaicMethod, DynamicImageRef, GenericLineItem, ImageProps, OptimumExposure, EXPOSURE_KEY, TIMESTAMP_KEY
 };
 
 #[allow(unused_imports)]
@@ -215,6 +212,46 @@ impl CalcOptExp for GenericImageRef<'_> {
             DynamicImageRef::U8(img) => eval.calculate(img.as_mut_slice(), exposure, bin),
             DynamicImageRef::U16(img) => eval.calculate(img.as_mut_slice(), exposure, bin),
             DynamicImageRef::F32(_) => Err("Floating point images are not supported for this operation, since Ord is not implemented for floating point types."),
+        }
+    }
+}
+
+
+impl ImageProps for GenericImageRef<'_> {
+    type OutputU8 = GenericImageOwned;
+
+    fn width(&self) -> usize {
+        self.image.width()
+    }
+
+    fn height(&self) -> usize {
+        self.image.height()
+    }
+
+    fn channels(&self) -> u8 {
+        self.image.channels()
+    }
+
+    fn color_space(&self) -> crate::ColorSpace {
+        self.image.color_space()
+    }
+
+    fn pixel_type(&self) -> crate::PixelType {
+        self.image.pixel_type()
+    }
+
+    fn len(&self) -> usize {
+        self.image.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.image.is_empty()
+    }
+
+    fn cast_u8(&self) -> Self::OutputU8 {
+        Self::OutputU8 {
+            metadata: self.metadata.clone(),
+            image: self.image.into_u8(),
         }
     }
 }

@@ -306,7 +306,7 @@ macro_rules! impl_toluma {
     };
 }
 
-impl_toluma!(GenericImageRef<'a>, DynamicImageRef<'_>);
+impl_toluma!(GenericImageRef<'_>, DynamicImageRef<'_>);
 impl_toluma!(GenericImageOwned, DynamicImageOwned);
 
 impl<'a: 'b, 'b> Debayer<'a, 'b> for GenericImage<'b> {

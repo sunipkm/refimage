@@ -103,7 +103,7 @@ pub trait ToLuma<'b: 'a, 'a> {
 
 /// A trait for accessing the properties of an image.
 pub trait ImageProps {
-    /// The output type of [`ImageProps::into_u8`].
+    /// The output type of [`ImageProps::cast_u8`].
     type OutputU8;
     /// Get the width of the image.
     fn width(&self) -> usize;
