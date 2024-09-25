@@ -1,8 +1,8 @@
 use std::time::SystemTime;
 
 use refimage::{
-    BayerPattern, ColorSpace, Debayer, DemosaicMethod, DynamicImageData, DynamicImageOwned,
-    GenericImage, GenericImageOwned, ImageData, ImageOwned,
+    BayerPattern, ColorSpace, Debayer, DemosaicMethod, DynamicImageOwned, GenericImageOwned,
+    ImageOwned,
 };
 
 fn main() {

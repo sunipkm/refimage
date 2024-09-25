@@ -554,7 +554,7 @@ mod test {
         let (lumaimg, _): (ImageOwned<u8>, Vec<u8>) = luma_a.remove_alpha().unwrap();
         assert_eq!(lumaimg.as_slice(), &expected[..]);
         assert_eq!(
-            luma.add_alpha(&vec![255; expected_a.len()])
+            luma.add_alpha(&vec![255; expected.len()])
                 .unwrap()
                 .as_slice(),
             &expected_a[..]

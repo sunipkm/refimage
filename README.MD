@@ -33,27 +33,24 @@ use std::time::SystemTime;
 
 let mut data = vec![0u8; 256]; // this is the backing store
 // acquire(&mut data); // this function populates the backing store with the image pixels
-let img = ImageData::from_mut_ref(&mut data, 16, 16, BayerPattern::Grbg.into()).unwrap(); // Create a 4x4 image backed by the vector
+let img = ImageData::new(&mut data, 16, 16, BayerPattern::Grbg.into()).unwrap(); // Create a 4x4 image backed by the vector
 let img = DynamicImageData::from(img); // convert the `ImageData` object to `DynamicImageData`
 let img = img.debayer(DemosaicMethod::Nearest).expect("Could not debayer"); // debayer the image using nearest neighbor method
-let mut img = GenericImage::new(SystemTime::now(), img); // Convert to a GenericImage
+let mut img = GenericImageOwned::new(SystemTime::now(), img); // Convert to a GenericImage
 // insert the camera information as metadata
 img.insert_key("CAMERA", ("Rust Test Program", "Name of the camera used to capture the image"));
 let json = serde_json::to_string(&img).unwrap(); // serialize the image to JSON
-let rimg: GenericImage = serde_json::from_str(&json).unwrap(); // deserialize to GenericImage
+let rimg: GenericImageOwned = serde_json::from_str(&json).unwrap(); // deserialize to GenericImage
 assert_eq!(&img, &rimg); // Confirm that deserialized image matches the original
-let rimg: GenericImageOwned = rimg.into(); // convert to GenericImageOwned
-let ownedjson = serde_json::to_string(&rimg).unwrap(); // serialize the image to JSON
-assert_eq!(&json, &ownedjson); // the two representations should be identical
 ```
 
 In the second case, an image can be loaded using the [`image`](https://crates.io/crates/image) crate from disk, by enabling the `image` feature:
 ```rust,no_run
-use refimage::DynamicImageData;
+use refimage::DynamicImageOwned;
 use image::open;
 
 let img = open("/path/to/image.png").expect("Could not load image");
-let img = DynamicImageData::try_from(img).expect("Could not convert image");
+let img = DynamicImageOwned::try_from(img).expect("Could not convert image");
 ```
 
 ## Loading and storing a `GenericImage`

@@ -20,8 +20,8 @@ use num_traits::CheckedEuclid;
 /// ```
 /// use refimage::{ImageData, ColorSpace};
 ///
-/// let data = vec![1u8, 2, 3, 4, 5, 6];
-/// let img = ImageData::from_owned(data, 3, 2, ColorSpace::Gray).unwrap();
+/// let mut data = vec![1u8, 2, 3, 4, 5, 6];
+/// let img = ImageData::new(&mut data, 3, 2, ColorSpace::Gray).unwrap();
 /// ```
 #[derive(Debug, PartialEq)]
 pub struct ImageData<'a, T: PixelStor> {

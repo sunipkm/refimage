@@ -30,17 +30,17 @@
 //!
 //! # Usage
 //! ```
-//! use refimage::{ImageData, ColorSpace, DynamicImageData, GenericImage};
+//! use refimage::{ImageData, ColorSpace, DynamicImageData, GenericImage, GenericImageOwned};
 //! use std::time::SystemTime;
 //! use std::path::Path;
 //!
-//! let data = vec![1u8, 2, 3, 4, 5, 6]; // 3x2 grayscale image
-//! let img = ImageData::from_owned(data, 3, 2, ColorSpace::Gray).unwrap(); // Create ImageData
+//! let mut data = vec![1u8, 2, 3, 4, 5, 6]; // 3x2 grayscale image
+//! let img = ImageData::new(&mut data, 3, 2, ColorSpace::Gray).unwrap(); // Create ImageData
 //! let img = DynamicImageData::from(img); // Convert to DynamicImageData
 //! let mut img = GenericImage::new(SystemTime::now(), img); // Create GenericImage with creation time info
 //! img.insert_key("CAMERANAME", "Canon EOS 5D Mark IV".to_string()).unwrap(); // Insert metadata
 //! let serialized = bincode::serialize(&img).unwrap(); // Serialize the image
-//! let deserialized: GenericImage = bincode::deserialize(&serialized).unwrap(); // Deserialize the image
+//! let deserialized: GenericImageOwned = bincode::deserialize(&serialized).unwrap(); // Deserialize the image
 //! ```
 //! # Optional Features
 //! Features are available to extend the functionalities of the core `refimage` data types:
@@ -109,8 +109,8 @@ pub use optimumexposure::{CalcOptExp, OptimumExposure, OptimumExposureBuilder};
 /// ```
 /// use refimage::{ImageData, ColorSpace, DynamicImageData};
 ///
-/// let data = vec![1u8, 2, 3, 4, 5, 6];
-/// let img = ImageData::from_owned(data, 3, 2, ColorSpace::Gray).unwrap();
+/// let mut data = vec![1u8, 2, 3, 4, 5, 6];
+/// let img = ImageData::new(&mut data, 3, 2, ColorSpace::Gray).unwrap();
 /// let img = DynamicImageData::from(img);
 ///
 /// ```

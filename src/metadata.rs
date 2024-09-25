@@ -100,8 +100,8 @@ pub enum GenericValue {
 /// ```
 /// use refimage::{ImageData, DynamicImageData, GenericImage, ColorSpace};
 /// use std::time::SystemTime;
-/// let data = vec![1u8, 2, 3, 4, 5, 6];
-/// let img = ImageData::from_owned(data, 3, 2, ColorSpace::Gray).unwrap();
+/// let mut data = vec![1u8, 2, 3, 4, 5, 6];
+/// let img = ImageData::new(&mut data, 3, 2, ColorSpace::Gray).unwrap();
 /// let img = DynamicImageData::from(img);
 /// let mut img = GenericImage::new(std::time::SystemTime::now(), img);
 ///
@@ -127,12 +127,12 @@ pub struct GenericImage<'a> {
 ///
 /// # Usage
 /// ```
-/// use refimage::{ImageData, DynamicImageData, GenericImage, ColorSpace};
+/// use refimage::{ImageData, DynamicImageData, GenericImageOwned, ColorSpace};
 /// use std::time::SystemTime;
-/// let data = vec![1u8, 2, 3, 4, 5, 6];
-/// let img = ImageData::from_owned(data, 3, 2, ColorSpace::Gray).unwrap();
+/// let mut data = vec![1u8, 2, 3, 4, 5, 6];
+/// let img = ImageData::new(&mut data, 3, 2, ColorSpace::Gray).unwrap();
 /// let img = DynamicImageData::from(img);
-/// let mut img = GenericImage::new(std::time::SystemTime::now(), img);
+/// let mut img = GenericImageOwned::new(std::time::SystemTime::now(), (&img).into());
 ///
 /// img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
 /// ```
@@ -153,8 +153,8 @@ impl<'a> GenericImage<'a> {
     /// ```
     /// use refimage::{ImageData, DynamicImageData, GenericImage, ColorSpace};
     /// use std::time::SystemTime;
-    /// let data = vec![1u8, 2, 3, 4, 5, 6];
-    /// let img = ImageData::from_owned(data, 3, 2, ColorSpace::Gray).unwrap();
+    /// let mut data = vec![1u8, 2, 3, 4, 5, 6];
+    /// let img = ImageData::new(&mut data, 3, 2, ColorSpace::Gray).unwrap();
     /// let img = DynamicImageData::from(img);
     /// let mut img = GenericImage::new(std::time::SystemTime::now(), img);
     ///
