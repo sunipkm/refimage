@@ -91,7 +91,7 @@ pub use imageowned::ImageOwned;
 mod optimumexposure;
 pub use optimumexposure::{CalcOptExp, OptimumExposure, OptimumExposureBuilder};
 
-/// Image data with a dynamic pixel type, backed by owned or slice of data.
+/// Image data with a dynamic pixel type, backed by a mutable slice of data.
 ///
 /// This represents a _matrix_ of _pixels_ which are composed of primitive and common
 /// types, i.e. `u8`, `u16`, and `f32`. The matrix is stored in a _row-major_ order.
@@ -179,8 +179,6 @@ pub enum ColorSpace {
     Bayer(BayerPattern) = 0b001,
     /// Grayscale image with alpha channel.
     GrayAlpha = 0b010,
-    /// Bayer mosaic image with alpha channel.
-    BayerAlpha(BayerPattern) = 0b011,
     /// RGB image.
     Rgb = 0b100,
     /// RGBA image.
@@ -243,7 +241,6 @@ impl TryInto<ColorFilterArray> for ColorSpace {
                 BayerPattern::Grbg => Ok(ColorFilterArray::Grbg),
                 BayerPattern::Rggb => Ok(ColorFilterArray::Rggb),
             },
-            ColorSpace::BayerAlpha(_) => Err("Alpha channel not supported for Bayer images."),
             ColorSpace::Gray | ColorSpace::GrayAlpha => {
                 Err("Gray color space not supported for Bayer images.")
             }

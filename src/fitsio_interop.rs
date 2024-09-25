@@ -461,10 +461,6 @@ fn str_from_cspace(cspace: &ColorSpace) -> String {
         ColorSpace::Bayer(BayerPattern::Gbrg) => "GBRG",
         ColorSpace::Bayer(BayerPattern::Grbg) => "GRBG",
         ColorSpace::Bayer(BayerPattern::Rggb) => "RGGB",
-        ColorSpace::BayerAlpha(BayerPattern::Bggr) => "BGGRA",
-        ColorSpace::BayerAlpha(BayerPattern::Gbrg) => "GBRGA",
-        ColorSpace::BayerAlpha(BayerPattern::Grbg) => "GRBGA",
-        ColorSpace::BayerAlpha(BayerPattern::Rggb) => "RGBGA",
         ColorSpace::Custom(val) => &format!("C({})", val),
     };
     val.to_string()

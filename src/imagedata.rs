@@ -65,7 +65,7 @@ impl<'a, T: PixelStor> ImageData<'a, T> {
 
         if let Some(exp_channels) = match cspace {
             ColorSpace::Gray | ColorSpace::Bayer(_) => Some(1),
-            ColorSpace::GrayAlpha | ColorSpace::BayerAlpha(_) => Some(2),
+            ColorSpace::GrayAlpha => Some(2),
             ColorSpace::Rgb => Some(3),
             ColorSpace::Rgba => Some(4),
             _ => None,
@@ -286,7 +286,7 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ToLuma<'a, 'b, T> for ImageData<'a,
                 let out = crate::traits::run_luma(self.channels.into(), self.data, &coeffs);
                 Self::Output::new(out, self.width(), self.height(), ColorSpace::Gray)
             }
-            ColorSpace::Bayer(_) | ColorSpace::BayerAlpha(_) => Err("Image is not debayered."),
+            ColorSpace::Bayer(_) => Err("Image is not debayered."),
             ColorSpace::Custom(_) => Err("Custom color space not supported."),
         }
     }
@@ -306,7 +306,7 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ToLuma<'a, 'b, T> for ImageData<'a,
                 let out = crate::traits::run_luma_alpha(self.channels.into(), self.data, &coeffs);
                 Self::Output::new(out, self.width(), self.height(), ColorSpace::GrayAlpha)
             }
-            ColorSpace::Bayer(_) | ColorSpace::BayerAlpha(_) => Err("Image is not debayered."),
+            ColorSpace::Bayer(_) => Err("Image is not debayered."),
             ColorSpace::Custom(_) => Err("Custom color space not supported."),
         }
     }
@@ -352,9 +352,6 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> AlphaChannel<'a, 'b, T, &[T]> for I
             ColorSpace::Bayer(_) => Err("Bayer pattern image does not support alpha."),
             ColorSpace::GrayAlpha | ColorSpace::Rgba => Err("Image already has alpha channel."),
             ColorSpace::Custom(_) => Err("Custom color space not supported."),
-            ColorSpace::BayerAlpha(_) => {
-                Err("Bayer pattern image does not support alpha. This should be unreachable.")
-            }
         }
     }
 
@@ -399,9 +396,7 @@ where
             let img = ImageOwned::new(rgb, inp.width(), inp.height(), ColorSpace::Rgb)?;
             Ok((img, alpha))
         }
-        ColorSpace::Bayer(_) | ColorSpace::BayerAlpha(_) => {
-            Err("Bayer pattern image does not support alpha.")
-        }
+        ColorSpace::Bayer(_) => Err("Bayer pattern image does not support alpha."),
         ColorSpace::Custom(_) => Err("Custom color space not supported."),
     }
 }
