@@ -436,46 +436,6 @@ impl<'a: 'b, 'b> Debayer<'a, 'b> for GenericImageOwned {
     }
 }
 
-// impl<'a: 'b, 'b, T> ToLuma<'a, 'b, T> for GenericImage<'a> {
-//     type Output = GenericImageOwned;
-
-//     fn to_luma(&'a self) -> Result<Self::Output, &'static str> {
-//         let img = <DynamicImageData<'_> as ToLuma<'_, '_, T>>::to_luma(self.get_image())?;
-//         let meta = self.metadata.clone();
-//         Ok(Self::Output {
-//             metadata: meta,
-//             image: img,
-//         })
-//     }
-
-//     fn to_luma_alpha(&'a self) -> Result<Self::Output, &'static str> {
-//         let img = <DynamicImageData<'_> as ToLuma<'_, '_, T>>::to_luma_alpha(self.get_image())?;
-//         let meta = self.metadata.clone();
-//         Ok(Self::Output {
-//             metadata: meta,
-//             image: img,
-//         })
-//     }
-
-//     fn to_luma_custom(&'a self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
-//         let img = <DynamicImageData<'_> as ToLuma<'_, '_, T>>::to_luma_custom(self.get_image(), coeffs)?;
-//         let meta = self.metadata.clone();
-//         Ok(Self::Output {
-//             metadata: meta,
-//             image: img,
-//         })
-//     }
-
-//     fn to_luma_alpha_custom(&'a self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
-//         let img = <DynamicImageData<'_> as ToLuma<'_, '_, T>>::to_luma_alpha_custom(self.get_image(), coeffs)?;
-//         let meta = self.metadata.clone();
-//         Ok(Self::Output {
-//             metadata: meta,
-//             image: img,
-//         })
-//     }
-// }
-
 macro_rules! impl_toluma {
     ($inp: ty, $mid: ty) => {
         impl<'a: 'b, 'b, T> ToLuma<'a, 'b, T> for $inp {
