@@ -1,7 +1,7 @@
 //! Image interop
 use image::ImageBuffer;
 
-use crate::{ColorSpace, DynamicImage, DynamicImageData, ImageData};
+use crate::{ColorSpace, DynamicImage, DynamicImageData};
 
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 impl<'a> TryFrom<DynamicImageData<'a>> for DynamicImage {
@@ -213,7 +213,8 @@ mod test {
         use crate::{ColorSpace, ImageData};
         use image::DynamicImage;
         let mut data: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
-        let a = ImageData::new(&mut data, 3, 2, ColorSpace::Gray).expect("Failed to create ImageData");
+        let a =
+            ImageData::new(&mut data, 3, 2, ColorSpace::Gray).expect("Failed to create ImageData");
         let b = DynamicImageData::from(a);
         let c = DynamicImage::try_from(b).unwrap();
         assert_eq!(c.width(), 3);

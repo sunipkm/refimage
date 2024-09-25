@@ -17,4 +17,3 @@ pub enum BayerError {
     /// The image is not the right depth.
     WrongDepth,
 }
-

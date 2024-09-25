@@ -1,5 +1,8 @@
 use crate::{
-    demosaic::{run_demosaic_imageowned, Debayer, RasterMut}, traits::cast_u8, AlphaChannel, BayerError, ColorSpace, DemosaicMethod, Enlargeable, ImageData, PixelStor, ToLuma
+    demosaic::{run_demosaic_imageowned, Debayer, RasterMut},
+    traits::cast_u8,
+    AlphaChannel, BayerError, ColorSpace, DemosaicMethod, Enlargeable, ImageData, PixelStor,
+    ToLuma,
 };
 use bytemuck::{AnyBitPattern, PodCastError};
 use itertools::{Either, Itertools};
@@ -352,9 +355,7 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> AlphaChannel<'a, 'b, T, &[T]> for I
                     .data
                     .iter()
                     .zip(alpha.iter())
-                    .flat_map(|(x, a)| {
-                        [*x, *a]
-                    })
+                    .flat_map(|(x, a)| [*x, *a])
                     .collect();
                 Self::ImageOutput::new(out, self.width(), self.height(), ColorSpace::GrayAlpha)
             }
@@ -369,9 +370,7 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> AlphaChannel<'a, 'b, T, &[T]> for I
                     .data
                     .chunks_exact(3)
                     .zip(alpha.chunks_exact(1))
-                    .flat_map(|(x, y)| {
-                        [x, y].concat()
-                    })
+                    .flat_map(|(x, y)| [x, y].concat())
                     .collect();
                 Self::ImageOutput::new(out, self.width(), self.height(), ColorSpace::Rgba)
             }
@@ -389,25 +388,25 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> AlphaChannel<'a, 'b, T, &[T]> for I
     }
 }
 
-fn remove_alpha_impl<T>(inp: &ImageOwned<T>) -> Result<(ImageOwned<T>, Vec<T>), &'static str> where T: PixelStor + Enlargeable {
+fn remove_alpha_impl<T>(inp: &ImageOwned<T>) -> Result<(ImageOwned<T>, Vec<T>), &'static str>
+where
+    T: PixelStor + Enlargeable,
+{
     match &inp.cspace {
-        ColorSpace::Gray | ColorSpace::Rgb => {
-            Err("Image does not have alpha channel.")
-        }
+        ColorSpace::Gray | ColorSpace::Rgb => Err("Image does not have alpha channel."),
         ColorSpace::GrayAlpha => {
             if inp.channels != 2 {
                 return Err("Too many channels for GrayAlpha. Should be unreachable.");
             }
             let (rgb, alpha): (Vec<_>, Vec<_>) =
-            inp.data.iter().enumerate().partition_map(|(i, x)| {
+                inp.data.iter().enumerate().partition_map(|(i, x)| {
                     if i % 2 == 0 {
                         Either::Left(*x)
                     } else {
                         Either::Right(*x)
                     }
                 });
-            let img =
-               ImageOwned::new(rgb, inp.width(), inp.height(), ColorSpace::Gray)?;
+            let img = ImageOwned::new(rgb, inp.width(), inp.height(), ColorSpace::Gray)?;
             Ok((img, alpha))
         }
         ColorSpace::Rgba => {
@@ -415,15 +414,14 @@ fn remove_alpha_impl<T>(inp: &ImageOwned<T>) -> Result<(ImageOwned<T>, Vec<T>), 
                 return Err("Too many channels for Rgba. Should be unreachable.");
             }
             let (rgb, alpha): (Vec<_>, Vec<_>) =
-            inp.data.iter().enumerate().partition_map(|(i, x)| {
+                inp.data.iter().enumerate().partition_map(|(i, x)| {
                     if i > 0 && i % 3 == 0 {
                         Either::Left(*x)
                     } else {
                         Either::Right(*x)
                     }
                 });
-            let img =
-                ImageOwned::new(rgb, inp.width(), inp.height(), ColorSpace::Rgb)?;
+            let img = ImageOwned::new(rgb, inp.width(), inp.height(), ColorSpace::Rgb)?;
             Ok((img, alpha))
         }
         ColorSpace::Bayer(_) | ColorSpace::BayerAlpha(_) => {
@@ -473,7 +471,7 @@ mod test {
 
     #[test]
     fn test_into_luma() {
-        use crate::{ColorSpace, ImageOwned, ToLuma, AlphaChannel};
+        use crate::{AlphaChannel, ColorSpace, ImageOwned, ToLuma};
         let data = vec![
             181u8, 178, 118, 183, 85, 131, 82, 143, 196, 108, 64, 33, 174, 43, 18, 236, 19, 179,
             178, 132, 14, 32, 82, 1, 185, 221, 160, 112, 67, 179, 248, 104, 31, 105, 33, 100, 73,
@@ -555,7 +553,12 @@ mod test {
         assert_eq!(luma.as_slice(), &expected[..]);
         let (lumaimg, _): (ImageOwned<u8>, Vec<u8>) = luma_a.remove_alpha().unwrap();
         assert_eq!(lumaimg.as_slice(), &expected[..]);
-        assert_eq!(luma.add_alpha(&vec![255; expected_a.len()]).unwrap().as_slice(), &expected_a[..]);
+        assert_eq!(
+            luma.add_alpha(&vec![255; expected_a.len()])
+                .unwrap()
+                .as_slice(),
+            &expected_a[..]
+        );
     }
 
     #[test]

@@ -1,6 +1,4 @@
-use crate::{
-    ColorSpace, DynamicImageData, DynamicImageOwned, ImageOwned, PixelType,
-};
+use crate::{ColorSpace, DynamicImageData, DynamicImageOwned, ImageOwned, PixelType};
 use crate::{Deserializer, Serializer};
 #[cfg(feature = "serde_flate")]
 use flate2::{write::ZlibDecoder, write::ZlibEncoder, Compress, Compression};

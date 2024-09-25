@@ -1,6 +1,6 @@
 use crate::{
-    AlphaChannel, BayerError, ColorSpace, DemosaicMethod, DynamicImageData, Enlargeable, ImageData,
-    PixelStor, PixelType, ToLuma,
+    AlphaChannel, BayerError, ColorSpace, DemosaicMethod, DynamicImageData, ImageData, PixelType,
+    ToLuma,
 };
 use crate::{Debayer, DynamicImageOwned};
 
@@ -97,8 +97,7 @@ impl<'a: 'b, 'b, T> ToLuma<'a, 'b, T> for DynamicImageData<'a> {
     }
 }
 
-macro_rules! impl_alphachannel
-{
+macro_rules! impl_alphachannel {
     ($type:ty, $intype:ty, $variant_a:path, $variant_b:expr) => {
         impl<'a: 'b, 'b> AlphaChannel<'a, 'b, $type, $intype> for DynamicImageData<'a> {
             type ImageOutput = DynamicImageOwned;
@@ -115,12 +114,13 @@ macro_rules! impl_alphachannel
                 }
             }
 
-            fn remove_alpha(&'a self) -> Result<(Self::ImageOutput, Self::AlphaOutput), &'static str> {
+            fn remove_alpha(
+                &'a self,
+            ) -> Result<(Self::ImageOutput, Self::AlphaOutput), &'static str> {
                 use DynamicImageData::*;
                 match self {
                     $variant_a(image) => {
-                        let (image, alpha) =
-                            image.remove_alpha()?;
+                        let (image, alpha) = image.remove_alpha()?;
                         Ok(($variant_b(image), alpha))
                     }
                     _ => Err("Data is not of type u8"),

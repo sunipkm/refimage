@@ -1,4 +1,7 @@
-use crate::{BayerError, ColorSpace, DemosaicMethod, DynamicImageOwned, ImageOwned, PixelType, ToLuma, AlphaChannel};
+use crate::{
+    AlphaChannel, BayerError, ColorSpace, DemosaicMethod, DynamicImageOwned, ImageOwned, PixelType,
+    ToLuma,
+};
 use crate::{Debayer, DynamicImageData};
 
 macro_rules! dynamic_map(
@@ -56,7 +59,7 @@ impl<'a: 'b, 'b> Debayer<'a, 'b> for DynamicImageOwned {
 
 impl<'a: 'b, 'b, T> ToLuma<'a, 'b, T> for DynamicImageOwned {
     type Output = DynamicImageOwned;
-    
+
     fn to_luma(&'a self) -> Result<Self::Output, &'static str> {
         use DynamicImageOwned::*;
         match self {
@@ -65,7 +68,7 @@ impl<'a: 'b, 'b, T> ToLuma<'a, 'b, T> for DynamicImageOwned {
             F32(image) => Ok(F32(image.to_luma()?)),
         }
     }
-    
+
     fn to_luma_alpha(&'a self) -> Result<Self::Output, &'static str> {
         use DynamicImageOwned::*;
         match self {
@@ -74,7 +77,7 @@ impl<'a: 'b, 'b, T> ToLuma<'a, 'b, T> for DynamicImageOwned {
             F32(image) => Ok(F32(image.to_luma_alpha()?)),
         }
     }
-    
+
     fn to_luma_custom(&'a self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
         use DynamicImageOwned::*;
         match self {
@@ -83,7 +86,7 @@ impl<'a: 'b, 'b, T> ToLuma<'a, 'b, T> for DynamicImageOwned {
             F32(image) => Ok(F32(image.to_luma_custom(coeffs)?)),
         }
     }
-    
+
     fn to_luma_alpha_custom(&'a self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
         use DynamicImageOwned::*;
         match self {
@@ -94,8 +97,7 @@ impl<'a: 'b, 'b, T> ToLuma<'a, 'b, T> for DynamicImageOwned {
     }
 }
 
-macro_rules! impl_alphachannel
-{
+macro_rules! impl_alphachannel {
     ($type:ty, $intype:ty, $variant:path) => {
         impl<'a: 'b, 'b> AlphaChannel<'a, 'b, $type, $intype> for DynamicImageOwned {
             type ImageOutput = DynamicImageOwned;
@@ -112,12 +114,13 @@ macro_rules! impl_alphachannel
                 }
             }
 
-            fn remove_alpha(&'a self) -> Result<(Self::ImageOutput, Self::AlphaOutput), &'static str> {
+            fn remove_alpha(
+                &'a self,
+            ) -> Result<(Self::ImageOutput, Self::AlphaOutput), &'static str> {
                 use DynamicImageOwned::*;
                 match self {
                     $variant(image) => {
-                        let (image, alpha) =
-                            image.remove_alpha()?;
+                        let (image, alpha) = image.remove_alpha()?;
                         Ok(($variant(image), alpha))
                     }
                     _ => Err("Data is not of type u8"),

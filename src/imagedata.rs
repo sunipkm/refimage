@@ -1,8 +1,7 @@
 use crate::{
     demosaic::{run_demosaic_imagedata, Debayer, RasterMut},
     traits::{cast_u8, Enlargeable},
-    AlphaChannel, BayerError, ColorSpace, DemosaicMethod, ImageOwned, ToLuma,
-    PixelStor,
+    AlphaChannel, BayerError, ColorSpace, DemosaicMethod, ImageOwned, PixelStor, ToLuma,
 };
 use bytemuck::{AnyBitPattern, PodCastError};
 use itertools::{Either, Itertools};
@@ -331,9 +330,7 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> AlphaChannel<'a, 'b, T, &[T]> for I
                     .data
                     .iter()
                     .zip(alpha.iter())
-                    .flat_map(|(x, a)| {
-                        [*x, *a]
-                    })
+                    .flat_map(|(x, a)| [*x, *a])
                     .collect();
                 Self::ImageOutput::new(out, self.width(), self.height(), ColorSpace::GrayAlpha)
             }
@@ -348,9 +345,7 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> AlphaChannel<'a, 'b, T, &[T]> for I
                     .data
                     .chunks_exact(3)
                     .zip(alpha.chunks_exact(1))
-                    .flat_map(|(x, y)| {
-                        [x, y].concat()
-                    })
+                    .flat_map(|(x, y)| [x, y].concat())
                     .collect();
                 Self::ImageOutput::new(out, self.width(), self.height(), ColorSpace::Rgba)
             }
@@ -368,25 +363,25 @@ impl<'a: 'b, 'b, T: PixelStor + Enlargeable> AlphaChannel<'a, 'b, T, &[T]> for I
     }
 }
 
-fn remove_alpha_impl<T>(inp: &ImageData<T>) -> Result<(ImageOwned<T>, Vec<T>), &'static str> where T: PixelStor + Enlargeable {
+fn remove_alpha_impl<T>(inp: &ImageData<T>) -> Result<(ImageOwned<T>, Vec<T>), &'static str>
+where
+    T: PixelStor + Enlargeable,
+{
     match &inp.cspace {
-        ColorSpace::Gray | ColorSpace::Rgb => {
-            Err("Image does not have alpha channel.")
-        }
+        ColorSpace::Gray | ColorSpace::Rgb => Err("Image does not have alpha channel."),
         ColorSpace::GrayAlpha => {
             if inp.channels != 2 {
                 return Err("Too many channels for GrayAlpha. Should be unreachable.");
             }
             let (rgb, alpha): (Vec<_>, Vec<_>) =
-            inp.data.iter().enumerate().partition_map(|(i, x)| {
+                inp.data.iter().enumerate().partition_map(|(i, x)| {
                     if i % 2 == 0 {
                         Either::Left(*x)
                     } else {
                         Either::Right(*x)
                     }
                 });
-            let img =
-               ImageOwned::new(rgb, inp.width(), inp.height(), ColorSpace::Gray)?;
+            let img = ImageOwned::new(rgb, inp.width(), inp.height(), ColorSpace::Gray)?;
             Ok((img, alpha))
         }
         ColorSpace::Rgba => {
@@ -394,15 +389,14 @@ fn remove_alpha_impl<T>(inp: &ImageData<T>) -> Result<(ImageOwned<T>, Vec<T>), &
                 return Err("Too many channels for Rgba. Should be unreachable.");
             }
             let (rgb, alpha): (Vec<_>, Vec<_>) =
-            inp.data.iter().enumerate().partition_map(|(i, x)| {
+                inp.data.iter().enumerate().partition_map(|(i, x)| {
                     if i > 0 && i % 3 == 0 {
                         Either::Left(*x)
                     } else {
                         Either::Right(*x)
                     }
                 });
-            let img =
-                ImageOwned::new(rgb, inp.width(), inp.height(), ColorSpace::Rgb)?;
+            let img = ImageOwned::new(rgb, inp.width(), inp.height(), ColorSpace::Rgb)?;
             Ok((img, alpha))
         }
         ColorSpace::Bayer(_) | ColorSpace::BayerAlpha(_) => {
@@ -509,8 +503,7 @@ mod test {
     fn test_u8_src() {
         let mut data = vec![181u16, 178, 118, 183, 85, 131];
         let mut data2 = data.clone();
-        let img =
-            crate::ImageData::new(&mut data, 3, 2, crate::ColorSpace::Gray).unwrap();
+        let img = crate::ImageData::new(&mut data, 3, 2, crate::ColorSpace::Gray).unwrap();
         let ptr = bytemuck::cast_slice_mut(&mut data2);
         let img2 =
             crate::ImageData::<u16>::from_u8_mut(ptr, 3, 2, crate::ColorSpace::Gray).unwrap();
