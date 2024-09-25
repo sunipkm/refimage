@@ -8,9 +8,12 @@ use serde::{Deserialize, Serialize};
 use crate::{
     genericimageref::GenericImageRef,
     metadata::{name_check, InsertValue},
-    BayerError, Debayer, DemosaicMethod, DynamicImageOwned, GenericLineItem, EXPOSURE_KEY,
-    TIMESTAMP_KEY,
+    BayerError, CalcOptExp, Debayer, DemosaicMethod, DynamicImageOwned, GenericLineItem,
+    ImageProps, OptimumExposure, EXPOSURE_KEY, TIMESTAMP_KEY,
 };
+
+#[allow(unused_imports)]
+use crate::{ColorSpace, DynamicImageRef};
 
 /// A serializable, generic image with metadata, backed by [`DynamicImageOwned`].
 ///
@@ -202,6 +205,45 @@ impl<'a: 'b, 'b> Debayer<'a, 'b> for GenericImageOwned {
     }
 }
 
+impl ImageProps for GenericImageOwned {
+    type OutputU8 = GenericImageOwned;
+
+    fn width(&self) -> usize {
+        self.image.width()
+    }
+
+    fn height(&self) -> usize {
+        self.image.height()
+    }
+
+    fn channels(&self) -> u8 {
+        self.image.channels()
+    }
+
+    fn color_space(&self) -> crate::ColorSpace {
+        self.image.color_space()
+    }
+
+    fn pixel_type(&self) -> crate::PixelType {
+        self.image.pixel_type()
+    }
+
+    fn len(&self) -> usize {
+        self.image.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.image.is_empty()
+    }
+
+    fn into_u8(&self) -> Self::OutputU8 {
+        Self::OutputU8 {
+            metadata: self.metadata.clone(),
+            image: (&self.image).into_u8(),
+        }
+    }
+}
+
 impl GenericImageOwned {
     /// Apply a function to the image data.
     ///
@@ -229,5 +271,62 @@ impl<'a> From<GenericImageRef<'a>> for GenericImageOwned {
             metadata: img.metadata,
             image: (&img.image).into(),
         }
+    }
+}
+
+impl CalcOptExp for GenericImageOwned {
+    fn calc_opt_exp(
+        mut self,
+        eval: &OptimumExposure,
+        exposure: Duration,
+        bin: u8,
+    ) -> Result<(Duration, u16), &'static str> {
+        match &mut self.image {
+            DynamicImageOwned::U8(img) => eval.calculate(img.as_mut_slice(), exposure, bin),
+            DynamicImageOwned::U16(img) => eval.calculate(img.as_mut_slice(), exposure, bin),
+            DynamicImageOwned::F32(_) => Err("Floating point images are not supported for this operation, since Ord is not implemented for floating point types."),
+        }
+    }
+}
+
+impl GenericImageOwned {
+    /// Get the data as a slice of `u8`, regardless of the underlying type.
+    pub fn as_raw_u8(&self) -> &[u8] {
+        self.image.as_raw_u8()
+    }
+
+    /// Get the data as a slice of `u8`, regardless of the underlying type.
+    pub fn as_raw_u8_checked(&self) -> Option<&[u8]> {
+        self.image.as_raw_u8_checked()
+    }
+
+    /// Get the data as a slice of `u8`.
+    pub fn as_slice_u8(&self) -> Option<&[u8]> {
+        self.image.as_slice_u8()
+    }
+
+    /// Get the data as a mutable slice of `u8`.
+    pub fn as_mut_slice_u8(&mut self) -> Option<&mut [u8]> {
+        self.image.as_mut_slice_u8()
+    }
+
+    /// Get the data as a slice of `u16`.
+    pub fn as_slice_u16(&self) -> Option<&[u16]> {
+        self.image.as_slice_u16()
+    }
+
+    /// Get the data as a mutable slice of `u16`.
+    pub fn as_mut_slice_u16(&mut self) -> Option<&mut [u16]> {
+        self.image.as_mut_slice_u16()
+    }
+
+    /// Get the data as a slice of `f32`.
+    pub fn as_slice_f32(&self) -> Option<&[f32]> {
+        self.image.as_slice_f32()
+    }
+
+    /// Get the data as a mutable slice of `f32`.
+    pub fn as_mut_slice_f32(&mut self) -> Option<&mut [f32]> {
+        self.image.as_mut_slice_f32()
     }
 }

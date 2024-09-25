@@ -1,9 +1,11 @@
+use std::time::Duration;
+
 use crate::{
     coretraits::cast_u8,
     demosaic::{run_demosaic_imageowned, Debayer, RasterMut},
     imagetraits::ImageProps,
-    AlphaChannel, BayerError, ColorSpace, DemosaicMethod, Enlargeable, ImageRef, PixelStor,
-    PixelType, ToLuma,
+    AlphaChannel, BayerError, CalcOptExp, ColorSpace, DemosaicMethod, Enlargeable, ImageRef,
+    OptimumExposure, PixelStor, PixelType, ToLuma,
 };
 use bytemuck::{AnyBitPattern, PodCastError};
 use itertools::{Either, Itertools};
@@ -286,7 +288,7 @@ impl<T: PixelStor + AnyBitPattern> ImageOwned<T> {
     }
 }
 
-impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ToLuma<'a, 'b, T> for ImageOwned<T> {
+impl<'a: 'b, 'b, T: PixelStor + Enlargeable> ToLuma<'a, 'b> for ImageOwned<T> {
     type Output = ImageOwned<T>;
 
     fn to_luma(&self) -> Result<Self::Output, &'static str> {
@@ -458,6 +460,17 @@ impl<'a, T: PixelStor> From<&ImageRef<'a, T>> for ImageOwned<T> {
             channels: data.channels,
             cspace: data.cspace.clone(),
         }
+    }
+}
+
+impl<T: PixelStor + Ord> CalcOptExp for ImageOwned<T> {
+    fn calc_opt_exp(
+        mut self,
+        eval: &OptimumExposure,
+        exposure: Duration,
+        bin: u8,
+    ) -> Result<(Duration, u16), &'static str> {
+        eval.calculate(self.data.as_mut_slice(), exposure, bin)
     }
 }
 

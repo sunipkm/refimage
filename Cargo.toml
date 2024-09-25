@@ -55,7 +55,8 @@ serde_json = "1.0"
 serde-reflection = "0.4"
 
 [features]
-default = ["rayon", "serde_flate", "image", "fitsio"]
+default = ["rayon", "serde_flate"]
+full = ["default", "fitsio", "image"]
 # rkyv = ["serialize", "dep:rkyv"]
 fitsio = ["dep:fitsio"]
 image = ["dep:image"]
@@ -71,3 +72,12 @@ rustdoc-args = ["--cfg", "docsrs"]
 [[bench]]
 path = "benches/cast_u8.rs"
 name = "cast_u8"
+
+[[example]]
+name = "test_debayer"
+path = "examples/test_debayer.rs"
+
+[[example]]
+name = "test_flow"
+path = "examples/test_flow.rs"
+required-features = ["full"]

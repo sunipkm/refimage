@@ -1,5 +1,11 @@
 use crate::{BayerPattern, ColorSpace, PixelType};
 
+#[allow(unused_imports)]
+use crate::{
+    DynamicImageOwned, DynamicImageRef, GenericImage, GenericImageOwned, GenericImageRef,
+    ImageOwned, ImageRef,
+};
+
 /// A trait for shifting Bayer patterns.
 pub trait BayerShift {
     /// Shift the Bayer pattern by `x` and `y` pixels.
@@ -44,10 +50,9 @@ impl BayerShift for BayerPattern {
 /// A trait for converting an image to a luminance image.
 ///
 /// This trait is implemented for [`ImageRef`], [`DynamicImageRef`], [`GenericImageRef`] and
-/// their owned counterparts, [`ImageOwned`], [`DynamicImageOwned`] and [`GenericImageOwned`].
-pub trait ToLuma<'b: 'a, 'a, T>
-where
-    T: Sized,
+/// their owned counterparts, [`ImageOwned`], [`DynamicImageOwned`], [`GenericImageOwned`]
+/// and [`GenericImage`].
+pub trait ToLuma<'b: 'a, 'a>
 {
     /// The output type of the conversion.
     type Output;

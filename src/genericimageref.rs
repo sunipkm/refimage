@@ -8,9 +8,12 @@ use serde::Serialize;
 use crate::{
     genericimageowned::GenericImageOwned,
     metadata::{name_check, InsertValue},
-    BayerError, Debayer, DemosaicMethod, DynamicImageRef, GenericLineItem, EXPOSURE_KEY,
-    TIMESTAMP_KEY,
+    BayerError, CalcOptExp, Debayer, DemosaicMethod, DynamicImageRef, GenericLineItem,
+    OptimumExposure, EXPOSURE_KEY, TIMESTAMP_KEY,
 };
+
+#[allow(unused_imports)]
+use crate::ColorSpace;
 
 /// A serializable, generic image with metadata, backed by [`DynamicImageRef`].
 ///
@@ -198,5 +201,62 @@ impl<'a: 'b, 'b> Debayer<'a, 'b> for GenericImageRef<'b> {
             metadata: meta,
             image: img,
         })
+    }
+}
+
+impl CalcOptExp for GenericImageRef<'_> {
+    fn calc_opt_exp(
+        mut self,
+        eval: &OptimumExposure,
+        exposure: Duration,
+        bin: u8,
+    ) -> Result<(Duration, u16), &'static str> {
+        match &mut self.image {
+            DynamicImageRef::U8(img) => eval.calculate(img.as_mut_slice(), exposure, bin),
+            DynamicImageRef::U16(img) => eval.calculate(img.as_mut_slice(), exposure, bin),
+            DynamicImageRef::F32(_) => Err("Floating point images are not supported for this operation, since Ord is not implemented for floating point types."),
+        }
+    }
+}
+
+impl GenericImageRef<'_> {
+    /// Get the data as a slice of `u8`, regardless of the underlying type.
+    pub fn as_raw_u8(&self) -> &[u8] {
+        self.image.as_raw_u8()
+    }
+
+    /// Get the data as a slice of `u8`, regardless of the underlying type.
+    pub fn as_raw_u8_checked(&self) -> Option<&[u8]> {
+        self.image.as_raw_u8_checked()
+    }
+
+    /// Get the data as a slice of `u8`.
+    pub fn as_slice_u8(&self) -> Option<&[u8]> {
+        self.image.as_slice_u8()
+    }
+
+    /// Get the data as a mutable slice of `u8`.
+    pub fn as_mut_slice_u8(&mut self) -> Option<&mut [u8]> {
+        self.image.as_mut_slice_u8()
+    }
+
+    /// Get the data as a slice of `u16`.
+    pub fn as_slice_u16(&self) -> Option<&[u16]> {
+        self.image.as_slice_u16()
+    }
+
+    /// Get the data as a mutable slice of `u16`.
+    pub fn as_mut_slice_u16(&mut self) -> Option<&mut [u16]> {
+        self.image.as_mut_slice_u16()
+    }
+
+    /// Get the data as a slice of `f32`.
+    pub fn as_slice_f32(&self) -> Option<&[f32]> {
+        self.image.as_slice_f32()
+    }
+
+    /// Get the data as a mutable slice of `f32`.
+    pub fn as_mut_slice_f32(&mut self) -> Option<&mut [f32]> {
+        self.image.as_mut_slice_f32()
     }
 }

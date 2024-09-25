@@ -1,7 +1,10 @@
 //! Image interop
 use image::ImageBuffer;
 
-use crate::{ColorSpace, DynamicImage, DynamicImageRef, ImageProps};
+use crate::{
+    ColorSpace, DynamicImage, DynamicImageRef, GenericImage, GenericImageOwned, GenericImageRef,
+    ImageProps,
+};
 
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 impl<'a> TryFrom<DynamicImageRef<'a>> for DynamicImage {
@@ -205,6 +208,34 @@ impl TryFrom<DynamicImageOwned> for DynamicImage {
         }
     }
 }
+
+impl TryFrom<GenericImageOwned> for DynamicImage {
+    type Error = &'static str;
+
+    fn try_from(value: GenericImageOwned) -> Result<Self, Self::Error> {
+        value.image.try_into()
+    }
+}
+
+impl TryFrom<GenericImageRef<'_>> for DynamicImage {
+    type Error = &'static str;
+
+    fn try_from(value: GenericImageRef<'_>) -> Result<Self, Self::Error> {
+        value.image.try_into()
+    }
+}
+
+impl TryFrom<GenericImage<'_>> for DynamicImage {
+    type Error = &'static str;
+
+    fn try_from(value: GenericImage<'_>) -> Result<Self, Self::Error> {
+        match value {
+            GenericImage::Own(data) => data.try_into(),
+            GenericImage::Ref(data) => data.try_into(),
+        }
+    }
+}
+
 mod test {
 
     #[test]

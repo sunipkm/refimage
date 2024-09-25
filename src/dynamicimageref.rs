@@ -1,6 +1,8 @@
+use std::time::Duration;
+
 use crate::{
-    AlphaChannel, BayerError, ColorSpace, DemosaicMethod, DynamicImageRef, ImageProps, ImageRef,
-    PixelType, ToLuma,
+    AlphaChannel, BayerError, CalcOptExp, ColorSpace, DemosaicMethod, DynamicImageRef, ImageProps,
+    ImageRef, OptimumExposure, PixelType, ToLuma,
 };
 use crate::{Debayer, DynamicImageOwned};
 
@@ -97,7 +99,7 @@ impl<'a: 'b, 'b> Debayer<'a, 'b> for DynamicImageRef<'_> {
     }
 }
 
-impl<'a: 'b, 'b, T> ToLuma<'a, 'b, T> for DynamicImageRef<'_> {
+impl<'a: 'b, 'b> ToLuma<'a, 'b> for DynamicImageRef<'_> {
     type Output = DynamicImageOwned;
 
     fn to_luma(&self) -> Result<Self::Output, &'static str> {
@@ -283,6 +285,22 @@ impl<'a> DynamicImageRef<'a> {
             U8(data) => DynamicImageOwned::U8(data.into()),
             U16(data) => DynamicImageOwned::U8(data.into_u8()),
             F32(data) => DynamicImageOwned::U8(data.into_u8()),
+        }
+    }
+}
+
+impl<'a> CalcOptExp for DynamicImageRef<'a> {
+    fn calc_opt_exp(
+        mut self,
+        eval: &OptimumExposure,
+        exposure: Duration,
+        bin: u8,
+    ) -> Result<(Duration, u16), &'static str> {
+        use DynamicImageRef::*;
+        match self {
+            U8(ref mut img) => eval.calculate(img.as_mut_slice(), exposure, bin),
+            U16(ref mut img) => eval.calculate(img.as_mut_slice(), exposure, bin),
+            F32(_) => Err("Floating point images are not supported for this operation, since Ord is not implemented for floating point types."),
         }
     }
 }

@@ -15,7 +15,7 @@ use fitsio::{
 use crate::{
     genericimageref::GenericImageRef,
     metadata::{GenericValue, TIMESTAMP_KEY},
-    BayerPattern, ColorSpace, DynamicImageOwned, DynamicImageRef, GenericImageOwned,
+    BayerPattern, ColorSpace, DynamicImageOwned, DynamicImageRef, GenericImage, GenericImageOwned,
     GenericLineItem, ImageOwned, ImageProps, ImageRef, PixelStor, PixelType,
 };
 
@@ -262,6 +262,20 @@ impl FitsWrite for GenericImageOwned {
             value.write_key(name, &hdu, &mut fptr)?;
         }
         Ok(fpath)
+    }
+}
+
+impl FitsWrite for GenericImage<'_> {
+    fn write_fits(
+        &self,
+        path: &Path,
+        compress: FitsCompression,
+        overwrite: bool,
+    ) -> Result<PathBuf, FitsError> {
+        match self {
+            GenericImage::Ref(image) => image.write_fits(path, compress, overwrite),
+            GenericImage::Own(image) => image.write_fits(path, compress, overwrite),
+        }
     }
 }
 

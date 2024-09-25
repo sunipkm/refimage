@@ -1,7 +1,7 @@
 #![warn(missing_docs)]
 use std::{cmp::Ord, time::Duration};
 
-use crate::{DynamicImageOwned, DynamicImageRef, ImageOwned, ImageRef, PixelStor};
+use crate::PixelStor;
 
 #[derive(Debug, Clone, PartialEq)]
 /// Builder for the [`OptimumExposure`] calculator.
@@ -354,60 +354,6 @@ pub trait CalcOptExp {
     ) -> Result<(Duration, u16), &'static str>;
 }
 
-impl<'a, T: PixelStor + Ord> CalcOptExp for ImageRef<'a, T> {
-    fn calc_opt_exp(
-        self,
-        eval: &OptimumExposure,
-        exposure: Duration,
-        bin: u8,
-    ) -> Result<(Duration, u16), &'static str> {
-        eval.calculate(self.data, exposure, bin)
-    }
-}
-
-impl<T: PixelStor + Ord> CalcOptExp for ImageOwned<T> {
-    fn calc_opt_exp(
-        mut self,
-        eval: &OptimumExposure,
-        exposure: Duration,
-        bin: u8,
-    ) -> Result<(Duration, u16), &'static str> {
-        eval.calculate(self.data.as_mut_slice(), exposure, bin)
-    }
-}
-
-impl<'a> CalcOptExp for DynamicImageRef<'a> {
-    fn calc_opt_exp(
-        mut self,
-        eval: &OptimumExposure,
-        exposure: Duration,
-        bin: u8,
-    ) -> Result<(Duration, u16), &'static str> {
-        use DynamicImageRef::*;
-        match self {
-            U8(ref mut img) => eval.calculate(img.as_mut_slice(), exposure, bin),
-            U16(ref mut img) => eval.calculate(img.as_mut_slice(), exposure, bin),
-            F32(_) => Err("Floating point images are not supported for this operation, since Ord is not implemented for floating point types."),
-        }
-    }
-}
-
-impl CalcOptExp for DynamicImageOwned {
-    fn calc_opt_exp(
-        mut self,
-        eval: &OptimumExposure,
-        exposure: Duration,
-        bin: u8,
-    ) -> Result<(Duration, u16), &'static str> {
-        use DynamicImageOwned::*;
-        match self {
-            U8(ref mut img) => eval.calculate(img.as_mut_slice(), exposure, bin),
-            U16(ref mut img) => eval.calculate(img.as_mut_slice(), exposure, bin),
-            F32(_) => Err("Floating point images are not supported for this operation, since Ord is not implemented for floating point types."),
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -428,7 +374,7 @@ mod test {
             OptimumExposureBuilder::default().pixel_exclusion(1)
         );
         let img = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-        let img = ImageOwned::from_owned(img, 5, 2, crate::ColorSpace::Gray)
+        let img = crate::ImageOwned::from_owned(img, 5, 2, crate::ColorSpace::Gray)
             .expect("Failed to create ImageOwned");
         let exp = Duration::from_secs(10); // expected exposure
         let bin = 1; // expected binning
