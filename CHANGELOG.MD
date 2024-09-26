@@ -2,7 +2,7 @@
 
 ## Changes
 
-### 0.10.1 (2024-09-24)
+### 0.11.0 (2024-09-24)
 - Added `flip_*` methods to `BayerShift` trait.
 
 ### 0.10.0 (2024-09-24)
