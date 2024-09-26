@@ -2,6 +2,9 @@
 
 ## Changes
 
+### 0.10.1 (2024-09-24)
+- Added `flip_*` methods to `BayerShift` trait.
+
 ### 0.10.0 (2024-09-24)
 - Complete API overhaul. `DataStor` type has been removed.
 - `ImageData` and similar are renamed to `*ImageRef`, and only hold data backed by some storage.

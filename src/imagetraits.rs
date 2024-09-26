@@ -10,6 +10,10 @@ use crate::{
 pub trait BayerShift {
     /// Shift the Bayer pattern by `x` and `y` pixels.
     fn shift(&self, x: usize, y: usize) -> Self;
+    /// Flip the Bayer pattern horizontally.
+    fn flip_horizontal(&self) -> Self;
+    /// Flip the Bayer pattern vertically.
+    fn flip_vertical(&self) -> Self;
 }
 
 impl BayerShift for BayerPattern {
@@ -43,6 +47,22 @@ impl BayerShift for BayerPattern {
                 (1, 1) => BayerPattern::Rggb,
                 _ => unreachable!(),
             },
+        }
+    }
+    fn flip_horizontal(&self) -> Self {
+        match self {
+            BayerPattern::Rggb => BayerPattern::Grbg,
+            BayerPattern::Gbrg => BayerPattern::Bggr,
+            BayerPattern::Grbg => BayerPattern::Rggb,
+            BayerPattern::Bggr => BayerPattern::Gbrg,
+        }
+    }
+    fn flip_vertical(&self) -> Self {
+        match self {
+            BayerPattern::Rggb => BayerPattern::Gbrg,
+            BayerPattern::Gbrg => BayerPattern::Rggb,
+            BayerPattern::Grbg => BayerPattern::Bggr,
+            BayerPattern::Bggr => BayerPattern::Grbg,
         }
     }
 }
