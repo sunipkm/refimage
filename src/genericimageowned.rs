@@ -162,6 +162,11 @@ impl GenericImageOwned {
         &self.image
     }
 
+    /// Get the underlying [`DynamicImageOwned`] mutably.
+    pub fn get_image_mut(&mut self) -> &mut DynamicImageOwned {
+        &mut self.image
+    }
+
     /// Get the contained metadata as a slice of [`GenericLineItem`]s.
     ///
     /// # Returns
@@ -193,9 +198,9 @@ impl GenericImageOwned {
     }
 }
 
-impl<'a: 'b, 'b> Debayer<'a, 'b> for GenericImageOwned {
+impl Debayer for GenericImageOwned {
     type Output = GenericImageOwned;
-    fn debayer(&'b self, method: DemosaicMethod) -> Result<Self::Output, BayerError> {
+    fn debayer(&self, method: DemosaicMethod) -> Result<Self::Output, BayerError> {
         let img = self.image.debayer(method)?;
         let meta = self.metadata.clone();
         Ok(Self::Output {
@@ -282,8 +287,8 @@ impl CalcOptExp for GenericImageOwned {
         bin: u8,
     ) -> Result<(Duration, u16), &'static str> {
         match &mut self.image {
-            DynamicImageOwned::U8(img) => eval.calculate(img.as_mut_slice(), exposure, bin),
-            DynamicImageOwned::U16(img) => eval.calculate(img.as_mut_slice(), exposure, bin),
+            DynamicImageOwned::U8(img) => {let len = img.len(); eval.calculate(img.as_mut_slice(), len, exposure, bin)},
+            DynamicImageOwned::U16(img) => {let len = img.len(); eval.calculate(img.as_mut_slice(), len, exposure, bin)},
             DynamicImageOwned::F32(_) => Err("Floating point images are not supported for this operation, since Ord is not implemented for floating point types."),
         }
     }
@@ -328,5 +333,25 @@ impl GenericImageOwned {
     /// Get the data as a mutable slice of `f32`.
     pub fn as_mut_slice_f32(&mut self) -> Option<&mut [f32]> {
         self.image.as_mut_slice_f32()
+    }
+}
+
+mod test {
+    #[test]
+    fn test_optimum_exposure() {
+        use crate::CalcOptExp;
+        let opt_exp = crate::OptimumExposureBuilder::default()
+            .pixel_exclusion(1)
+            .build()
+            .unwrap();
+        let img = vec![0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let img = crate::ImageOwned::from_owned(img, 5, 2, crate::ColorSpace::Gray)
+            .expect("Failed to create ImageOwned");
+        let img = crate::DynamicImageOwned::from(img);
+        let img = crate::GenericImageOwned::new(std::time::SystemTime::now(), img);
+        let exp = std::time::Duration::from_secs(10); // expected exposure
+        let bin = 1; // expected binning
+        let res = img.calc_opt_exp(&opt_exp, exp, bin).unwrap();
+        assert_eq!(res, (exp, bin as u16));
     }
 }

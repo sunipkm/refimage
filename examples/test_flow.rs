@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime};
 
 use image::DynamicImage;
 use refimage::{
-    BayerPattern, ColorSpace, Debayer, DemosaicMethod, DynamicImageRef, FitsCompression, FitsWrite,
+    BayerPattern, ColorSpace, DemosaicMethod, DynamicImageRef, FitsCompression, FitsWrite,
     GenericImageRef, ImageProps, ImageRef, ToLuma,
 };
 use refimage::{CalcOptExp, GenericImage, OptimumExposureBuilder};
@@ -26,29 +26,30 @@ fn main() {
     img.insert_key("Lens", "EF24-70mm f/2.8L II USM")
         .expect("Failed to insert key");
     let img = GenericImage::from(img);
-    let a = img
+    let mut debayered = img
         .debayer(DemosaicMethod::None)
         .expect("Failed to debayer");
-    assert!(a.channels() == 3);
-    assert!(a.width() == 4);
-    assert!(a.height() == 4);
-    assert!(a.color_space() == ColorSpace::Rgb);
-    let ptr = a.as_slice_u8().unwrap();
+    assert!(debayered.channels() == 3);
+    assert!(debayered.width() == 4);
+    assert!(debayered.height() == 4);
+    assert!(debayered.color_space() == ColorSpace::Rgb);
+    let ptr = debayered.as_slice_u8().unwrap();
     assert_eq!(ptr, &expected);
-    img.write_fits(&PathBuf::from("./test.fits"), FitsCompression::None, true)
+    debayered
+        .write_fits(&PathBuf::from("./test.fits"), FitsCompression::None, true)
         .expect("Failed to write FITS");
-    let dimg: DynamicImage = img
+    let dimg: DynamicImage = debayered
         .clone()
         .try_into()
         .expect("Failed to convert to DynamicImage");
+    dimg.save("test.png").expect("Failed to save image");
+    debayered.to_luma().expect("Failed to convert to luma");
     let eval = OptimumExposureBuilder::default()
+        .pixel_exclusion(1)
         .build()
         .expect("Failed to build OptimumExposure");
-    dimg.save("test.png").expect("Failed to save image");
-    let luma = img.to_luma().expect("Failed to convert to luma");
-    let (exp, _) = img
+    let (exp, _) = debayered
         .calc_opt_exp(&eval, Duration::from_secs(1), 1)
         .expect("Failed to calculate optimum exposure");
     println!("Optimum exposure: {exp:?}");
-    println!("Luma image: {luma:?}");
 }

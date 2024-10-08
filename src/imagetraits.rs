@@ -72,10 +72,7 @@ impl BayerShift for BayerPattern {
 /// This trait is implemented for [`ImageRef`], [`DynamicImageRef`], [`GenericImageRef`] and
 /// their owned counterparts, [`ImageOwned`], [`DynamicImageOwned`], [`GenericImageOwned`]
 /// and [`GenericImage`].
-pub trait ToLuma<'b: 'a, 'a> {
-    /// The output type of the conversion.
-    type Output;
-
+pub trait ToLuma {
     /// Convert the image to a luminance image.
     ///
     /// This function uses the formula `Y = 0.299R + 0.587G + 0.114B` to calculate the
@@ -84,20 +81,7 @@ pub trait ToLuma<'b: 'a, 'a> {
     /// # Errors
     /// - If the image is not debayered and is not a grayscale image.
     /// - If the image is not an RGB image.
-    fn to_luma(&'b self) -> Result<Self::Output, &'static str>;
-
-    /// Convert the image to a luminance alpha image.
-    ///
-    /// This function uses the formula `Y = 0.299R + 0.587G + 0.114B` to calculate the
-    /// corresponding luminance image.
-    ///
-    /// The alpha channel is copied from the original image, if present.
-    /// Otherwise, the alpha channel is set to maximum value.
-    ///
-    /// # Errors
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB image.
-    fn to_luma_alpha(&'b self) -> Result<Self::Output, &'static str>;
+    fn to_luma(&mut self) -> Result<(), &'static str>;
 
     /// Convert the image to a luminance image with custom coefficients.
     ///
@@ -107,18 +91,7 @@ pub trait ToLuma<'b: 'a, 'a> {
     /// # Errors
     /// - If the image is not debayered and is not a grayscale image.
     /// - If the image is not an RGB image.
-    fn to_luma_custom(&'b self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str>;
-
-    /// Convert the image to a luminance image with custom coefficients.
-    ///
-    /// # Arguments
-    /// - `wts`: The weights to use for the conversion. The number of weights must be 3.
-    ///
-    /// # Errors
-    /// - If the number of weights is not 3.
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB image.
-    fn to_luma_alpha_custom(&'b self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str>;
+    fn to_luma_custom(&mut self, coeffs: &[f64]) -> Result<(), &'static str>;
 }
 
 /// A trait for accessing the properties of an image.
@@ -152,21 +125,4 @@ pub trait ImageProps {
     ///
     /// # Note: This operation is parallelized if the `rayon` feature is enabled.
     fn cast_u8(&self) -> Self::OutputU8;
-}
-
-/// A trait for adding/removing an alpha channel to/from an image.
-pub trait AlphaChannel<'b: 'a, 'a, U>
-where
-    U: ?Sized,
-{
-    /// The output type of the operation.
-    type ImageOutput;
-    /// The output type of the alpha channel.
-    type AlphaOutput;
-
-    /// Add an alpha channel to the image.
-    fn add_alpha(&'b self, alpha: U) -> Result<Self::ImageOutput, &'static str>;
-
-    /// Remove the alpha channel from the image.
-    fn remove_alpha(&'b self) -> Result<(Self::ImageOutput, Self::AlphaOutput), &'static str>;
 }

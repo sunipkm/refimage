@@ -2,6 +2,10 @@
 
 ## Changes
 
+### 0.12.0 (2024-10-08)
+- Removed alpha channel support.
+- `ToLuma` trait operations are now in-place, and require mutable borrows.
+
 ### 0.11.0 (2024-09-24)
 - Added `flip_*` methods to `BayerShift` trait.
 

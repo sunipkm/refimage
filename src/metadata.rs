@@ -3,9 +3,11 @@ use std::time::{Duration, SystemTime};
 use serde::{Deserialize, Serialize};
 
 use crate::{genericimageowned::GenericImageOwned, genericimageref::GenericImageRef, ColorSpace};
+#[allow(unused)]
+use crate::GenericImage;
 
 /// Key for the timestamp metadata.
-/// This key is inserted by default when creating a new [`GenericImageRef`].
+/// This key is inserted by default when creating a new [`GenericImageRef`], [`GenericImageOwned`] or [`GenericImage`].
 pub const TIMESTAMP_KEY: &str = "TIMESTAMP";
 /// Key for the camera name metadata.
 pub const CAMERANAME_KEY: &str = "CAMERA";

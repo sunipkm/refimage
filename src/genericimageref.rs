@@ -6,7 +6,10 @@ use std::{
 use serde::Serialize;
 
 use crate::{
-    genericimageowned::GenericImageOwned, metadata::{name_check, InsertValue}, BayerError, CalcOptExp, Debayer, DemosaicMethod, DynamicImageRef, GenericLineItem, ImageProps, OptimumExposure, EXPOSURE_KEY, TIMESTAMP_KEY
+    genericimageowned::GenericImageOwned,
+    metadata::{name_check, InsertValue},
+    BayerError, CalcOptExp, Debayer, DemosaicMethod, DynamicImageRef, GenericLineItem, ImageProps,
+    OptimumExposure, EXPOSURE_KEY, TIMESTAMP_KEY,
 };
 
 #[allow(unused_imports)]
@@ -158,6 +161,11 @@ impl<'a> GenericImageRef<'a> {
         &self.image
     }
 
+    /// Get the underlying [`DynamicImageRef`] mutably.
+    pub fn get_image_mut(&mut self) -> &mut DynamicImageRef<'a> {
+        &mut self.image
+    }
+
     /// Get the contained metadata as a slice of [`GenericLineItem`]s.
     ///
     /// # Returns
@@ -189,9 +197,9 @@ impl<'a> GenericImageRef<'a> {
     }
 }
 
-impl<'a: 'b, 'b> Debayer<'a, 'b> for GenericImageRef<'b> {
+impl Debayer for GenericImageRef<'_> {
     type Output = GenericImageOwned;
-    fn debayer(&'b self, method: DemosaicMethod) -> Result<Self::Output, BayerError> {
+    fn debayer(&self, method: DemosaicMethod) -> Result<Self::Output, BayerError> {
         let img = self.image.debayer(method)?;
         let meta = self.metadata.clone();
         Ok(Self::Output {
@@ -209,13 +217,12 @@ impl CalcOptExp for GenericImageRef<'_> {
         bin: u8,
     ) -> Result<(Duration, u16), &'static str> {
         match &mut self.image {
-            DynamicImageRef::U8(img) => eval.calculate(img.as_mut_slice(), exposure, bin),
-            DynamicImageRef::U16(img) => eval.calculate(img.as_mut_slice(), exposure, bin),
+            DynamicImageRef::U8(img) => {let len = img.len(); eval.calculate(img.as_mut_slice(), len, exposure, bin)},
+            DynamicImageRef::U16(img) => {let len = img.len(); eval.calculate(img.as_mut_slice(), len, exposure, bin)},
             DynamicImageRef::F32(_) => Err("Floating point images are not supported for this operation, since Ord is not implemented for floating point types."),
         }
     }
 }
-
 
 impl ImageProps for GenericImageRef<'_> {
     type OutputU8 = GenericImageOwned;
@@ -268,32 +275,76 @@ impl GenericImageRef<'_> {
     }
 
     /// Get the data as a slice of `u8`.
+    ///
+    /// # Note
+    /// The returned slice is not guaranteed to have the correct length.
+    /// Use [`GenericImageRef::len`] to get the correct length.
     pub fn as_slice_u8(&self) -> Option<&[u8]> {
         self.image.as_slice_u8()
     }
 
     /// Get the data as a mutable slice of `u8`.
+    ///
+    /// # Note
+    /// The returned slice is not guaranteed to have the correct length.
+    /// Use [`GenericImageRef::len`] to get the correct length.
     pub fn as_mut_slice_u8(&mut self) -> Option<&mut [u8]> {
         self.image.as_mut_slice_u8()
     }
 
     /// Get the data as a slice of `u16`.
+    ///
+    /// # Note
+    /// The returned slice is not guaranteed to have the correct length.
+    /// Use [`GenericImageRef::len`] to get the correct length.
     pub fn as_slice_u16(&self) -> Option<&[u16]> {
         self.image.as_slice_u16()
     }
 
     /// Get the data as a mutable slice of `u16`.
+    ///
+    /// # Note
+    /// The returned slice is not guaranteed to have the correct length.
+    /// Use [`GenericImageRef::len`] to get the correct length.
     pub fn as_mut_slice_u16(&mut self) -> Option<&mut [u16]> {
         self.image.as_mut_slice_u16()
     }
 
     /// Get the data as a slice of `f32`.
+    ///
+    /// # Note
+    /// The returned slice is not guaranteed to have the correct length.
+    /// Use [`GenericImageRef::len`] to get the correct length.
     pub fn as_slice_f32(&self) -> Option<&[f32]> {
         self.image.as_slice_f32()
     }
 
     /// Get the data as a mutable slice of `f32`.
+    ///
+    /// # Note
+    /// The returned slice is not guaranteed to have the correct length.
+    /// Use [`GenericImageRef::len`] to get the correct length.
     pub fn as_mut_slice_f32(&mut self) -> Option<&mut [f32]> {
         self.image.as_mut_slice_f32()
+    }
+}
+
+mod test {
+    #[test]
+    fn test_optimum_exposure() {
+        use crate::CalcOptExp;
+        let opt_exp = crate::OptimumExposureBuilder::default()
+            .pixel_exclusion(1)
+            .build()
+            .unwrap();
+        let mut img = vec![0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let img = crate::ImageRef::new(img.as_mut_slice(), 5, 2, crate::ColorSpace::Gray)
+            .expect("Failed to create ImageOwned");
+        let img = crate::DynamicImageRef::from(img);
+        let img = crate::GenericImageRef::new(std::time::SystemTime::now(), img);
+        let exp = std::time::Duration::from_secs(10); // expected exposure
+        let bin = 1; // expected binning
+        let res = img.calc_opt_exp(&opt_exp, exp, bin).unwrap();
+        assert_eq!(res, (exp, bin as u16));
     }
 }

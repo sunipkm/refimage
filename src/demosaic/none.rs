@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn test_odd() {
         // R: set.seed(0); matrix(floor(runif(n=9, min=0, max=256)), nrow=3, byrow=TRUE)
-        let src = [229, 67, 95, 146, 232, 51, 229, 241, 169];
+        let src = [229, 67, 95, 146, 232, 51, 229, 241, 169, 0, 9, 10];
 
         let expected = [
             229, 0, 0, 0, 67, 0, 95, 0, 0, 0, 146, 0, 0, 0, 232, 0, 51, 0, 229, 0, 0, 0, 241, 0,

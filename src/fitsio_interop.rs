@@ -476,14 +476,12 @@ impl From<PixelType> for ImageType {
 fn str_from_cspace(cspace: &ColorSpace) -> String {
     let val = match cspace {
         ColorSpace::Gray => "GRAY",
-        ColorSpace::GrayAlpha => "GRAYA",
         ColorSpace::Rgb => "RGB",
-        ColorSpace::Rgba => "RGBA",
         ColorSpace::Bayer(BayerPattern::Bggr) => "BGGR",
         ColorSpace::Bayer(BayerPattern::Gbrg) => "GBRG",
         ColorSpace::Bayer(BayerPattern::Grbg) => "GRBG",
         ColorSpace::Bayer(BayerPattern::Rggb) => "RGGB",
-        ColorSpace::Custom(val) => &format!("C({})", val),
+        ColorSpace::Custom(ch, desc) => &format!("C({ch}, {desc})"),
     };
     val.to_string()
 }

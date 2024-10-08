@@ -34,7 +34,7 @@
 //! use std::time::SystemTime;
 //! use std::path::Path;
 //!
-//! let mut data = vec![1u8, 2, 3, 4, 5, 6]; // 3x2 grayscale image
+//! let mut data = vec![1u8, 2, 3, 4, 5, 6, 0, 0]; // 3x2 grayscale image, with extra padding that will be ignored
 //! let img = ImageRef::new(&mut data, 3, 2, ColorSpace::Gray).unwrap(); // Create ImageRef
 //! let img = DynamicImageRef::from(img); // Convert to DynamicImageRef
 //! let mut img = GenericImageRef::new(SystemTime::now(), img); // Create GenericImageRef with creation time info
@@ -84,7 +84,7 @@ pub use metadata::{
 pub use coretraits::{Enlargeable, PixelStor};
 pub use demosaic::{BayerError, Debayer, DemosaicMethod};
 pub use genericimage::GenericImage;
-pub use imagetraits::{AlphaChannel, BayerShift, ImageProps, ToLuma};
+pub use imagetraits::{BayerShift, ImageProps, ToLuma};
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "image")]
@@ -146,6 +146,7 @@ pub enum DynamicImageRef<'a> {
 /// contiguous buffer, which is backed by a vector.
 ///
 /// # Note
+/// - Does not support alpha channel natively.
 /// - [`DynamicImageRef`] implements [`Serialize`] and [`Deserialize`] traits, and can be
 ///   deserialized from a [`DynamicImageRef`].
 ///
@@ -185,14 +186,10 @@ pub enum ColorSpace {
     Gray = 0b000,
     /// Bayer mosaic image
     Bayer(BayerPattern) = 0b001,
-    /// Grayscale image with alpha channel.
-    GrayAlpha = 0b010,
     /// RGB image.
     Rgb = 0b100,
-    /// RGBA image.
-    Rgba = 0b101,
     /// Custom color space.
-    Custom(String) = 0b111,
+    Custom(u8, String) = 0b111,
 }
 
 /// Enum to describe the Bayer pattern of the image.

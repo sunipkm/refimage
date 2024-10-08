@@ -2,3 +2,4 @@
 /target
 serde-interop/**
 **/*.fit*
+**/*.png

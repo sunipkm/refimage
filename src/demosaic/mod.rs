@@ -84,7 +84,7 @@ where
 ///
 /// This trait is implemented for [`ImageRef`], [`DynamicImageRef`], [`GenericImageRef`] and
 /// their owned counterparts, [`ImageOwned`], [`DynamicImageOwned`] and [`GenericImageOwned`].
-pub trait Debayer<'b: 'a, 'a>
+pub trait Debayer
 where
     Self: Sized,
 {
@@ -106,5 +106,5 @@ where
     /// # Errors
     /// - If the image is not a Bayer pattern image.
     /// - If the image is not a single channel image.
-    fn debayer(&'b self, alg: DemosaicMethod) -> Result<Self::Output, BayerError>;
+    fn debayer(&self, alg: DemosaicMethod) -> Result<Self::Output, BayerError>;
 }

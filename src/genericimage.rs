@@ -227,80 +227,31 @@ impl<'a> TryInto<GenericImageRef<'a>> for GenericImage<'a> {
     }
 }
 
-impl<'a: 'b, 'b> ToLuma<'a, 'b> for GenericImage<'b> {
-    type Output = GenericImageOwned;
-
-    fn to_luma(&'b self) -> Result<Self::Output, &'static str> {
+impl ToLuma for GenericImage<'_> {
+    fn to_luma(&mut self) -> Result<(), &'static str> {
         match self {
             GenericImage::Ref(image) => Ok(image.to_luma()?),
             GenericImage::Own(image) => Ok(image.to_luma()?),
         }
     }
-
-    fn to_luma_alpha(&'b self) -> Result<Self::Output, &'static str> {
-        match self {
-            GenericImage::Ref(image) => Ok(image.to_luma_alpha()?),
-            GenericImage::Own(image) => Ok(image.to_luma_alpha()?),
-        }
-    }
-
-    fn to_luma_custom(&'b self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
+    
+    fn to_luma_custom(&mut self, coeffs: &[f64]) -> Result<(), &'static str> {
         match self {
             GenericImage::Ref(image) => Ok(image.to_luma_custom(coeffs)?),
             GenericImage::Own(image) => Ok(image.to_luma_custom(coeffs)?),
-        }
-    }
-
-    fn to_luma_alpha_custom(&'b self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
-        match self {
-            GenericImage::Ref(image) => Ok(image.to_luma_alpha_custom(coeffs)?),
-            GenericImage::Own(image) => Ok(image.to_luma_alpha_custom(coeffs)?),
         }
     }
 }
 
 macro_rules! impl_toluma {
     ($inp: ty, $mid: ty) => {
-        impl<'a: 'b, 'b> ToLuma<'a, 'b> for $inp {
-            type Output = GenericImageOwned;
-
-            fn to_luma(&'a self) -> Result<Self::Output, &'static str> {
-                let img = self.get_image().to_luma()?;
-                let meta = self.metadata.clone();
-                Ok(Self::Output {
-                    metadata: meta,
-                    image: img,
-                })
+        impl ToLuma for $inp {
+            fn to_luma(&mut self) -> Result<(), &'static str> {
+                self.get_image_mut().to_luma()
             }
 
-            fn to_luma_alpha(&'a self) -> Result<Self::Output, &'static str> {
-                let img = self.get_image().to_luma_alpha()?;
-                let meta = self.metadata.clone();
-                Ok(Self::Output {
-                    metadata: meta,
-                    image: img,
-                })
-            }
-
-            fn to_luma_custom(&'a self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
-                let img = self.get_image().to_luma_custom(coeffs)?;
-                let meta = self.metadata.clone();
-                Ok(Self::Output {
-                    metadata: meta,
-                    image: img,
-                })
-            }
-
-            fn to_luma_alpha_custom(
-                &'a self,
-                coeffs: [f64; 3],
-            ) -> Result<Self::Output, &'static str> {
-                let img = self.get_image().to_luma_alpha_custom(coeffs)?;
-                let meta = self.metadata.clone();
-                Ok(Self::Output {
-                    metadata: meta,
-                    image: img,
-                })
+            fn to_luma_custom(&mut self, coeffs: &[f64]) -> Result<(), &'static str> {
+                self.get_image_mut().to_luma_custom(coeffs)
             }
         }
     };
@@ -309,9 +260,9 @@ macro_rules! impl_toluma {
 impl_toluma!(GenericImageRef<'_>, DynamicImageRef<'_>);
 impl_toluma!(GenericImageOwned, DynamicImageOwned);
 
-impl<'a: 'b, 'b> Debayer<'a, 'b> for GenericImage<'b> {
-    type Output = GenericImage<'a>;
-    fn debayer(&'b self, method: DemosaicMethod) -> Result<Self::Output, BayerError> {
+impl<'a: 'b, 'b> GenericImage<'a> {
+    /// Debayer a [`GenericImage`] using the specified algorithm.
+    pub fn debayer(&'a self, method: DemosaicMethod) -> Result<GenericImage<'b>, BayerError> {
         match self {
             GenericImage::Ref(image) => Ok(image.debayer(method)?.into()),
             GenericImage::Own(image) => Ok(image.debayer(method)?.into()),
@@ -334,43 +285,86 @@ impl CalcOptExp for GenericImage<'_> {
 }
 
 impl GenericImage<'_> {
-    /// Get the data as a slice of `u8`, regardless of the underlying type.
+    /// Get the data as a slice of [`u8`], regardless of the underlying type.
     pub fn as_raw_u8(&self) -> &[u8] {
         dynamic_map!(self, ref image, { image.image.as_raw_u8() })
     }
 
-    /// Get the data as a slice of `u8`, regardless of the underlying type.
+    /// Get the data as a slice of [`u8`], regardless of the underlying type.
     pub fn as_raw_u8_checked(&self) -> Option<&[u8]> {
         dynamic_map!(self, ref image, { image.image.as_raw_u8_checked() })
     }
 
-    /// Get the data as a slice of `u8`.
+    /// Get the data as a slice of [`u8`].
+    /// 
+    /// # Note
+    /// The returned slice may not be the same length as the image.
+    /// Use [`len`](GenericImage::len) to get the length of the image.
     pub fn as_slice_u8(&self) -> Option<&[u8]> {
         dynamic_map!(self, ref image, { image.image.as_slice_u8() })
     }
 
-    /// Get the data as a mutable slice of `u8`.
+    /// Get the data as a mutable slice of [`u8`].
+    /// 
+    /// # Note
+    /// The returned slice may not be the same length as the image.
+    /// Use [`len`](GenericImage::len) to get the length of the image.
     pub fn as_mut_slice_u8(&mut self) -> Option<&mut [u8]> {
         dynamic_map!(self, ref mut image, { image.image.as_mut_slice_u8() })
     }
 
-    /// Get the data as a slice of `u16`.
+    /// Get the data as a slice of [`u16`].
+    /// 
+    /// # Note
+    /// The returned slice may not be the same length as the image.
+    /// Use [`len`](GenericImage::len) to get the length of the image.
     pub fn as_slice_u16(&self) -> Option<&[u16]> {
         dynamic_map!(self, ref image, { image.image.as_slice_u16() })
     }
 
-    /// Get the data as a mutable slice of `u16`.
+    /// Get the data as a mutable slice of [`u16`].
+    /// 
+    /// # Note
+    /// The returned slice may not be the same length as the image.
+    /// Use [`len`](GenericImage::len) to get the length of the image.
     pub fn as_mut_slice_u16(&mut self) -> Option<&mut [u16]> {
         dynamic_map!(self, ref mut image, { image.image.as_mut_slice_u16() })
     }
 
-    /// Get the data as a slice of `f32`.
+    /// Get the data as a slice of [`f32`].
+    /// 
+    /// # Note
+    /// The returned slice may not be the same length as the image.
+    /// Use [`len`](GenericImage::len) to get the length of the image.
     pub fn as_slice_f32(&self) -> Option<&[f32]> {
         dynamic_map!(self, ref image, { image.image.as_slice_f32() })
     }
 
-    /// Get the data as a mutable slice of `f32`.
+    /// Get the data as a mutable slice of [`f32`].
+    /// 
+    /// # Note
+    /// The returned slice may not be the same length as the image.
+    /// Use [`len`](GenericImage::len) to get the length of the image.
     pub fn as_mut_slice_f32(&mut self) -> Option<&mut [f32]> {
         dynamic_map!(self, ref mut image, { image.image.as_mut_slice_f32() })
     }
 }
+
+#[test]
+    fn test_optimum_exposure() {
+        use crate::CalcOptExp;
+        let opt_exp = crate::OptimumExposureBuilder::default()
+            .pixel_exclusion(1)
+            .build()
+            .unwrap();
+        let mut img = vec![0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let img = crate::ImageRef::new(img.as_mut_slice(), 5, 2, crate::ColorSpace::Gray)
+            .expect("Failed to create ImageOwned");
+        let img = crate::DynamicImageRef::from(img);
+        let img = crate::GenericImageRef::new(SystemTime::now(), img);
+        let img = crate::GenericImage::from(img);
+        let exp = std::time::Duration::from_secs(10); // expected exposure
+        let bin = 1; // expected binning
+        let res = img.calc_opt_exp(&opt_exp, exp, bin).unwrap();
+        assert_eq!(res, (exp, bin as u16));
+    }

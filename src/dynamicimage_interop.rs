@@ -45,31 +45,6 @@ impl<'a> TryFrom<DynamicImageRef<'a>> for DynamicImage {
                         .ok_or("Could not create Rgb32F image")?,
                 )),
             },
-            ColorSpace::GrayAlpha => match value {
-                U8(data) => Ok(DynamicImage::ImageLumaA8(
-                    ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create GrayAlpha8 image")?,
-                )),
-                U16(data) => Ok(DynamicImage::ImageLumaA16(
-                    ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create GrayAlpha16 image")?,
-                )),
-                F32(_) => Err("GrayAlpha32F not supported"),
-            },
-            ColorSpace::Rgba => match value {
-                U8(data) => Ok(DynamicImage::ImageRgba8(
-                    ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create Rgba8 image")?,
-                )),
-                U16(data) => Ok(DynamicImage::ImageRgba16(
-                    ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create Rgba16 image")?,
-                )),
-                F32(data) => Ok(DynamicImage::ImageRgba32F(
-                    ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create Rgba32F image")?,
-                )),
-            },
             _ => Err("Unsupported color space"),
         }
     }
@@ -104,36 +79,6 @@ impl TryFrom<DynamicImage> for DynamicImageOwned {
             DynamicImage::ImageRgb32F(data) => Ok(DynamicImageOwned::F32(
                 ImageOwned::new(data.into_raw(), wid.into(), hei.into(), ColorSpace::Rgb)
                     .map_err(|_| "Could not create DynamicImageOwned from ImageRgb32F")?,
-            )),
-            DynamicImage::ImageLumaA8(data) => Ok(DynamicImageOwned::U8(
-                ImageOwned::new(
-                    data.into_raw(),
-                    wid.into(),
-                    hei.into(),
-                    ColorSpace::GrayAlpha,
-                )
-                .map_err(|_| "Could not create DynamicImageOwned from ImageLumaA8")?,
-            )),
-            DynamicImage::ImageRgba8(data) => Ok(DynamicImageOwned::U8(
-                ImageOwned::new(data.into_raw(), wid.into(), hei.into(), ColorSpace::Rgba)
-                    .map_err(|_| "Could not create DynamicImageOwned from ImageRgba8")?,
-            )),
-            DynamicImage::ImageLumaA16(data) => Ok(DynamicImageOwned::U16(
-                ImageOwned::new(
-                    data.into_raw(),
-                    wid.into(),
-                    hei.into(),
-                    ColorSpace::GrayAlpha,
-                )
-                .map_err(|_| "Could not create DynamicImageOwned from ImageLumaA16")?,
-            )),
-            DynamicImage::ImageRgba16(data) => Ok(DynamicImageOwned::U16(
-                ImageOwned::new(data.into_raw(), wid.into(), hei.into(), ColorSpace::Rgba)
-                    .map_err(|_| "Could not create DynamicImageOwned from ImageRgba16")?,
-            )),
-            DynamicImage::ImageRgba32F(data) => Ok(DynamicImageOwned::F32(
-                ImageOwned::new(data.into_raw(), wid.into(), hei.into(), ColorSpace::Rgba)
-                    .map_err(|_| "Could not create DynamicImageOwned from ImageRgba32F")?,
             )),
             _ => Err("Unknown image type"),
         }
@@ -177,31 +122,6 @@ impl TryFrom<DynamicImageOwned> for DynamicImage {
                 F32(data) => Ok(DynamicImage::ImageRgb32F(
                     ImageBuffer::from_vec(width, height, data.into_vec())
                         .ok_or("Could not create Rgb32F image")?,
-                )),
-            },
-            ColorSpace::GrayAlpha => match value {
-                U8(data) => Ok(DynamicImage::ImageLumaA8(
-                    ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create GrayAlpha8 image")?,
-                )),
-                U16(data) => Ok(DynamicImage::ImageLumaA16(
-                    ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create GrayAlpha16 image")?,
-                )),
-                F32(_) => Err("GrayAlpha32F not supported"),
-            },
-            ColorSpace::Rgba => match value {
-                U8(data) => Ok(DynamicImage::ImageRgba8(
-                    ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create Rgba8 image")?,
-                )),
-                U16(data) => Ok(DynamicImage::ImageRgba16(
-                    ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create Rgba16 image")?,
-                )),
-                F32(data) => Ok(DynamicImage::ImageRgba32F(
-                    ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create Rgba32F image")?,
                 )),
             },
             _ => Err("Unsupported color space"),

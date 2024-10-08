@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use crate::{
-    AlphaChannel, BayerError, CalcOptExp, ColorSpace, DemosaicMethod, DynamicImageOwned,
-    ImageOwned, ImageProps, OptimumExposure, PixelType, ToLuma,
+    BayerError, CalcOptExp, ColorSpace, DemosaicMethod, DynamicImageOwned, ImageOwned, ImageProps,
+    OptimumExposure, PixelType, ToLuma,
 };
 use crate::{Debayer, DynamicImageRef};
 
@@ -65,7 +65,7 @@ impl ImageProps for DynamicImageOwned {
     }
 }
 
-impl<'a: 'b, 'b> Debayer<'a, 'b> for DynamicImageOwned {
+impl Debayer for DynamicImageOwned {
     type Output = DynamicImageOwned;
     fn debayer(&self, alg: DemosaicMethod) -> Result<Self::Output, BayerError> {
         use DynamicImageOwned::*;
@@ -77,80 +77,25 @@ impl<'a: 'b, 'b> Debayer<'a, 'b> for DynamicImageOwned {
     }
 }
 
-impl<'a: 'b, 'b> ToLuma<'a, 'b> for DynamicImageOwned {
-    type Output = DynamicImageOwned;
-
-    fn to_luma(&self) -> Result<Self::Output, &'static str> {
+impl ToLuma for DynamicImageOwned {
+    fn to_luma(&mut self) -> Result<(), &'static str> {
         use DynamicImageOwned::*;
         match self {
-            U8(image) => Ok(U8(image.to_luma()?)),
-            U16(image) => Ok(U16(image.to_luma()?)),
-            F32(image) => Ok(F32(image.to_luma()?)),
+            U8(image) => image.to_luma(),
+            U16(image) => image.to_luma(),
+            F32(image) => image.to_luma(),
         }
     }
 
-    fn to_luma_alpha(&self) -> Result<Self::Output, &'static str> {
+    fn to_luma_custom(&mut self, coeffs: &[f64]) -> Result<(), &'static str> {
         use DynamicImageOwned::*;
         match self {
-            U8(image) => Ok(U8(image.to_luma_alpha()?)),
-            U16(image) => Ok(U16(image.to_luma_alpha()?)),
-            F32(image) => Ok(F32(image.to_luma_alpha()?)),
-        }
-    }
-
-    fn to_luma_custom(&self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
-        use DynamicImageOwned::*;
-        match self {
-            U8(image) => Ok(U8(image.to_luma_custom(coeffs)?)),
-            U16(image) => Ok(U16(image.to_luma_custom(coeffs)?)),
-            F32(image) => Ok(F32(image.to_luma_custom(coeffs)?)),
-        }
-    }
-
-    fn to_luma_alpha_custom(&self, coeffs: [f64; 3]) -> Result<Self::Output, &'static str> {
-        use DynamicImageOwned::*;
-        match self {
-            U8(image) => Ok(U8(image.to_luma_alpha_custom(coeffs)?)),
-            U16(image) => Ok(U16(image.to_luma_alpha_custom(coeffs)?)),
-            F32(image) => Ok(F32(image.to_luma_alpha_custom(coeffs)?)),
+            U8(image) => image.to_luma_custom(coeffs),
+            U16(image) => image.to_luma_custom(coeffs),
+            F32(image) => image.to_luma_custom(coeffs),
         }
     }
 }
-
-macro_rules! impl_alphachannel {
-    ($type:ty, $intype:ty, $variant:path) => {
-        impl<'a: 'b, 'b> AlphaChannel<'a, 'b, $intype> for DynamicImageOwned {
-            type ImageOutput = DynamicImageOwned;
-            type AlphaOutput = Vec<$type>;
-
-            fn add_alpha(&self, alpha: $intype) -> Result<Self::ImageOutput, &'static str> {
-                use DynamicImageOwned::*;
-                match self {
-                    $variant(image) => {
-                        let image = image.add_alpha(alpha)?;
-                        Ok($variant(image))
-                    }
-                    _ => Err("Data is not of type u8"),
-                }
-            }
-
-            fn remove_alpha(&self) -> Result<(Self::ImageOutput, Self::AlphaOutput), &'static str> {
-                use DynamicImageOwned::*;
-                match self {
-                    $variant(image) => {
-                        let (image, alpha) = image.remove_alpha()?;
-                        Ok(($variant(image), alpha))
-                    }
-                    _ => Err("Data is not of type u8"),
-                }
-            }
-        }
-    };
-}
-
-impl_alphachannel!(u8, &[u8], U8);
-impl_alphachannel!(u16, &[u16], U16);
-impl_alphachannel!(f32, &[f32], F32);
 
 impl DynamicImageOwned {
     /// Convert the image to a [`DynamicImageOwned`] with [`u8`] pixel type.
@@ -287,9 +232,28 @@ impl CalcOptExp for DynamicImageOwned {
     ) -> Result<(Duration, u16), &'static str> {
         use DynamicImageOwned::*;
         match self {
-            U8(ref mut img) => eval.calculate(img.as_mut_slice(), exposure, bin),
-            U16(ref mut img) => eval.calculate(img.as_mut_slice(), exposure, bin),
+            U8(ref mut img) =>{let len = img.len(); eval.calculate(img.as_mut_slice(), len, exposure, bin)},
+            U16(ref mut img) => {let len = img.len(); eval.calculate(img.as_mut_slice(), len, exposure, bin)},
             F32(_) => Err("Floating point images are not supported for this operation, since Ord is not implemented for floating point types."),
         }
+    }
+}
+
+mod test {
+    #[test]
+    fn test_optimum_exposure() {
+        use crate::CalcOptExp;
+        let opt_exp = crate::OptimumExposureBuilder::default()
+            .pixel_exclusion(1)
+            .build()
+            .unwrap();
+        let img = vec![0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let img = crate::ImageOwned::from_owned(img, 5, 2, crate::ColorSpace::Gray)
+            .expect("Failed to create ImageOwned");
+        let img = crate::DynamicImageOwned::from(img);
+        let exp = std::time::Duration::from_secs(10); // expected exposure
+        let bin = 1; // expected binning
+        let res = img.calc_opt_exp(&opt_exp, exp, bin).unwrap();
+        assert_eq!(res, (exp, bin as u16));
     }
 }

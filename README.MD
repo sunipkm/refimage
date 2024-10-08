@@ -59,8 +59,8 @@ img.write_fits(Path::new("/path/to/fitsimage.fit"), FitsCompression::None, true)
 ```
 
 ## Additional Features
-`ToLuma` and `AlphaChannel` traits are implemented on all image functions.
-The methods in these traits succeed only when allocation is required, and return a corresponding `*ImageOwned` object.
+`ToLuma` trait is implemented on all image functions.
+Luminance calculation is done in-place.
 
 # Optional Features
 Features are available to extend the functionalities of the core `refimage` data types:

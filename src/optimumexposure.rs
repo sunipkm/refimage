@@ -197,6 +197,7 @@ impl OptimumExposure {
     pub fn calculate<T: PixelStor + Ord>(
         &self,
         img: &mut [T],
+        len: usize,
         exposure: Duration,
         bin: u8,
     ) -> Result<(Duration, u16), &'static str> {
@@ -245,18 +246,17 @@ impl OptimumExposure {
             change_bin = false;
         }
         let mut bin = bin as u16;
-        img.sort();
+        img[..len].sort();
         let mut coord: usize;
         if percentile_pix > 0.99999 {
-            coord = img.len() - 1_usize;
+            coord = len - 1_usize;
         } else {
-            coord = (percentile_pix * (img.len() - 1) as f32).floor() as usize;
+            coord = (percentile_pix * (len - 1) as f32).floor() as usize;
         }
         if coord < pixel_exclusion as usize {
-            coord = img.len() - 1 - pixel_exclusion as usize;
+            coord = len - 1 - pixel_exclusion as usize;
         }
-        let imgvec = img.to_vec();
-        let val = imgvec.get(coord);
+        let val = img[..len].get(coord);
         let val = match val {
             Some(v) => (*v).to_f32(),
             None => 1e-5_f32,
@@ -367,13 +367,14 @@ mod test {
         let mut img = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
         let exp = Duration::from_secs(10); // expected exposure
         let bin = 1; // expected binning
-        let res = opt_exp.calculate(&mut img, exp, bin).unwrap();
+        let len = img.len();
+        let res = opt_exp.calculate(&mut img, len, exp, bin).unwrap();
         assert_eq!(res, (exp, bin as u16));
         assert_eq!(
             opt_exp.get_builder(),
             OptimumExposureBuilder::default().pixel_exclusion(1)
         );
-        let img = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let img = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0];
         let img = crate::ImageOwned::from_owned(img, 5, 2, crate::ColorSpace::Gray)
             .expect("Failed to create ImageOwned");
         let exp = Duration::from_secs(10); // expected exposure
