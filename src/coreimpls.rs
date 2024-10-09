@@ -1,3 +1,4 @@
+#[cfg(feature = "rayon")]
 use rayon::{iter::ParallelIterator, slice::ParallelSliceMut};
 
 use crate::{demosaic::ColorFilterArray, BayerPattern, ColorSpace, PixelStor, PixelType};

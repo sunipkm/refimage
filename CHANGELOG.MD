@@ -2,6 +2,9 @@
 
 ## Changes
 
+### 0.12.1 (2024-10-09)
+- Bugfix: `rayon` imports in `src/coreimpls.rs` not hidden behind the rayon feature flag.
+
 ### 0.12.0 (2024-10-08)
 - Removed alpha channel support to allow in-place luminance calculations.
 - `ToLuma` trait operations are now in-place, and require mutable borrows.
