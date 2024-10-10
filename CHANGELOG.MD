@@ -2,6 +2,9 @@
 
 ## Changes
 
+### 0.12.2 (2024-10-10)
+- Added `is_bayer` method to `ColorSpace`.
+
 ### 0.12.1 (2024-10-09)
 - Bugfix: `rayon` imports in `src/coreimpls.rs` not hidden behind the rayon feature flag.
 

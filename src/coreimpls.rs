@@ -97,3 +97,10 @@ pub(crate) fn run_luma<T: PixelStor>(
     }
     Ok(())
 }
+
+impl ColorSpace {
+    /// Check if the color space is a Bayer pattern.
+    pub fn is_bayer(&self) -> bool {
+        matches!(self, Self::Bayer(_))
+    }
+}
