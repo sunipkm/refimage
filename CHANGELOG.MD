@@ -2,6 +2,11 @@
 
 ## Changes
 
+### 0.13.0 (2024-10-16)
+- Removed default features from `image` crate.
+- Removed default features from `chrono` crate.
+- Removed feature `serde_flate`. Serialized image does not compress data.
+
 ### 0.12.2 (2024-10-10)
 - Added `is_bayer` method to `ColorSpace`.
 

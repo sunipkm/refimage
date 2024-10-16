@@ -1,11 +1,7 @@
 use crate::imagetraits::ImageProps;
 use crate::{ColorSpace, DynamicImageOwned, DynamicImageRef, ImageOwned, PixelType};
 use crate::{Deserializer, Serializer};
-#[cfg(feature = "serde_flate")]
-use flate2::{write::ZlibDecoder, write::ZlibEncoder, Compress, Compression};
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "serde_flate")]
-use std::io::Write;
 
 #[derive(Serialize, Deserialize)]
 struct SerialImage {
@@ -32,25 +28,10 @@ impl<'a> TryFrom<&'a DynamicImageRef<'a>> for SerialImage {
         let out;
         let crc = crc32fast::hash(data);
         let compressed;
-        #[cfg(feature = "serde_flate")]
-        {
-            let mut encoder = ZlibEncoder::new_with_compress(
-                Vec::new(),
-                Compress::new(Compression::fast(), true),
-            );
-            encoder
-                .write_all(data)
-                .map_err(|_| "Could not write data to compressor.")?;
-            out = encoder
-                .finish()
-                .map_err(|_| "Could not finalize compression.")?;
-            compressed = true;
-        }
-        #[cfg(not(feature = "serde_flate"))]
-        {
-            out = data.to_vec();
-            compressed = false;
-        }
+        
+        out = data.to_vec();
+        compressed = false;
+        
         Ok(SerialImage {
             width: width as _,
             height: height as _,
@@ -88,25 +69,9 @@ impl TryFrom<&DynamicImageOwned> for SerialImage {
         let out;
         let crc = crc32fast::hash(data);
         let compressed;
-        #[cfg(feature = "serde_flate")]
-        {
-            let mut encoder = ZlibEncoder::new_with_compress(
-                Vec::new(),
-                Compress::new(Compression::fast(), true),
-            );
-            encoder
-                .write_all(data)
-                .map_err(|_| "Could not write data to compressor.")?;
-            out = encoder
-                .finish()
-                .map_err(|_| "Could not finalize compression.")?;
-            compressed = true;
-        }
-        #[cfg(not(feature = "serde_flate"))]
-        {
             out = data.to_vec();
             compressed = false;
-        }
+
         Ok(SerialImage {
             width: width as _,
             height: height as _,
@@ -130,28 +95,7 @@ impl TryFrom<SerialImage> for DynamicImageOwned {
         let cspace = data.cspace;
         let pixeltype = data.pixeltype.try_into()?;
         #[allow(unused_mut)]
-        let mut out;
-        #[cfg(feature = "serde_flate")]
-        {
-            if !data.compressed {
-                return Err("Data is not compressed.");
-            }
-            out = Vec::new();
-            let mut decoder = ZlibDecoder::new(out);
-            decoder
-                .write_all(&data.data)
-                .map_err(|_| "Could not decompress the data.")?;
-            out = decoder
-                .finish()
-                .map_err(|_| "Could not finalize the decompression.")?;
-        }
-        #[cfg(not(feature = "serde_flate"))]
-        {
-            if data.compressed {
-                return Err("Data is compressed.");
-            }
-            out = data.data;
-        }
+        let mut out = data.data;
         let crc = crc32fast::hash(&out);
         if data.crc != crc {
             return Err("Invalid data checksum");
