@@ -234,7 +234,7 @@ impl ToLuma for GenericImage<'_> {
             GenericImage::Own(image) => Ok(image.to_luma()?),
         }
     }
-    
+
     fn to_luma_custom(&mut self, coeffs: &[f64]) -> Result<(), &'static str> {
         match self {
             GenericImage::Ref(image) => Ok(image.to_luma_custom(coeffs)?),
@@ -296,7 +296,7 @@ impl GenericImage<'_> {
     }
 
     /// Get the data as a slice of [`u8`].
-    /// 
+    ///
     /// # Note
     /// The returned slice may not be the same length as the image.
     /// Use [`len`](GenericImage::len) to get the length of the image.
@@ -305,7 +305,7 @@ impl GenericImage<'_> {
     }
 
     /// Get the data as a mutable slice of [`u8`].
-    /// 
+    ///
     /// # Note
     /// The returned slice may not be the same length as the image.
     /// Use [`len`](GenericImage::len) to get the length of the image.
@@ -314,7 +314,7 @@ impl GenericImage<'_> {
     }
 
     /// Get the data as a slice of [`u16`].
-    /// 
+    ///
     /// # Note
     /// The returned slice may not be the same length as the image.
     /// Use [`len`](GenericImage::len) to get the length of the image.
@@ -323,7 +323,7 @@ impl GenericImage<'_> {
     }
 
     /// Get the data as a mutable slice of [`u16`].
-    /// 
+    ///
     /// # Note
     /// The returned slice may not be the same length as the image.
     /// Use [`len`](GenericImage::len) to get the length of the image.
@@ -332,7 +332,7 @@ impl GenericImage<'_> {
     }
 
     /// Get the data as a slice of [`f32`].
-    /// 
+    ///
     /// # Note
     /// The returned slice may not be the same length as the image.
     /// Use [`len`](GenericImage::len) to get the length of the image.
@@ -341,7 +341,7 @@ impl GenericImage<'_> {
     }
 
     /// Get the data as a mutable slice of [`f32`].
-    /// 
+    ///
     /// # Note
     /// The returned slice may not be the same length as the image.
     /// Use [`len`](GenericImage::len) to get the length of the image.
@@ -351,20 +351,20 @@ impl GenericImage<'_> {
 }
 
 #[test]
-    fn test_optimum_exposure() {
-        use crate::CalcOptExp;
-        let opt_exp = crate::OptimumExposureBuilder::default()
-            .pixel_exclusion(1)
-            .build()
-            .unwrap();
-        let mut img = vec![0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-        let img = crate::ImageRef::new(img.as_mut_slice(), 5, 2, crate::ColorSpace::Gray)
-            .expect("Failed to create ImageOwned");
-        let img = crate::DynamicImageRef::from(img);
-        let img = crate::GenericImageRef::new(SystemTime::now(), img);
-        let img = crate::GenericImage::from(img);
-        let exp = std::time::Duration::from_secs(10); // expected exposure
-        let bin = 1; // expected binning
-        let res = img.calc_opt_exp(&opt_exp, exp, bin).unwrap();
-        assert_eq!(res, (exp, bin as u16));
-    }
+fn test_optimum_exposure() {
+    use crate::CalcOptExp;
+    let opt_exp = crate::OptimumExposureBuilder::default()
+        .pixel_exclusion(1)
+        .build()
+        .unwrap();
+    let mut img = vec![0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    let img = crate::ImageRef::new(img.as_mut_slice(), 5, 2, crate::ColorSpace::Gray)
+        .expect("Failed to create ImageOwned");
+    let img = crate::DynamicImageRef::from(img);
+    let img = crate::GenericImageRef::new(SystemTime::now(), img);
+    let img = crate::GenericImage::from(img);
+    let exp = std::time::Duration::from_secs(10); // expected exposure
+    let bin = 1; // expected binning
+    let res = img.calc_opt_exp(&opt_exp, exp, bin).unwrap();
+    assert_eq!(res, (exp, bin as u16));
+}

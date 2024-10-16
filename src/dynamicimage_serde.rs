@@ -25,13 +25,10 @@ impl<'a> TryFrom<&'a DynamicImageRef<'a>> for SerialImage {
         let cspace = data.color_space();
         let pixeltype: PixelType = (data).into();
         let data = data.as_raw_u8();
-        let out;
+        let out = data.to_vec();
         let crc = crc32fast::hash(data);
-        let compressed;
-        
-        out = data.to_vec();
-        compressed = false;
-        
+        let compressed = false;
+
         Ok(SerialImage {
             width: width as _,
             height: height as _,
@@ -66,12 +63,9 @@ impl TryFrom<&DynamicImageOwned> for SerialImage {
         let cspace = data.color_space();
         let pixeltype: PixelType = (data).into();
         let data = data.as_raw_u8();
-        let out;
+        let out = data.to_vec();
         let crc = crc32fast::hash(data);
-        let compressed;
-            out = data.to_vec();
-            compressed = false;
-
+        let compressed = false;
         Ok(SerialImage {
             width: width as _,
             height: height as _,

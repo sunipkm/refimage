@@ -1,17 +1,15 @@
 #![feature(test)]
 
-
-
 #[cfg(test)]
 mod tests {
-    extern crate test;
     extern crate paste;
+    extern crate test;
     use rand::{thread_rng, Rng};
     use rayon::{iter::ParallelIterator, slice::ParallelSliceMut};
     use refimage::PixelStor;
     use test::Bencher;
 
-    macro_rules! generate_test{
+    macro_rules! generate_test {
         ($name:expr, $size:expr) => {
             ::paste::paste! {
                 #[bench]

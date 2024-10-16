@@ -17,7 +17,7 @@ use bytemuck::{AnyBitPattern, PodCastError};
 /// [`ImageOwned`] supports arbitrary color spaces and number of channels, but the number
 /// of channels must be consistent across the image. The data is stored in a single
 /// contiguous buffer.
-/// 
+///
 /// Alpha channels are not natively supported.
 ///
 /// # Usage

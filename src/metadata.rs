@@ -2,9 +2,9 @@ use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{genericimageowned::GenericImageOwned, genericimageref::GenericImageRef, ColorSpace};
 #[allow(unused)]
 use crate::GenericImage;
+use crate::{genericimageowned::GenericImageOwned, genericimageref::GenericImageRef, ColorSpace};
 
 /// Key for the timestamp metadata.
 /// This key is inserted by default when creating a new [`GenericImageRef`], [`GenericImageOwned`] or [`GenericImage`].

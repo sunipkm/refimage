@@ -66,7 +66,8 @@ pub(crate) fn run_luma<T: PixelStor>(
     }
     #[cfg(feature = "rayon")]
     {
-        if len > 1024 * 1024 { // for large images, use parallel processing
+        if len > 1024 * 1024 {
+            // for large images, use parallel processing
             data[..len]
                 .par_chunks_exact_mut(channels)
                 .for_each(|chunk| {
@@ -82,7 +83,8 @@ pub(crate) fn run_luma<T: PixelStor>(
             for i in 0..len {
                 data[i] = data[i * channels];
             }
-        } else { // for small images, use sequential processing
+        } else {
+            // for small images, use sequential processing
             let len = len / channels;
             for i in 0..len {
                 let v = T::from_f64(
