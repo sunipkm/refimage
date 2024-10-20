@@ -402,10 +402,13 @@ impl WriteKey for GenericLineItem {
                     let v = v
                         .duration_since(UNIX_EPOCH)
                         .map_err(|err| FitsError::Message(err.to_string()))?;
+                    let key_ = format!("{key}_S");
                     let cmt_ = format!("{cmt} (s from EPOCH)");
-                    hdu.write_key(fptr, key, (v.as_secs(), cmt_.as_str()))?;
+                    hdu.write_key(fptr, &key_, (v.as_secs(), cmt_.as_str()))?;
+                    let key_ = format!("{key}_NS");
                     let cmt_ = format!("{cmt} (ns from EPOCH)");
-                    hdu.write_key(fptr, key, (v.subsec_nanos(), cmt_.as_str()))
+                    hdu.write_key(fptr, &key_, (v.subsec_nanos(), cmt_.as_str()))?;
+                    hdu.write_key(fptr, key, (v.as_secs_f64(), cmt.as_str()))
                 }
                 GenericValue::U32(v) => hdu.write_key(fptr, key, (*v, cmt.as_str())),
                 GenericValue::U64(v) => hdu.write_key(fptr, key, (*v, cmt.as_str())),
@@ -418,10 +421,13 @@ impl WriteKey for GenericLineItem {
                     hdu.write_key(fptr, key, (str_from_cspace(color_space), cmt.as_str()))
                 }
                 GenericValue::Duration(duration) => {
+                    let key_ = format!("{key}_S");
                     let cmt_ = format!("{cmt} (s)");
-                    hdu.write_key(fptr, key, (duration.as_secs(), cmt_.as_str()))?;
+                    hdu.write_key(fptr, &key_, (duration.as_secs(), cmt_.as_str()))?;
+                    let key_ = format!("{key}_NS");
                     let cmt_ = format!("{cmt} (ns)");
-                    hdu.write_key(fptr, key, (duration.subsec_nanos(), cmt_.as_str()))
+                    hdu.write_key(fptr, &key_, (duration.subsec_nanos(), cmt_.as_str()))?;
+                    hdu.write_key(fptr, key, (duration.as_secs_f64(), cmt.as_str()))
                 }
             }
         } else {
@@ -434,8 +440,11 @@ impl WriteKey for GenericLineItem {
                     let v = v
                         .duration_since(UNIX_EPOCH)
                         .map_err(|err| FitsError::Message(err.to_string()))?;
-                    hdu.write_key(fptr, key, (v.as_secs(), "s from EPOCH"))?;
-                    hdu.write_key(fptr, key, (v.subsec_nanos(), "ns from EPOCH"))
+                    let key_ = format!("{key}_S");
+                    hdu.write_key(fptr, &key_, (v.as_secs(), "s from EPOCH"))?;
+                    let key_ = format!("{key}_NS");
+                    hdu.write_key(fptr, &key_, (v.subsec_nanos(), "ns from EPOCH"))?;
+                    hdu.write_key(fptr, key, (v.as_secs_f64(), "s from EPOCH"))
                 }
                 GenericValue::U32(v) => hdu.write_key(fptr, key, *v),
                 GenericValue::U64(v) => hdu.write_key(fptr, key, *v),
@@ -448,8 +457,11 @@ impl WriteKey for GenericLineItem {
                     hdu.write_key(fptr, key, str_from_cspace(color_space))
                 }
                 GenericValue::Duration(duration) => {
-                    hdu.write_key(fptr, key, (duration.as_secs(), "(s)"))?;
-                    hdu.write_key(fptr, key, (duration.subsec_nanos(), "(ns)"))
+                    let key_ = format!("{key}_S");
+                    hdu.write_key(fptr, &key_, (duration.as_secs(), "(s)"))?;
+                    let key_ = format!("{key}_NS");
+                    hdu.write_key(fptr, &key_, (duration.subsec_nanos(), "(ns)"))?;
+                    hdu.write_key(fptr, key, (duration.as_secs_f64(), "s"))
                 }
             }
         }

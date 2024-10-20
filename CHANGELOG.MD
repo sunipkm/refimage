@@ -2,6 +2,11 @@
 
 ## Changes
 
+### 0.13.1 (2024-10-20)
+- Save timestamp and duration with a float second value with the original key,
+  and additional integer values of seconds and nanoseconds, with keys suffixed
+  by 's' and 'ns'.
+
 ### 0.13.0 (2024-10-16)
 - Removed default features from `image` crate.
 - Removed default features from `chrono` crate.
