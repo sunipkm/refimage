@@ -2,6 +2,9 @@
 
 ## Changes
 
+### 1.0.0 (2024-10-23)
+- Updated documentation for `GenericLineItem`.
+
 ### 0.13.1 (2024-10-20)
 - Save timestamp and duration with a float second value with the original key,
   and additional integer values of seconds and nanoseconds, with keys suffixed

@@ -1,6 +1,6 @@
 [package]
 name = "refimage"
-version = "0.13.1"
+version = "1.0.0-pre0"
 edition = "2021"
 resolver = "2"
 
@@ -13,7 +13,7 @@ readme = "README.MD"
 documentation = "https://docs.rs/refimage"
 repository = "https://github.com/sunipkm/refimage"
 homepage = "https://github.com/sunipkm/refimage"
-categories = ["multimedia::images", "multimedia::encoding", "encoding"]
+categories = ["multimedia::images", "multimedia::encoding", "serialization::formats"]
 
 include = [
     "/LICENSE-APACHE",
@@ -45,16 +45,16 @@ thiserror = "1.0"
 [dev-dependencies]
 bincode = "1.3"
 color-backtrace = "0.6"
+paste = "1.0"
 rand = "0.8"
 serde-generate = "0.26"
 serde_json = "1.0"
 serde-reflection = "0.4"
-paste = "1.0"
 
 [features]
 default = ["rayon"]
-full = ["default", "fitsio", "image"]
 fitsio = ["dep:fitsio"]
+full = ["default", "fitsio", "image"]
 image = ["dep:image"]
 rayon = ["dep:rayon"]
 
