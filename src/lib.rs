@@ -12,9 +12,7 @@
 //! Bayer mosaic image, the crate supports debayering of the image data.
 //!
 //! The crate additionally supports serialization and deserialization of the image
-//! data using the `serde` framework. The crate, by default, compiles with the [`flate2`]
-//! crate to compress the data before serialization. The compression can be disabled
-//! by setting the `serde_flate` feature to `false`.
+//! data using the `serde` framework.
 //!
 //! The crate provides a concrete type [`ImageRef`] to store image data and a type-erased
 //! version [`DynamicImageRef`] to store image data with different pixel types.
@@ -45,7 +43,6 @@
 //! # Optional Features
 //! Features are available to extend the functionalities of the core `refimage` data types:
 //! - `rayon`: Parallelizes [`GenericImageRef::to_luma`] (and similar), [`GenericImageRef::to_luma_custom`], [`GenericImageRef::into_u8`] and [`GenericImageRef::debayer`] functions (<b>enabled</b> by default).
-//! - `serde_flate`: Compresses the data using deflate during serialization (<b>enabled</b> by default).
 //! - `fitsio`: Exposes [`FitsWrite`] trait to write [`GenericImageRef`] and [`GenericImageOwned`] (<b>disabled</b> by default).
 //! - `image`: Enables [`TryFrom`] conversions between [`DynamicImage`] and [`DynamicImageRef`], [`DynamicImageOwned`] (<b>disabled</b> by default).
 //!

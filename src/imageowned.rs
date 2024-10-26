@@ -332,7 +332,7 @@ impl<T: PixelStor + Enlargeable> Debayer for ImageOwned<T> {
 impl<'a, T: PixelStor> From<&ImageRef<'a, T>> for ImageOwned<T> {
     fn from(data: &ImageRef<'a, T>) -> Self {
         Self {
-            data: data.data.to_vec(),
+            data: data.data[..data.len].to_vec(),
             width: data.width,
             height: data.height,
             channels: data.channels,

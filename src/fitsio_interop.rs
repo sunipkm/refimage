@@ -313,7 +313,7 @@ impl<'a, T: PixelStor + WriteImage> ImageRef<'a, T> {
             fptr.create_image("IMAGE", &desc)?
         };
 
-        hdu.write_image(&mut fptr, self.data)?;
+        hdu.write_image(&mut fptr, self.as_slice())?;
         Ok((hdu, fptr))
     }
 }
@@ -326,7 +326,6 @@ impl<T: PixelStor + WriteImage> ImageOwned<T> {
         compress: FitsCompression,
         pxltype: PixelType,
     ) -> Result<(FitsHdu, FitsFile), FitsError> {
-        let data = self.data.as_slice();
         let desc = ImageDescription {
             data_type: pxltype.into(),
             dimensions: if self.channels() > 1 {
@@ -352,7 +351,7 @@ impl<T: PixelStor + WriteImage> ImageOwned<T> {
             fptr.create_image("IMAGE", &desc)?
         };
 
-        hdu.write_image(&mut fptr, data)?;
+        hdu.write_image(&mut fptr, self.as_slice())?;
         Ok((hdu, fptr))
     }
 }
