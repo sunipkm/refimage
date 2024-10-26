@@ -4,7 +4,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 pub use fitsio::errors::Error as FitsError;
 use fitsio::{
     hdu::FitsHdu,
@@ -136,32 +136,18 @@ impl FitsWrite for GenericImageRef<'_> {
             return Err(FitsError::Message("Path is a directory".to_string()));
         }
 
-        let timestamp = match self.get_key(TIMESTAMP_KEY) {
-            Some(val) => {
-                let val = val
-                    .get_value()
-                    .get_value_systemtime()
-                    .ok_or(FitsError::Message(
-                        "Could not convert timestamp to SystemTime".to_owned(),
-                    ))?;
-                val.duration_since(UNIX_EPOCH)
-                    .map_err(|err| {
-                        FitsError::Message(format!(
-                            "Could not convert SystemTime to duration since epoch: {}",
-                            err
-                        ))
-                    })?
-                    .as_millis()
-            }
-            None => SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis(),
-        };
+        let datestamp = self
+            .get_key(TIMESTAMP_KEY)
+            .ok_or(FitsError::Message(
+                "Could not find timestamp in metadata".to_owned(),
+            ))?
+            .get_value()
+            .get_value_systemtime()
+            .ok_or(FitsError::Message(
+                "Could not convert timestamp to SystemTime".to_owned(),
+            ))?;
+        let datestamp = systemtime_to_utc(datestamp)?;
 
-        let datestamp = DateTime::from_timestamp_millis(timestamp as i64).ok_or(
-            FitsError::Message("Could not convert timestamp to NaiveDateTime".to_owned()),
-        )?;
         let datestamp = datestamp.format("%Y-%m-%dT%H:%M:%S%.6f").to_string();
 
         let mut path = PathBuf::from(path);
@@ -206,32 +192,17 @@ impl FitsWrite for GenericImageOwned {
             return Err(FitsError::Message("Path is a directory".to_string()));
         }
 
-        let timestamp = match self.get_key(TIMESTAMP_KEY) {
-            Some(val) => {
-                let val = val
-                    .get_value()
-                    .get_value_systemtime()
-                    .ok_or(FitsError::Message(
-                        "Could not convert timestamp to SystemTime".to_owned(),
-                    ))?;
-                val.duration_since(UNIX_EPOCH)
-                    .map_err(|err| {
-                        FitsError::Message(format!(
-                            "Could not convert SystemTime to duration since epoch: {}",
-                            err
-                        ))
-                    })?
-                    .as_millis()
-            }
-            None => SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis(),
-        };
-
-        let datestamp = DateTime::from_timestamp_millis(timestamp as i64).ok_or(
-            FitsError::Message("Could not convert timestamp to NaiveDateTime".to_owned()),
-        )?;
+        let datestamp = self
+            .get_key(TIMESTAMP_KEY)
+            .ok_or(FitsError::Message(
+                "Could not find timestamp in metadata".to_owned(),
+            ))?
+            .get_value()
+            .get_value_systemtime()
+            .ok_or(FitsError::Message(
+                "Could not convert timestamp to SystemTime".to_owned(),
+            ))?;
+        let datestamp = systemtime_to_utc(datestamp)?;
         let datestamp = datestamp.format("%Y-%m-%dT%H:%M:%S%.6f").to_string();
 
         let mut path = PathBuf::from(path);
@@ -407,8 +378,7 @@ impl WriteKey for GenericLineItem {
                     hdu.write_key(fptr, &key_, (v.as_secs(), cmt_.as_str()))?;
                     let key_ = format!("{key}_NS");
                     let cmt_ = format!("{cmt} (ns from EPOCH)");
-                    hdu.write_key(fptr, &key_, (v.subsec_nanos(), cmt_.as_str()))?;
-                    hdu.write_key(fptr, key, (v.as_secs_f64(), cmt.as_str()))
+                    hdu.write_key(fptr, &key_, (v.subsec_nanos(), cmt_.as_str()))
                 }
                 GenericValue::U32(v) => hdu.write_key(fptr, key, (*v, cmt.as_str())),
                 GenericValue::U64(v) => hdu.write_key(fptr, key, (*v, cmt.as_str())),
@@ -496,6 +466,16 @@ fn str_from_cspace(cspace: &ColorSpace) -> String {
         ColorSpace::Custom(ch, desc) => &format!("C({ch}, {desc})"),
     };
     val.to_string()
+}
+
+fn systemtime_to_utc(stime: SystemTime) -> Result<DateTime<Utc>, FitsError> {
+    let timestamp = stime
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| FitsError::Message(err.to_string()))?;
+
+    DateTime::from_timestamp(timestamp.as_secs() as _, timestamp.subsec_nanos() as _).ok_or(
+        FitsError::Message("Could not convert timestamp to NaiveDateTime".to_owned()),
+    )
 }
 
 mod test {
