@@ -92,14 +92,14 @@ macro_rules! declare_pixelstor {
 
 declare_pixelstor!(u8: (0)..Self::MAX, PixelType::U8);
 declare_pixelstor!(u16: (0)..Self::MAX, PixelType::U16);
-declare_pixelstor!(u32: (0)..Self::MAX, PixelType::U8);
+declare_pixelstor!(u32: (0)..Self::MAX, PixelType::U32);
 
-declare_pixelstor!(i8: (Self::MIN)..Self::MAX, PixelType::U8);
-declare_pixelstor!(i16: (Self::MIN)..Self::MAX, PixelType::U8);
-declare_pixelstor!(i32: (Self::MIN)..Self::MAX, PixelType::U8);
+declare_pixelstor!(i8: (Self::MIN)..Self::MAX, PixelType::I8);
+declare_pixelstor!(i16: (Self::MIN)..Self::MAX, PixelType::I16);
+declare_pixelstor!(i32: (Self::MIN)..Self::MAX, PixelType::I32);
 
 declare_pixelstor!(f32: (0.0)..1.0,  PixelType::F32);
-declare_pixelstor!(f64: (0.0)..1.0, PixelType::F32);
+declare_pixelstor!(f64: (0.0)..1.0, PixelType::F64);
 
 /// An `Enlargable::Larger` value should be enough to calculate
 /// the sum (average) of a few hundred or thousand Enlargeable values.

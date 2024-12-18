@@ -1,6 +1,9 @@
 # Changelog for `refimage`
 
 ## Changes
+### 1.0.0-pre2 (2024-12-18)
+- Fixed PixelStor declarations for rare types.
+
 ### 1.0.0-pre1 (2024-12-18)
 - Added traits `SelectRoi` and `CopyRoi` for image ROI extraction.
 
