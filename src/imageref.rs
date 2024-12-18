@@ -4,10 +4,11 @@ use crate::{
     coretraits::{cast_u8, Enlargeable},
     demosaic::{run_demosaic_imagedata, Debayer, RasterMut},
     imagetraits::ImageProps,
-    BayerError, CalcOptExp, ColorSpace, DemosaicMethod, ImageOwned, OptimumExposure, PixelStor,
-    PixelType, ToLuma,
+    BayerError, CalcOptExp, ColorSpace, CopyRoi, DemosaicMethod, ImageOwned, OptimumExposure,
+    PixelStor, PixelType, SelectRoi, ToLuma,
 };
 use bytemuck::{AnyBitPattern, PodCastError};
+use num_traits::Zero;
 
 /// A structure that holds image data backed by a slice or a vector.
 ///
@@ -324,6 +325,56 @@ impl<T: PixelStor + Enlargeable> Debayer for ImageRef<'_, T> {
     }
 }
 
+impl<'a, T: PixelStor + Zero> SelectRoi for ImageRef<'a, T> {
+    type Output = ImageOwned<T>;
+
+    fn select_roi(
+        &self,
+        x: usize,
+        y: usize,
+        width: std::num::NonZeroUsize,
+        height: std::num::NonZeroUsize,
+    ) -> Result<Self::Output, &'static str> {
+        let swid = self.width();
+        let shei = self.height();
+        if x >= swid || y >= shei {
+            return Err("ROI is out of bounds.");
+        }
+        let mut data = vec![T::zero(); width.get() * height.get() * self.channels as usize];
+        let wid = width.get().min(swid - x); // guaranteed to be non-zero
+        let hei = height.get().min(shei - y); // guaranteed to be non-zero
+        for h in 0..hei {
+            let src = (y + h) * swid + x;
+            let dst = h * wid;
+            let len = wid * self.channels as usize;
+            data[dst..dst + len].copy_from_slice(&self.data[src..src + len]);
+        }
+        ImageOwned::new(data, width.get(), height.get(), self.cspace.clone())
+    }
+}
+
+impl<T: PixelStor + Zero> CopyRoi for ImageRef<'_, T> {
+    type Output = ImageOwned<T>;
+
+    fn copy_to(&self, dest: &mut Self::Output, x: usize, y: usize) {
+        let channels = self.channels() as usize;
+        let swid = self.width();
+        let shei = self.height();
+        let dwid = dest.width();
+        let dhei = dest.height();
+        let wid = dwid.min(swid - x);
+        let hei = dhei.min(shei - y);
+        dest.data.fill(T::zero());
+        for h in 0..hei {
+            let src = (y + h) * swid + x;
+            let dst = h * dwid;
+            let len = wid * channels;
+            dest.data[dst..dst + len].copy_from_slice(&self.data[src..src + len]);
+        }
+        dest.data.truncate(dwid * dhei * channels);
+    }
+}
+
 impl<'a, T: PixelStor + Ord> CalcOptExp for ImageRef<'a, T> {
     fn calc_opt_exp(
         self,
@@ -336,7 +387,6 @@ impl<'a, T: PixelStor + Ord> CalcOptExp for ImageRef<'a, T> {
 }
 
 mod test {
-
     #[test]
     fn test_into_luma() {
         use crate::{ColorSpace, ImageRef, ToLuma};
@@ -440,5 +490,25 @@ mod test {
         let bin = 1; // expected binning
         let res = img.calc_opt_exp(&opt_exp, exp, bin).unwrap();
         assert_eq!(res, (exp, bin as u16));
+    }
+
+    #[test]
+    fn test_select_roi() {
+        use crate::{CopyRoi, SelectRoi};
+        use std::num::NonZero;
+
+        let mut imgsrc = vec![0u8, 1, 2, 3, 4, 6, 5, 7, 8, 9, 10, 9, 8];
+        let img = crate::ImageRef::new(imgsrc.as_mut_slice(), 5, 2, crate::ColorSpace::Gray)
+            .expect("Failed to create ImageOwned");
+        let roi = img
+            .select_roi(1, 0, NonZero::new(2).unwrap(), NonZero::new(3).unwrap())
+            .expect("Failed to select ROI");
+        assert_eq!(roi.as_slice(), &[1, 2, 5, 7, 0, 0]);
+
+        let roi = vec![0u8; 6];
+        let mut roi = crate::ImageOwned::new(roi, 2, 3, crate::ColorSpace::Gray)
+            .expect("Failed to create ImageOwned");
+        img.copy_to(&mut roi, 1, 0);
+        assert_eq!(roi.as_slice(), &[1, 2, 5, 7, 0, 0]);
     }
 }

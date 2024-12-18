@@ -1,8 +1,10 @@
 # Changelog for `refimage`
 
 ## Changes
+### 1.0.0-pre1 (2024-12-18)
+- Added traits `SelectRoi` and `CopyRoi` for image ROI extraction.
 
-### 1.0.0 (2024-10-23)
+### 1.0.0-pre0 (2024-10-23)
 - Updated documentation for `GenericLineItem`.
 - Bugfix: ImageRef to ImageOwned did not respect data size.
 - Bugfix: GenericImageRef FitsWrite did not respect data size.

@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    num::NonZeroUsize,
     time::{Duration, SystemTime},
 };
 
@@ -9,7 +10,7 @@ use crate::{
     genericimageref::GenericImageRef,
     metadata::{name_check, InsertValue},
     BayerError, CalcOptExp, Debayer, DemosaicMethod, DynamicImageOwned, GenericLineItem,
-    ImageProps, OptimumExposure, EXPOSURE_KEY, TIMESTAMP_KEY,
+    ImageProps, OptimumExposure, SelectRoi, EXPOSURE_KEY, TIMESTAMP_KEY,
 };
 
 #[allow(unused_imports)]
@@ -202,6 +203,25 @@ impl Debayer for GenericImageOwned {
     type Output = GenericImageOwned;
     fn debayer(&self, method: DemosaicMethod) -> Result<Self::Output, BayerError> {
         let img = self.image.debayer(method)?;
+        let meta = self.metadata.clone();
+        Ok(Self::Output {
+            metadata: meta,
+            image: img,
+        })
+    }
+}
+
+impl SelectRoi for GenericImageOwned {
+    type Output = GenericImageOwned;
+
+    fn select_roi(
+        &self,
+        x: usize,
+        y: usize,
+        width: NonZeroUsize,
+        height: NonZeroUsize,
+    ) -> Result<Self::Output, &'static str> {
+        let img = self.image.select_roi(x, y, width, height)?;
         let meta = self.metadata.clone();
         Ok(Self::Output {
             metadata: meta,

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::time::{Duration, SystemTime};
 
 use serde::Serialize;
@@ -8,7 +9,7 @@ use crate::metadata::InsertValue;
 use crate::{genericimageowned::GenericImageOwned, genericimageref::GenericImageRef};
 use crate::{
     BayerError, CalcOptExp, ColorSpace, Debayer, DemosaicMethod, GenericLineItem, OptimumExposure,
-    PixelType, ToLuma,
+    PixelType, SelectRoi, ToLuma,
 };
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -266,6 +267,23 @@ impl<'a: 'b, 'b> GenericImage<'a> {
         match self {
             GenericImage::Ref(image) => Ok(image.debayer(method)?.into()),
             GenericImage::Own(image) => Ok(image.debayer(method)?.into()),
+        }
+    }
+}
+
+impl<'a> SelectRoi for GenericImage<'a> {
+    type Output = GenericImage<'static>;
+
+    fn select_roi(
+        &self,
+        x: usize,
+        y: usize,
+        w: NonZeroUsize,
+        h: NonZeroUsize,
+    ) -> Result<Self::Output, &'static str> {
+        match self {
+            GenericImage::Ref(image) => Ok(image.select_roi(x, y, w, h)?.into()),
+            GenericImage::Own(image) => Ok(image.select_roi(x, y, w, h)?.into()),
         }
     }
 }

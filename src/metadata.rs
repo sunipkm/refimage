@@ -40,10 +40,10 @@ pub const EXPOSURE_KEY: &str = "EXPOSURE";
 /// # Note
 /// - The metadata key is case-insensitive and is stored as an uppercase string.
 /// - When saving to a FITS file, the metadata comment may be truncated.
-/// - Metadata of type [`std::time::Duration`] or [`std::time::SystemTime`] are 
-///   1. Stored as two consecutive metadata items, split into seconds ([`u64`]) 
+/// - Metadata of type [`std::time::Duration`] or [`std::time::SystemTime`] are
+///   1. Stored as two consecutive metadata items, split into seconds ([`u64`])
 ///      and nanoseconds ([`u64`]). The keys are suffixed with `_S` and `_NS`.
-///   2. Metadata of type [`Duration`] is stored as a single floating point 
+///   2. Metadata of type [`Duration`] is stored as a single floating point
 ///      number ([`f64`]), in seconds, under the original key.
 ///
 pub struct GenericLineItem {

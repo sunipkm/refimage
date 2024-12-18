@@ -1,8 +1,9 @@
+use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use crate::{
     BayerError, CalcOptExp, ColorSpace, DemosaicMethod, DynamicImageOwned, ImageOwned, ImageProps,
-    OptimumExposure, PixelType, ToLuma,
+    OptimumExposure, PixelType, SelectRoi, ToLuma,
 };
 use crate::{Debayer, DynamicImageRef};
 
@@ -94,6 +95,34 @@ impl ToLuma for DynamicImageOwned {
             U16(image) => image.to_luma_custom(coeffs),
             F32(image) => image.to_luma_custom(coeffs),
         }
+    }
+}
+
+macro_rules! select_roi {
+    ($dynimage: expr, $x: expr, $y: expr, $w: expr, $h: expr) => {
+        match $dynimage {
+            DynamicImageOwned::U8(data) => DynamicImageOwned::U8(data.select_roi($x, $y, $w, $h)?),
+            DynamicImageOwned::U16(data) => {
+                DynamicImageOwned::U16(data.select_roi($x, $y, $w, $h)?)
+            }
+            DynamicImageOwned::F32(data) => {
+                DynamicImageOwned::F32(data.select_roi($x, $y, $w, $h)?)
+            }
+        }
+    };
+}
+
+impl SelectRoi for DynamicImageOwned {
+    type Output = DynamicImageOwned;
+
+    fn select_roi(
+        &self,
+        x: usize,
+        y: usize,
+        w: NonZeroUsize,
+        h: NonZeroUsize,
+    ) -> Result<Self::Output, &'static str> {
+        Ok(select_roi!(self, x, y, w, h))
     }
 }
 

@@ -1,11 +1,11 @@
 [package]
 name = "refimage"
-version = "1.0.0-pre0"
+version = "1.0.0-pre1"
 edition = "2021"
 resolver = "2"
 
 license = "MIT OR Apache-2.0"
-description = "Imaging library. Provides basic image processing and encoders/decoders for common image formats."
+description = "Imaging library. Provides image storage using CoW-like structures to avoid re-allocation in image-aquisition scenarios. Supports rich metadata and serdes."
 authors = ["Sunip K. Mukherjee <sunipkmukherjee@gmail.com>"]
 readme = "README.MD"
 

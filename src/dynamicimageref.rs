@@ -1,8 +1,9 @@
+use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use crate::{
     BayerError, CalcOptExp, ColorSpace, DemosaicMethod, DynamicImageRef, ImageProps, ImageRef,
-    OptimumExposure, PixelType, ToLuma,
+    OptimumExposure, PixelType, SelectRoi, ToLuma,
 };
 use crate::{Debayer, DynamicImageOwned};
 
@@ -161,6 +162,30 @@ macro_rules! from_imgdata_dynimg {
 from_imgdata_dynimg!(u8, DynamicImageRef::U8);
 from_imgdata_dynimg!(u16, DynamicImageRef::U16);
 from_imgdata_dynimg!(f32, DynamicImageRef::F32);
+
+macro_rules! select_roi {
+    ($dynimage: expr, $x: expr, $y: expr, $w: expr, $h: expr) => {
+        match $dynimage {
+            DynamicImageRef::U8(data) => DynamicImageOwned::U8(data.select_roi($x, $y, $w, $h)?),
+            DynamicImageRef::U16(data) => DynamicImageOwned::U16(data.select_roi($x, $y, $w, $h)?),
+            DynamicImageRef::F32(data) => DynamicImageOwned::F32(data.select_roi($x, $y, $w, $h)?),
+        }
+    };
+}
+
+impl SelectRoi for DynamicImageRef<'_> {
+    type Output = DynamicImageOwned;
+
+    fn select_roi(
+        &self,
+        x: usize,
+        y: usize,
+        w: NonZeroUsize,
+        h: NonZeroUsize,
+    ) -> Result<Self::Output, &'static str> {
+        Ok(select_roi!(self, x, y, w, h))
+    }
+}
 
 impl<'a> DynamicImageRef<'a> {
     /// Get the data as a slice of [`u8`], regardless of the underlying type.

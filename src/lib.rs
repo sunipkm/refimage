@@ -81,7 +81,7 @@ pub use metadata::{
 pub use coretraits::{Enlargeable, PixelStor};
 pub use demosaic::{BayerError, Debayer, DemosaicMethod};
 pub use genericimage::GenericImage;
-pub use imagetraits::{BayerShift, ImageProps, ToLuma};
+pub use imagetraits::{BayerShift, CopyRoi, ImageProps, SelectRoi, ToLuma};
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "image")]

@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use crate::{BayerPattern, ColorSpace, PixelType};
 
 #[allow(unused_imports)]
@@ -125,4 +127,43 @@ pub trait ImageProps {
     ///
     /// # Note: This operation is parallelized if the `rayon` feature is enabled.
     fn cast_u8(&self) -> Self::OutputU8;
+}
+
+/// A trait for selecting a region of interest (ROI) from an image.
+pub trait SelectRoi {
+    /// The output type of [`SelectRoi::select_roi`].
+    type Output;
+
+    /// Select a region of interest from the image.
+    ///
+    /// If the ROI is of size zero in any dimension, the function will return an empty image.
+    /// If the ROI is completely out of bounds, the function will return an error.
+    ///
+    /// # Arguments
+    /// - `x`: The x-coordinate of the top-left corner of the ROI.
+    /// - `y`: The y-coordinate of the top-left corner of the ROI.
+    /// - `width`: The width of the ROI.
+    /// - `height`: The height of the ROI.
+    ///
+    /// # Errors
+    /// - If the ROI is completely out of bounds.
+    /// - If the ROI is of size zero in any dimension.
+    fn select_roi(
+        &self,
+        x: usize,
+        y: usize,
+        width: NonZeroUsize,
+        height: NonZeroUsize,
+    ) -> Result<Self::Output, &'static str>;
+}
+
+/// A trait for copying a region of interest (ROI) from one image to another.
+pub trait CopyRoi {
+    /// The output type of [`CopyRoi::copy_to`].
+    type Output;
+
+    /// Copy a region of interest from the image to another image.
+    ///
+    /// This function will always zero out the destination image before copying the ROI.
+    fn copy_to(&self, dest: &mut Self::Output, x: usize, y: usize);
 }

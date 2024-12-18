@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    num::NonZeroUsize,
     time::{Duration, SystemTime},
 };
 
@@ -9,7 +10,7 @@ use crate::{
     genericimageowned::GenericImageOwned,
     metadata::{name_check, InsertValue},
     BayerError, CalcOptExp, Debayer, DemosaicMethod, DynamicImageRef, GenericLineItem, ImageProps,
-    OptimumExposure, EXPOSURE_KEY, TIMESTAMP_KEY,
+    OptimumExposure, SelectRoi, EXPOSURE_KEY, TIMESTAMP_KEY,
 };
 
 #[allow(unused_imports)]
@@ -221,6 +222,25 @@ impl CalcOptExp for GenericImageRef<'_> {
             DynamicImageRef::U16(img) => {let len = img.len(); eval.calculate(img.as_mut_slice(), len, exposure, bin)},
             DynamicImageRef::F32(_) => Err("Floating point images are not supported for this operation, since Ord is not implemented for floating point types."),
         }
+    }
+}
+
+impl SelectRoi for GenericImageRef<'_> {
+    type Output = GenericImageOwned;
+
+    fn select_roi(
+        &self,
+        x: usize,
+        y: usize,
+        width: NonZeroUsize,
+        height: NonZeroUsize,
+    ) -> Result<Self::Output, &'static str> {
+        let img = self.image.select_roi(x, y, width, height)?;
+        let meta = self.metadata.clone();
+        Ok(Self::Output {
+            metadata: meta,
+            image: img,
+        })
     }
 }
 
