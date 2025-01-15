@@ -250,7 +250,7 @@ impl FitsWrite for GenericImage<'_> {
     }
 }
 
-impl<'a> DynamicImageRef<'a> {
+impl DynamicImageRef<'_> {
     fn write_fits(
         &self,
         path: PathBuf,
@@ -280,7 +280,7 @@ impl DynamicImageOwned {
     }
 }
 
-impl<'a, T: PixelStor + WriteImage> ImageRef<'a, T> {
+impl<T: PixelStor + WriteImage> ImageRef<'_, T> {
     /// Write the image data to a FITS file.
     fn write_fits(
         &self,

@@ -325,7 +325,7 @@ impl<T: PixelStor + Enlargeable> Debayer for ImageRef<'_, T> {
     }
 }
 
-impl<'a, T: PixelStor + Zero> SelectRoi for ImageRef<'a, T> {
+impl<T: PixelStor + Zero> SelectRoi for ImageRef<'_, T> {
     type Output = ImageOwned<T>;
 
     fn select_roi(
@@ -375,7 +375,7 @@ impl<T: PixelStor + Zero> CopyRoi for ImageRef<'_, T> {
     }
 }
 
-impl<'a, T: PixelStor + Ord> CalcOptExp for ImageRef<'a, T> {
+impl<T: PixelStor + Ord> CalcOptExp for ImageRef<'_, T> {
     fn calc_opt_exp(
         self,
         eval: &OptimumExposure,

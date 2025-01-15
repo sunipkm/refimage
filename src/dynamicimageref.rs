@@ -26,7 +26,7 @@ macro_rules! dynamic_map(
     );
 );
 
-impl<'a> DynamicImageRef<'a> {
+impl DynamicImageRef<'_> {
     /// Get the width of the image.
     pub fn width(&self) -> usize {
         dynamic_map!(self, ref image, { image.width() })
@@ -48,7 +48,7 @@ impl<'a> DynamicImageRef<'a> {
     }
 }
 
-impl<'a> ImageProps for DynamicImageRef<'a> {
+impl ImageProps for DynamicImageRef<'_> {
     type OutputU8 = DynamicImageOwned;
 
     fn width(&self) -> usize {
@@ -187,7 +187,7 @@ impl SelectRoi for DynamicImageRef<'_> {
     }
 }
 
-impl<'a> DynamicImageRef<'a> {
+impl DynamicImageRef<'_> {
     /// Get the data as a slice of [`u8`], regardless of the underlying type.
     pub fn as_raw_u8(&self) -> &[u8] {
         dynamic_map!(self, ref image, { image.as_u8_slice() })
@@ -283,7 +283,7 @@ impl<'a> DynamicImageRef<'a> {
     }
 }
 
-impl<'a> CalcOptExp for DynamicImageRef<'a> {
+impl CalcOptExp for DynamicImageRef<'_> {
     fn calc_opt_exp(
         mut self,
         eval: &OptimumExposure,

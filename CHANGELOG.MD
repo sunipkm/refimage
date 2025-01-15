@@ -1,6 +1,9 @@
 # Changelog for `refimage`
 
 ## Changes
+### 1.0.0-pre3 (2025-01-15)
+- Clippy: Elided lifetimes where possible.
+
 ### 1.0.0-pre2 (2024-12-18)
 - Fixed PixelStor declarations for rare types.
 

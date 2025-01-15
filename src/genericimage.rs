@@ -271,7 +271,7 @@ impl<'a: 'b, 'b> GenericImage<'a> {
     }
 }
 
-impl<'a> SelectRoi for GenericImage<'a> {
+impl SelectRoi for GenericImage<'_> {
     type Output = GenericImage<'static>;
 
     fn select_roi(
