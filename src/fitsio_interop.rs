@@ -130,6 +130,34 @@ pub trait FitsWrite {
     fn append_fits(&self, fitsfile: &mut FitsFile) -> Result<(), FitsError>;
 }
 
+#[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
+/// Create a blank FITS file with the necessary compression settings.
+///
+/// # Arguments
+/// - `path`: The path to write the FITS file to.
+/// - `compress`: The compression algorithm to use ([`FitsCompression`]).
+/// - `overwrite`: Whether to overwrite the file if it already exists.
+///
+/// # Returns
+/// A FITS file object that can be used to write data.
+///
+/// # Errors
+/// This function returns errors from the FITS library if the file could not be created.
+pub fn create_fits(
+    path: &Path,
+    compress: FitsCompression,
+    overwrite: bool,
+) -> Result<FitsFile, FitsError> {
+    let mut path = PathBuf::from(path);
+    path.set_extension((FitsCompression::None).extension()); // Default extension
+    if overwrite && path.exists() {
+        // There seems to be a bug in FITSIO, overwrite() the way called here does nothing
+        std::fs::remove_file(&path)?;
+    }
+    path.set_extension(compress.extension());
+    FitsFile::create(path).open()
+}
+
 macro_rules! impl_fitswrite {
     ($t:ty) => {
         impl FitsWrite for $t {
@@ -562,7 +590,8 @@ mod test {
 
     #[test]
     fn test_fitsio() {
-        use crate::FitsWrite;
+        use crate::{FitsCompression, FitsWrite};
+        use std::path::Path;
         use std::time::Duration;
         let mut data = vec![1u8, 2, 3, 4, 5, 6];
         let img = crate::ImageRef::new(&mut data, 3, 2, crate::ColorSpace::Gray)
@@ -582,24 +611,23 @@ mod test {
         .unwrap();
         img.write_fits(
             std::path::Path::new("test.fits"),
-            crate::FitsCompression::Custom("[compress R 2,3]".into()),
+            FitsCompression::Custom("[compress R 2,3]".into()),
             true,
         )
         .expect("Could not write FITS file");
         let img: crate::GenericImageOwned = img.into();
         img.write_fits(
             std::path::Path::new("test2.fits"),
-            crate::FitsCompression::Custom("[compress R 2,3]".into()),
+            FitsCompression::Custom("[compress R 2,3]".into()),
             true,
         )
         .expect("Could not write FITS file");
         assert!(files_equal("test.fits", "test2.fits"));
         std::fs::remove_file("test.fits").unwrap();
         std::fs::remove_file("test2.fits").unwrap();
-        let mut fitsfile = fitsio::FitsFile::create("test_multi.fits")
-            .overwrite()
-            .open()
-            .expect("Could not open FITS file");
+        let mut fitsfile =
+            super::create_fits(&Path::new("test_multi.fits"), FitsCompression::Rice, true)
+                .expect("Could not open FITS file");
         const N: usize = 10;
         for _ in 1..N {
             img.append_fits(&mut fitsfile)

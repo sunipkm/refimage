@@ -1,6 +1,9 @@
 # Changelog for `refimage`
 
 ## Changes
+### 1.0.0-pre4 (2025-01-21)
+- Added `create_fits` function to library to create an empty FITS file.
+
 ### 1.0.0-pre3 (2025-01-15)
 - Clippy: Elided lifetimes where possible.
 - Added `append_fits` function to `FitsWrite` trait to create multi-image FITS files.

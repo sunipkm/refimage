@@ -68,7 +68,7 @@ mod genericimageowned;
 mod genericimageref;
 #[cfg(feature = "fitsio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
-pub use fitsio_interop::{FitsCompression, FitsError, FitsWrite};
+pub use fitsio_interop::{create_fits, FitsCompression, FitsError, FitsWrite};
 
 pub use genericimageowned::GenericImageOwned;
 pub use genericimageref::GenericImageRef;
