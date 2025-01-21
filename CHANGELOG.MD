@@ -3,6 +3,7 @@
 ## Changes
 ### 1.0.0-pre4 (2025-01-21)
 - Added `create_fits` function to library to create an empty FITS file.
+- Changed type of the `path` input in `FitsWrite::write_fits` to `AsRef<Path>`.
 
 ### 1.0.0-pre3 (2025-01-15)
 - Clippy: Elided lifetimes where possible.

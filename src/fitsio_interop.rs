@@ -111,9 +111,9 @@ pub trait FitsWrite {
     ///
     /// # Errors
     /// This function returns errors from the FITS library if the file could not be written.
-    fn write_fits(
+    fn write_fits<T: AsRef<Path>>(
         &self,
-        path: &Path,
+        path: T,
         compress: FitsCompression,
         overwrite: bool,
     ) -> Result<PathBuf, FitsError>;
@@ -143,12 +143,12 @@ pub trait FitsWrite {
 ///
 /// # Errors
 /// This function returns errors from the FITS library if the file could not be created.
-pub fn create_fits(
-    path: &Path,
+pub fn create_fits<T: AsRef<Path>>(
+    path: T,
     compress: FitsCompression,
     overwrite: bool,
 ) -> Result<FitsFile, FitsError> {
-    let mut path = PathBuf::from(path);
+    let mut path: PathBuf = path.as_ref().into();
     path.set_extension((FitsCompression::None).extension()); // Default extension
     if overwrite && path.exists() {
         // There seems to be a bug in FITSIO, overwrite() the way called here does nothing
@@ -161,12 +161,13 @@ pub fn create_fits(
 macro_rules! impl_fitswrite {
     ($t:ty) => {
         impl FitsWrite for $t {
-            fn write_fits(
+            fn write_fits<T: AsRef<Path>>(
                 &self,
-                path: &Path,
+                path: T,
                 compress: FitsCompression,
                 overwrite: bool,
             ) -> Result<PathBuf, FitsError> {
+                let path = path.as_ref();
                 if path.exists() && path.is_dir() {
                     return Err(FitsError::Message("Path is a directory".to_string()));
                 }
@@ -257,9 +258,9 @@ impl_fitswrite!(GenericImageRef<'_>);
 impl_fitswrite!(GenericImageOwned);
 
 impl FitsWrite for GenericImage<'_> {
-    fn write_fits(
+    fn write_fits<T: AsRef<Path>>(
         &self,
-        path: &Path,
+        path: T,
         compress: FitsCompression,
         overwrite: bool,
     ) -> Result<PathBuf, FitsError> {
@@ -591,7 +592,6 @@ mod test {
     #[test]
     fn test_fitsio() {
         use crate::{FitsCompression, FitsWrite};
-        use std::path::Path;
         use std::time::Duration;
         let mut data = vec![1u8, 2, 3, 4, 5, 6];
         let img = crate::ImageRef::new(&mut data, 3, 2, crate::ColorSpace::Gray)
@@ -625,9 +625,8 @@ mod test {
         assert!(files_equal("test.fits", "test2.fits"));
         std::fs::remove_file("test.fits").unwrap();
         std::fs::remove_file("test2.fits").unwrap();
-        let mut fitsfile =
-            super::create_fits(&Path::new("test_multi.fits"), FitsCompression::Rice, true)
-                .expect("Could not open FITS file");
+        let mut fitsfile = super::create_fits("test_multi.fits", FitsCompression::Rice, true)
+            .expect("Could not open FITS file");
         const N: usize = 10;
         for _ in 1..N {
             img.append_fits(&mut fitsfile)
