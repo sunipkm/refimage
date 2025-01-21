@@ -311,9 +311,9 @@ impl DynamicImageOwned {
     ) -> Result<(FitsHdu, FitsFile), FitsError> {
         use DynamicImageOwned::*;
         match self {
-            U8(data) => data.write_fits(path, compress, PixelType::U8),
-            U16(data) => data.write_fits(path, compress, PixelType::U16),
-            F32(data) => data.write_fits(path, compress, PixelType::F32),
+            U8(data) => data.write_fits(path, compress),
+            U16(data) => data.write_fits(path, compress),
+            F32(data) => data.write_fits(path, compress),
         }
     }
 
@@ -388,10 +388,9 @@ impl<T: PixelStor + WriteImage> ImageOwned<T> {
         &self,
         path: PathBuf,
         compress: FitsCompression,
-        pxltype: PixelType,
     ) -> Result<(FitsHdu, FitsFile), FitsError> {
         let desc = ImageDescription {
-            data_type: pxltype.into(),
+            data_type: self.pixel_type().into(),
             dimensions: if self.channels() > 1 {
                 &[self.height() as _, self.width() as _, self.channels() as _]
             } else {

@@ -1,6 +1,9 @@
 # Changelog for `refimage`
 
 ## Changes
+### 1.0.0-pre5 (2025-01-21)
+- Internal changes to `fitsio_interop` function signatures.
+
 ### 1.0.0-pre4 (2025-01-21)
 - Added `create_fits` function to library to create an empty FITS file.
 - Changed type of the `path` input in `FitsWrite::write_fits` to `AsRef<Path>`.
