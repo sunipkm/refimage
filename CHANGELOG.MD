@@ -3,6 +3,7 @@
 ## Changes
 ### 1.0.0-pre3 (2025-01-15)
 - Clippy: Elided lifetimes where possible.
+- Added `append_fits` function to `FitsWrite` trait to create multi-image FITS files.
 
 ### 1.0.0-pre2 (2024-12-18)
 - Fixed PixelStor declarations for rare types.

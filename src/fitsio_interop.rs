@@ -123,118 +123,116 @@ pub trait FitsWrite {
         compress: FitsCompression,
         overwrite: bool,
     ) -> Result<PathBuf, FitsError>;
+
+    #[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
+    /// Append the image, with metadata, to an existing FITS file.
+    /// This method creates a new image HDU in the file.
+    ///
+    /// # Arguments
+    /// - `fitsfile`: The FITS file to append the image to.
+    ///
+    /// # Errors
+    /// This function returns errors from the FITS library if the image could not be appended.
+    fn append_fits(&self, fitsfile: &mut FitsFile) -> Result<(), FitsError>;
 }
 
-impl FitsWrite for GenericImageRef<'_> {
-    fn write_fits(
-        &self,
-        path: &Path,
-        compress: FitsCompression,
-        overwrite: bool,
-    ) -> Result<PathBuf, FitsError> {
-        if path.exists() && path.is_dir() {
-            return Err(FitsError::Message("Path is a directory".to_string()));
+macro_rules! impl_fitswrite {
+    ($t:ty) => {
+        impl FitsWrite for $t {
+            fn write_fits(
+                &self,
+                path: &Path,
+                compress: FitsCompression,
+                overwrite: bool,
+            ) -> Result<PathBuf, FitsError> {
+                if path.exists() && path.is_dir() {
+                    return Err(FitsError::Message("Path is a directory".to_string()));
+                }
+
+                let datestamp = self
+                    .get_key(TIMESTAMP_KEY)
+                    .ok_or(FitsError::Message(
+                        "Could not find timestamp in metadata".to_owned(),
+                    ))?
+                    .get_value()
+                    .get_value_systemtime()
+                    .ok_or(FitsError::Message(
+                        "Could not convert timestamp to SystemTime".to_owned(),
+                    ))?;
+                let datestamp = systemtime_to_utc(datestamp)?;
+
+                let datestamp = datestamp.format("%Y-%m-%dT%H:%M:%S%.6f").to_string();
+
+                let mut path = PathBuf::from(path);
+                path.set_extension((FitsCompression::None).extension()); // Default extension
+                if overwrite && path.exists() {
+                    // There seems to be a bug in FITSIO, overwrite() the way called here does nothing
+                    std::fs::remove_file(&path)?;
+                }
+
+                let fpath = path.clone();
+                path.set_extension(compress.extension());
+
+                let (hdu, mut fptr) = self.get_image().write_fits(path, compress)?;
+
+                let lineitem = GenericLineItem {
+                    value: GenericValue::String(datestamp),
+                    comment: Some("Date and time of FITS file data".to_string()),
+                };
+                lineitem.write_key("DATE-OBS", &hdu, &mut fptr)?;
+
+                let lineitem = GenericLineItem {
+                    value: self.get_image().color_space().into(),
+                    comment: Some("Color space of the image".to_string()),
+                };
+                lineitem.write_key("COLOR_SPACE", &hdu, &mut fptr)?;
+
+                for (name, value) in self.get_metadata().iter() {
+                    value.write_key(name, &hdu, &mut fptr)?;
+                }
+                Ok(fpath)
+            }
+
+            fn append_fits(&self, fitsfile: &mut FitsFile) -> Result<(), FitsError> {
+                let datestamp = self
+                    .get_key(TIMESTAMP_KEY)
+                    .ok_or(FitsError::Message(
+                        "Could not find timestamp in metadata".to_owned(),
+                    ))?
+                    .get_value()
+                    .get_value_systemtime()
+                    .ok_or(FitsError::Message(
+                        "Could not convert timestamp to SystemTime".to_owned(),
+                    ))?;
+                let datestamp = systemtime_to_utc(datestamp)?;
+
+                let datestamp = datestamp.format("%Y-%m-%dT%H:%M:%S%.6f").to_string();
+
+                let hdu = self.get_image().write_hdu(fitsfile)?;
+
+                let lineitem = GenericLineItem {
+                    value: GenericValue::String(datestamp),
+                    comment: Some("Date and time of FITS file data".to_string()),
+                };
+                lineitem.write_key("DATE-OBS", &hdu, fitsfile)?;
+
+                let lineitem = GenericLineItem {
+                    value: self.get_image().color_space().into(),
+                    comment: Some("Color space of the image".to_string()),
+                };
+                lineitem.write_key("COLOR_SPACE", &hdu, fitsfile)?;
+
+                for (name, value) in self.get_metadata().iter() {
+                    value.write_key(name, &hdu, fitsfile)?;
+                }
+                Ok(())
+            }
         }
-
-        let datestamp = self
-            .get_key(TIMESTAMP_KEY)
-            .ok_or(FitsError::Message(
-                "Could not find timestamp in metadata".to_owned(),
-            ))?
-            .get_value()
-            .get_value_systemtime()
-            .ok_or(FitsError::Message(
-                "Could not convert timestamp to SystemTime".to_owned(),
-            ))?;
-        let datestamp = systemtime_to_utc(datestamp)?;
-
-        let datestamp = datestamp.format("%Y-%m-%dT%H:%M:%S%.6f").to_string();
-
-        let mut path = PathBuf::from(path);
-        path.set_extension((FitsCompression::None).extension()); // Default extension
-        if overwrite && path.exists() {
-            // There seems to be a bug in FITSIO, overwrite() the way called here does nothing
-            std::fs::remove_file(&path)?;
-        }
-
-        let fpath = path.clone();
-        path.set_extension(compress.extension());
-
-        let (hdu, mut fptr) = self.get_image().write_fits(path, compress)?;
-
-        let lineitem = GenericLineItem {
-            value: GenericValue::String(datestamp),
-            comment: Some("Date and time of FITS file data".to_string()),
-        };
-        lineitem.write_key("DATE-OBS", &hdu, &mut fptr)?;
-
-        let lineitem = GenericLineItem {
-            value: self.get_image().color_space().into(),
-            comment: Some("Color space of the image".to_string()),
-        };
-        lineitem.write_key("COLOR_SPACE", &hdu, &mut fptr)?;
-
-        for (name, value) in self.get_metadata().iter() {
-            value.write_key(name, &hdu, &mut fptr)?;
-        }
-        Ok(fpath)
-    }
+    };
 }
 
-impl FitsWrite for GenericImageOwned {
-    fn write_fits(
-        &self,
-        path: &Path,
-        compress: FitsCompression,
-        overwrite: bool,
-    ) -> Result<PathBuf, FitsError> {
-        if path.exists() && path.is_dir() {
-            return Err(FitsError::Message("Path is a directory".to_string()));
-        }
-
-        let datestamp = self
-            .get_key(TIMESTAMP_KEY)
-            .ok_or(FitsError::Message(
-                "Could not find timestamp in metadata".to_owned(),
-            ))?
-            .get_value()
-            .get_value_systemtime()
-            .ok_or(FitsError::Message(
-                "Could not convert timestamp to SystemTime".to_owned(),
-            ))?;
-        let datestamp = systemtime_to_utc(datestamp)?;
-        let datestamp = datestamp.format("%Y-%m-%dT%H:%M:%S%.6f").to_string();
-
-        let mut path = PathBuf::from(path);
-        path.set_extension((FitsCompression::None).extension()); // Default extension
-        if overwrite && path.exists() {
-            // There seems to be a bug in FITSIO, overwrite() the way called here does nothing
-            std::fs::remove_file(&path)?;
-        }
-
-        let fpath = path.clone();
-        path.set_extension(compress.extension());
-
-        let (hdu, mut fptr) = self.get_image().write_fits(path, compress)?;
-
-        let lineitem = GenericLineItem {
-            value: GenericValue::String(datestamp),
-            comment: Some("Date and time of FITS file data".to_string()),
-        };
-        lineitem.write_key("DATE-OBS", &hdu, &mut fptr)?;
-
-        let lineitem = GenericLineItem {
-            value: self.get_image().color_space().into(),
-            comment: Some("Color space of the image".to_string()),
-        };
-        lineitem.write_key("COLOR_SPACE", &hdu, &mut fptr)?;
-
-        for (name, value) in self.get_metadata().iter() {
-            value.write_key(name, &hdu, &mut fptr)?;
-        }
-        Ok(fpath)
-    }
-}
+impl_fitswrite!(GenericImageRef<'_>);
+impl_fitswrite!(GenericImageOwned);
 
 impl FitsWrite for GenericImage<'_> {
     fn write_fits(
@@ -246,6 +244,13 @@ impl FitsWrite for GenericImage<'_> {
         match self {
             GenericImage::Ref(image) => image.write_fits(path, compress, overwrite),
             GenericImage::Own(image) => image.write_fits(path, compress, overwrite),
+        }
+    }
+
+    fn append_fits(&self, fitsfile: &mut FitsFile) -> Result<(), FitsError> {
+        match self {
+            GenericImage::Ref(image) => image.append_fits(fitsfile),
+            GenericImage::Own(image) => image.append_fits(fitsfile),
         }
     }
 }
@@ -263,6 +268,16 @@ impl DynamicImageRef<'_> {
             F32(data) => data.write_fits(path, compress, PixelType::F32),
         }
     }
+
+    /// Append the image data to an existing FITS file.
+    fn write_hdu(&self, fptr: &mut FitsFile) -> Result<FitsHdu, FitsError> {
+        use DynamicImageRef::*;
+        match self {
+            U8(data) => data.write_hdu(fptr),
+            U16(data) => data.write_hdu(fptr),
+            F32(data) => data.write_hdu(fptr),
+        }
+    }
 }
 
 impl DynamicImageOwned {
@@ -276,6 +291,16 @@ impl DynamicImageOwned {
             U8(data) => data.write_fits(path, compress, PixelType::U8),
             U16(data) => data.write_fits(path, compress, PixelType::U16),
             F32(data) => data.write_fits(path, compress, PixelType::F32),
+        }
+    }
+
+    /// Append the image data to an existing FITS file.
+    fn write_hdu(&self, fptr: &mut FitsFile) -> Result<FitsHdu, FitsError> {
+        use DynamicImageOwned::*;
+        match self {
+            U8(data) => data.write_hdu(fptr),
+            U16(data) => data.write_hdu(fptr),
+            F32(data) => data.write_hdu(fptr),
         }
     }
 }
@@ -316,6 +341,22 @@ impl<T: PixelStor + WriteImage> ImageRef<'_, T> {
         hdu.write_image(&mut fptr, self.as_slice())?;
         Ok((hdu, fptr))
     }
+
+    /// Append the image data to an existing FITS file.
+    fn write_hdu(&self, fptr: &mut FitsFile) -> Result<FitsHdu, FitsError> {
+        let desc = ImageDescription {
+            data_type: self.pixel_type().into(),
+            dimensions: if self.channels() > 1 {
+                &[self.height() as _, self.width() as _, self.channels() as _]
+            } else {
+                &[self.height() as _, self.width() as _]
+            },
+        };
+
+        let hdu = fptr.create_image("IMAGE", &desc)?;
+        hdu.write_image(fptr, self.as_slice())?;
+        Ok(hdu)
+    }
 }
 
 impl<T: PixelStor + WriteImage> ImageOwned<T> {
@@ -353,6 +394,22 @@ impl<T: PixelStor + WriteImage> ImageOwned<T> {
 
         hdu.write_image(&mut fptr, self.as_slice())?;
         Ok((hdu, fptr))
+    }
+
+    /// Append the image data to an existing FITS file.
+    fn write_hdu(&self, fptr: &mut FitsFile) -> Result<FitsHdu, FitsError> {
+        let desc = ImageDescription {
+            data_type: self.pixel_type().into(),
+            dimensions: if self.channels() > 1 {
+                &[self.height() as _, self.width() as _, self.channels() as _]
+            } else {
+                &[self.height() as _, self.width() as _]
+            },
+        };
+
+        let hdu = fptr.create_image("IMAGE", &desc)?;
+        hdu.write_image(fptr, self.as_slice())?;
+        Ok(hdu)
     }
 }
 
@@ -512,6 +569,7 @@ mod test {
     #[test]
     fn test_fitsio() {
         use crate::FitsWrite;
+        use std::time::Duration;
         let mut data = vec![1u8, 2, 3, 4, 5, 6];
         let img = crate::ImageRef::new(&mut data, 3, 2, crate::ColorSpace::Gray)
             .expect("Failed to create ImageRef");
@@ -521,6 +579,11 @@ mod test {
         img.insert_key(
             "TESTING_THIS_LONG_KEY_VERY_VERY_VERY_VERYLONG",
             "This is a long key",
+        )
+        .unwrap();
+        img.insert_key(
+            "EXPOSURE",
+            (Duration::from_secs_f32(1.0754), "Exposure time"),
         )
         .unwrap();
         img.write_fits(
@@ -537,5 +600,20 @@ mod test {
         )
         .expect("Could not write FITS file");
         assert!(files_equal("test.fits", "test2.fits"));
+        std::fs::remove_file("test.fits").unwrap();
+        std::fs::remove_file("test2.fits").unwrap();
+        let mut fitsfile = fitsio::FitsFile::create("test_multi.fits")
+            .overwrite()
+            .open()
+            .expect("Could not open FITS file");
+        const N: usize = 10;
+        for _ in 1..N {
+            img.append_fits(&mut fitsfile)
+                .expect("Could not append image to FITS file");
+        }
+        let n = fitsfile.iter().count();
+        assert_eq!(n, N);
+        drop(fitsfile);
+        std::fs::remove_file("test_multi.fits").unwrap();
     }
 }
