@@ -79,12 +79,6 @@ impl FitsCompression {
     }
 }
 
-impl From<Option<FitsCompression>> for FitsCompression {
-    fn from(opt: Option<FitsCompression>) -> Self {
-        opt.unwrap_or(FitsCompression::None)
-    }
-}
-
 impl Display for FitsCompression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
