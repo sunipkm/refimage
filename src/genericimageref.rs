@@ -8,7 +8,8 @@ use serde::Serialize;
 
 use crate::{
     genericimageowned::GenericImageOwned,
-    metadata::{name_check, InsertValue},
+    imagetraits::ConvertPixelType,
+    metadata::{name_check, InsertValue, MetaCollection},
     BayerError, CalcOptExp, Debayer, DemosaicMethod, DynamicImageRef, GenericLineItem, ImageProps,
     OptimumExposure, SelectRoi, EXPOSURE_KEY, TIMESTAMP_KEY,
 };
@@ -38,7 +39,7 @@ use crate::ColorSpace;
 /// ```
 #[derive(Debug, PartialEq, Serialize)]
 pub struct GenericImageRef<'a> {
-    pub(crate) metadata: HashMap<String, GenericLineItem>,
+    pub(crate) metadata: MetaCollection,
     #[serde(borrow)]
     pub(crate) image: DynamicImageRef<'a>,
 }
@@ -113,7 +114,7 @@ impl<'a> GenericImageRef<'a> {
         if name.to_uppercase() == TIMESTAMP_KEY {
             return Err("Cannot re-insert timestamp key");
         }
-        T::insert_key_gi(self, name, value)
+        T::insert(&mut self.metadata, name, value)
     }
 
     /// Remove a metadata value from the [`GenericImageRef`].
@@ -127,13 +128,14 @@ impl<'a> GenericImageRef<'a> {
     /// - `Err("Key not found")` if the key was not found.
     /// - `Err("Key cannot be empty")` if the key is an empty string.
     /// - `Err("Key cannot be longer than 80 characters")` if the key is longer than 80 characters.
-    pub fn remove_key(&mut self, name: &str) -> Result<(), &'static str> {
+    pub fn remove_key(&mut self, name: &str) -> Result<GenericLineItem, &'static str> {
         if name.to_uppercase() == TIMESTAMP_KEY {
             return Err("Cannot remove timestamp key");
         }
         name_check(name)?;
-        self.metadata.remove(name).ok_or("Key not found")?;
-        Ok(())
+        self.metadata
+            .remove(&name.to_uppercase())
+            .ok_or("Key not found")
     }
 
     /// Replace a metadata value in the [`GenericImageRef`].
@@ -150,8 +152,8 @@ impl<'a> GenericImageRef<'a> {
         &mut self,
         name: &str,
         value: T,
-    ) -> Result<(), &'static str> {
-        T::replace_gi(self, name, value)
+    ) -> Result<GenericLineItem, &'static str> {
+        T::replace(&mut self.metadata, name, value)
     }
 
     /// Get the underlying [`DynamicImageRef`].
@@ -184,17 +186,6 @@ impl<'a> GenericImageRef<'a> {
     pub fn get_key(&self, name: &str) -> Option<&GenericLineItem> {
         name_check(name).ok()?;
         self.metadata.get(name)
-    }
-
-    /// Convert the image to a [`GenericImageOwned`] with [`u8`] pixel type.
-    ///
-    /// Note: This operation is parallelized if the `rayon` feature is enabled.
-    pub fn into_u8(self) -> GenericImageOwned {
-        let img = self.image.into_u8();
-        GenericImageOwned {
-            metadata: self.metadata,
-            image: img,
-        }
     }
 }
 
@@ -245,8 +236,6 @@ impl SelectRoi for GenericImageRef<'_> {
 }
 
 impl ImageProps for GenericImageRef<'_> {
-    type OutputU8 = GenericImageOwned;
-
     fn width(&self) -> usize {
         self.image.width()
     }
@@ -274,11 +263,37 @@ impl ImageProps for GenericImageRef<'_> {
     fn is_empty(&self) -> bool {
         self.image.is_empty()
     }
+}
 
-    fn cast_u8(&self) -> Self::OutputU8 {
-        Self::OutputU8 {
-            metadata: self.metadata.clone(),
-            image: self.image.into_u8(),
+impl ConvertPixelType for GenericImageRef<'_> {
+    type OutputU8 = GenericImageOwned;
+    type OutputU16 = GenericImageOwned;
+    type OutputF32 = GenericImageOwned;
+
+    fn convert_u8(&self) -> Self::OutputU8 {
+        let img = self.image.convert_u8();
+        let meta = self.metadata.clone();
+        GenericImageOwned {
+            metadata: meta,
+            image: img,
+        }
+    }
+
+    fn convert_u16(&self) -> Self::OutputU16 {
+        let img = self.image.convert_u16();
+        let meta = self.metadata.clone();
+        GenericImageOwned {
+            metadata: meta,
+            image: img,
+        }
+    }
+
+    fn convert_f32(&self) -> Self::OutputF32 {
+        let img = self.image.convert_f32();
+        let meta = self.metadata.clone();
+        GenericImageOwned {
+            metadata: meta,
+            image: img,
         }
     }
 }

@@ -6,6 +6,39 @@ use std::ops::AddAssign;
 
 use crate::PixelType;
 
+extern crate paste;
+macro_rules! impl_cast_floor {
+    ($to:ty) => {
+        ::paste::paste! {
+            #[doc = "Cast the value to [`" $to " `], by scaling the value to requisite range."]
+            #[inline(always)]
+            fn [<cast_ $to>](self) -> $to {
+                let mut val: f32 = NumCast::from(self).unwrap();
+                let min: f32 = NumCast::from(Self::DEFAULT_MIN_VALUE).unwrap();
+                let max: f32 = NumCast::from(Self::DEFAULT_MAX_VALUE).unwrap();
+                val -= min;
+                val /= max - min;
+                val *= (<$to>::DEFAULT_MAX_VALUE as f32 + <$to>::DEFAULT_MIN_VALUE as f32);
+                val -= <$to>::DEFAULT_MIN_VALUE as f32;
+                val.round() as $to
+            }
+
+            #[doc = "Cast the value to [`" $to " `], by scaling the value to the requisite range. Floors the value in the end."]
+            #[inline(always)]
+            fn [<floor_ $to>](self) -> $to {
+                let mut val: f32 = NumCast::from(self).unwrap();
+                let min: f32 = NumCast::from(Self::DEFAULT_MIN_VALUE).unwrap();
+                let max: f32 = NumCast::from(Self::DEFAULT_MAX_VALUE).unwrap();
+                val -= min;
+                val /= max - min;
+                val *= (<$to>::DEFAULT_MAX_VALUE as f32 + <$to>::DEFAULT_MIN_VALUE as f32);
+                val -= <$to>::DEFAULT_MIN_VALUE as f32;
+                val.floor() as $to
+            }
+        }
+    }
+}
+
 /// The type of each channel in a pixel. For example, this can be `u8`, `u16`, `f32`.
 pub trait PixelStor:
     Copy + NumCast + Num + PartialOrd<Self> + Clone + Bounded + Send + Sync + NoUninit
@@ -22,12 +55,14 @@ pub trait PixelStor:
     const PIXEL_TYPE: PixelType;
 
     /// Convert to f64.
+    #[inline(always)]
     fn to_f64(self) -> f64 {
         NumCast::from(self).unwrap()
     }
 
     /// Convert from f64.
     /// This function will clamp the value to the range of the type.
+    #[inline(always)]
     fn from_f64(v: f64) -> Self {
         let v = NumCast::from(v).unwrap();
         if v > Self::DEFAULT_MAX_VALUE {
@@ -40,12 +75,14 @@ pub trait PixelStor:
     }
 
     /// Convert to f32.
+    #[inline(always)]
     fn to_f32(self) -> f32 {
         NumCast::from(self).unwrap()
     }
 
     /// Convert from f32.
     /// This function will clamp the value to the range of the type.
+    #[inline(always)]
     fn from_f32(v: f32) -> Self {
         let v = NumCast::from(v).unwrap();
         if v > Self::DEFAULT_MAX_VALUE {
@@ -57,26 +94,33 @@ pub trait PixelStor:
         }
     }
 
-    /// Cast the value to [`u8`], by scaling the value to the range `[0, 255]`.
-    fn cast_u8(self) -> u8 {
+    impl_cast_floor!(u8);
+    impl_cast_floor!(u16);
+    impl_cast_floor!(u32);
+    impl_cast_floor!(i8);
+    impl_cast_floor!(i16);
+    impl_cast_floor!(i32);
+
+    /// Cast the value to `f32`, by scaling the value to requisite range.
+    #[inline(always)]
+    fn cast_f32(self) -> f32 {
         let mut val: f32 = NumCast::from(self).unwrap();
         let min: f32 = NumCast::from(Self::DEFAULT_MIN_VALUE).unwrap();
         let max: f32 = NumCast::from(Self::DEFAULT_MAX_VALUE).unwrap();
         val -= min;
         val /= max - min;
-        val *= 255.0;
-        val.round() as u8
+        val
     }
 
-    /// Cast the value to [`u8`], by scaling the value to the range `[0, 255]`. Floors the value at the end.
-    fn floor_u8(self) -> u8 {
-        let mut val: f32 = NumCast::from(self).unwrap();
-        let min: f32 = NumCast::from(Self::DEFAULT_MIN_VALUE).unwrap();
-        let max: f32 = NumCast::from(Self::DEFAULT_MAX_VALUE).unwrap();
+    /// Cast the value to `f64`, by scaling the value to the requisite range.
+    #[inline(always)]
+    fn cast_f64(self) -> f64 {
+        let mut val: f64 = NumCast::from(self).unwrap();
+        let min: f64 = NumCast::from(Self::DEFAULT_MIN_VALUE).unwrap();
+        let max: f64 = NumCast::from(Self::DEFAULT_MAX_VALUE).unwrap();
         val -= min;
         val /= max - min;
-        val *= 255.0;
-        val.floor() as u8
+        val
     }
 }
 
@@ -115,6 +159,7 @@ pub trait Enlargeable: Sized + Bounded + NumCast + Copy {
         + Zero;
 
     /// Clamp a larger value to the range of the smaller type.
+    #[inline(always)]
     fn clamp_larger(n: Self::Larger) -> Self {
         if n > Self::max_value().make_larger() {
             Self::max_value()
@@ -126,6 +171,7 @@ pub trait Enlargeable: Sized + Bounded + NumCast + Copy {
     }
 
     /// Convert the value to a larger type.
+    #[inline(always)]
     fn make_larger(self) -> Self::Larger {
         NumCast::from(self).unwrap()
     }
@@ -151,6 +197,7 @@ where
     T::clamp_larger(value.make_larger())
 }
 
+#[inline(always)]
 pub(crate) fn do_prod<T>(v1: T, v2: i32) -> T::Larger
 where
     T: PixelStor + Enlargeable,
@@ -159,6 +206,7 @@ where
 }
 
 #[allow(dead_code)]
+#[inline(always)]
 pub(crate) fn do_prod2<T>(v1: T, v2: T) -> T::Larger
 where
     T: PixelStor + Enlargeable,
@@ -167,6 +215,7 @@ where
 }
 
 #[allow(dead_code)]
+#[inline(always)]
 pub(crate) fn do_sum<T>(src: &[T]) -> T::Larger
 where
     T: PixelStor + Enlargeable,
@@ -176,6 +225,7 @@ where
 }
 
 #[allow(dead_code)]
+#[inline(always)]
 pub(crate) fn do_div<T>(v1: T::Larger, v2: i32) -> T
 where
     T: PixelStor + Enlargeable,
@@ -185,6 +235,7 @@ where
 }
 
 #[allow(dead_code)]
+#[inline(always)]
 pub(crate) fn do_div2<T>(v1: T, v2: i32) -> T
 where
     T: PixelStor + Enlargeable,
@@ -194,6 +245,7 @@ where
 }
 
 #[allow(dead_code)]
+#[inline(always)]
 pub(crate) fn do_sub<T>(v1: T::Larger, v2: T::Larger) -> T
 where
     T: PixelStor + Enlargeable,
@@ -202,6 +254,7 @@ where
     T::clamp_larger(sub)
 }
 
+#[inline(always)]
 pub(crate) fn large_to_f64<T>(v: T) -> f64
 where
     T: Copy + ToPrimitive,
@@ -210,6 +263,7 @@ where
 }
 
 #[allow(dead_code)]
+#[inline(always)]
 pub(crate) fn f64_to_larger<T>(v: f64) -> T::Larger
 where
     T: Enlargeable,
@@ -217,6 +271,7 @@ where
     NumCast::from(v).unwrap()
 }
 
+#[inline(always)]
 pub(crate) fn do_div_float<T>(v1: f64, v2: i32) -> T
 where
     T: PixelStor + Enlargeable,
@@ -249,18 +304,28 @@ impl Enlargeable for f64 {
     type Larger = f64;
 }
 
-/// Cast a slice of `T` to a slice of `u8`.
-#[inline(never)]
-pub(crate) fn cast_u8<T: PixelStor>(data: &[T]) -> Vec<u8> {
-    #[cfg(not(feature = "rayon"))]
-    {
-        data.iter().map(|&x| x.cast_u8()).collect()
-    }
-    #[cfg(feature = "rayon")]
-    {
-        data.par_iter().map(|&x| x.cast_u8()).collect()
+macro_rules! impl_pixelstor_cast {
+    ($to: ty) => {
+        ::paste::paste! {
+            #[doc = "Cast a slice of T to a slice of [`" $to " `], by scaling the value to requisite range."]
+            #[inline(never)]
+            pub(crate) fn [<cast_ $to>]<T: PixelStor>(data: &[T]) -> Vec<$to> {
+                #[cfg(not(feature = "rayon"))]
+                {
+                    data.iter().map(|&x| x.[<cast_ $to>]()).collect()
+                }
+                #[cfg(feature = "rayon")]
+                {
+                    data.par_iter().map(|&x| x.[<cast_ $to>]()).collect()
+                }
+            }
+        }
     }
 }
+
+impl_pixelstor_cast!(u8);
+impl_pixelstor_cast!(u16);
+impl_pixelstor_cast!(f32);
 
 mod test {
     #[test]

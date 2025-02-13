@@ -1,6 +1,7 @@
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
+use crate::imagetraits::ConvertPixelType;
 use crate::{
     BayerError, CalcOptExp, ColorSpace, DemosaicMethod, DynamicImageOwned, ImageOwned, ImageProps,
     OptimumExposure, PixelType, SelectRoi, ToLuma,
@@ -27,8 +28,6 @@ macro_rules! dynamic_map(
 );
 
 impl ImageProps for DynamicImageOwned {
-    type OutputU8 = DynamicImageOwned;
-
     fn width(&self) -> usize {
         dynamic_map!(self, ref image, { image.width() })
     }
@@ -49,20 +48,42 @@ impl ImageProps for DynamicImageOwned {
         dynamic_map!(self, ref image, { image.pixel_type() })
     }
 
-    fn cast_u8(&self) -> Self::OutputU8 {
-        match self {
-            DynamicImageOwned::U8(_) => self.clone(),
-            DynamicImageOwned::U16(data) => DynamicImageOwned::U8(data.cast_u8()),
-            DynamicImageOwned::F32(data) => DynamicImageOwned::U8(data.cast_u8()),
-        }
-    }
-
     fn len(&self) -> usize {
         dynamic_map!(self, ref image, { image.len() })
     }
 
     fn is_empty(&self) -> bool {
         dynamic_map!(self, ref image, { image.is_empty() })
+    }
+}
+
+impl ConvertPixelType for DynamicImageOwned {
+    type OutputU8 = DynamicImageOwned;
+    type OutputU16 = DynamicImageOwned;
+    type OutputF32 = DynamicImageOwned;
+
+    fn convert_u8(&self) -> Self::OutputU8 {
+        match self {
+            DynamicImageOwned::U8(_) => self.clone(),
+            DynamicImageOwned::U16(data) => DynamicImageOwned::U8(data.convert_u8()),
+            DynamicImageOwned::F32(data) => DynamicImageOwned::U8(data.convert_u8()),
+        }
+    }
+
+    fn convert_u16(&self) -> Self::OutputU16 {
+        match self {
+            DynamicImageOwned::U8(data) => DynamicImageOwned::U16(data.convert_u16()),
+            DynamicImageOwned::U16(_) => self.clone(),
+            DynamicImageOwned::F32(data) => DynamicImageOwned::U16(data.convert_u16()),
+        }
+    }
+
+    fn convert_f32(&self) -> Self::OutputF32 {
+        match self {
+            DynamicImageOwned::U8(data) => DynamicImageOwned::F32(data.convert_f32()),
+            DynamicImageOwned::U16(data) => DynamicImageOwned::F32(data.convert_f32()),
+            DynamicImageOwned::F32(_) => self.clone(),
+        }
     }
 }
 
@@ -123,19 +144,6 @@ impl SelectRoi for DynamicImageOwned {
         h: NonZeroUsize,
     ) -> Result<Self::Output, &'static str> {
         Ok(select_roi!(self, x, y, w, h))
-    }
-}
-
-impl DynamicImageOwned {
-    /// Convert the image to a [`DynamicImageOwned`] with [`u8`] pixel type.
-    ///
-    /// Note: This operation is parallelized if the `rayon` feature is enabled.
-    pub fn into_u8(self) -> DynamicImageOwned {
-        match self {
-            DynamicImageOwned::U8(data) => DynamicImageOwned::U8(data),
-            DynamicImageOwned::U16(data) => DynamicImageOwned::U8(data.cast_u8()),
-            DynamicImageOwned::F32(data) => DynamicImageOwned::U8(data.cast_u8()),
-        }
     }
 }
 

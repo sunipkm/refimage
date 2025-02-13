@@ -1,9 +1,9 @@
 use std::time::Duration;
 
 use crate::{
-    coretraits::cast_u8,
+    coretraits::{cast_f32, cast_u16, cast_u8},
     demosaic::{run_demosaic_imageowned, Debayer, RasterMut},
-    imagetraits::ImageProps,
+    imagetraits::{ConvertPixelType, ImageProps},
     BayerError, CalcOptExp, ColorSpace, CopyRoi, DemosaicMethod, Enlargeable, ImageRef,
     OptimumExposure, PixelStor, PixelType, SelectRoi, ToLuma,
 };
@@ -187,8 +187,6 @@ impl<T: PixelStor> ImageOwned<T> {
 }
 
 impl<T: PixelStor> ImageProps for ImageOwned<T> {
-    type OutputU8 = ImageOwned<u8>;
-
     fn width(&self) -> usize {
         self.width as usize
     }
@@ -216,10 +214,38 @@ impl<T: PixelStor> ImageProps for ImageOwned<T> {
     fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
+}
 
-    fn cast_u8(&self) -> Self::OutputU8 {
+impl<T: PixelStor> ConvertPixelType for ImageOwned<T> {
+    type OutputU8 = ImageOwned<u8>;
+    type OutputU16 = ImageOwned<u16>;
+    type OutputF32 = ImageOwned<f32>;
+
+    fn convert_u8(&self) -> Self::OutputU8 {
         let out = cast_u8(self.data.as_slice());
         Self::OutputU8 {
+            data: out,
+            width: self.width() as _,
+            height: self.height() as _,
+            cspace: self.cspace.clone(),
+            channels: self.channels(),
+        }
+    }
+
+    fn convert_u16(&self) -> Self::OutputU16 {
+        let out = cast_u16(self.data.as_slice());
+        Self::OutputU16 {
+            data: out,
+            width: self.width() as _,
+            height: self.height() as _,
+            cspace: self.cspace.clone(),
+            channels: self.channels(),
+        }
+    }
+
+    fn convert_f32(&self) -> Self::OutputF32 {
+        let out = cast_f32(self.data.as_slice());
+        Self::OutputF32 {
             data: out,
             width: self.width() as _,
             height: self.height() as _,
@@ -345,7 +371,11 @@ impl<T: PixelStor + Zero> CopyRoi for ImageOwned<T> {
         let dhei = dest.height();
         let wid = dwid.min(swid - x);
         let hei = dhei.min(shei - y);
-        dest.data.fill(T::zero());
+        if dest.data.len() < dwid * dhei * channels {
+            dest.data = vec![T::zero(); dwid * dhei * channels];
+        } else {
+            dest.data.fill(T::zero());
+        }
         for h in 0..hei {
             let src = (y + h) * swid + x;
             let dst = h * dwid;

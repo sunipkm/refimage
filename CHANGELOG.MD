@@ -3,6 +3,7 @@
 ## Changes
 ### 1.0.0-pre5 (2025-01-21)
 - Internal changes to `fitsio_interop` function signatures.
+- Fixed a bug in `CopyRoi` function.
 
 ### 1.0.0-pre4 (2025-01-21)
 - Added `create_fits` function to library to create an empty FITS file.

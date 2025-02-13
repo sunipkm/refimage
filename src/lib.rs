@@ -49,52 +49,44 @@
 
 mod coreimpls;
 mod coretraits;
-mod imagetraits;
-#[macro_use]
 mod demosaic;
-mod imageowned;
-mod imageref;
-#[macro_use]
-mod dynamicimageref;
-#[macro_use]
-mod dynamicimageowned;
 #[cfg(feature = "image")]
 mod dynamicimage_interop;
 mod dynamicimage_serde;
+mod dynamicimageowned;
+mod dynamicimageref;
 #[cfg(feature = "fitsio")]
 mod fitsio_interop;
 mod genericimage;
 mod genericimageowned;
 mod genericimageref;
-#[cfg(feature = "fitsio")]
-#[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
-pub use fitsio_interop::{create_fits, FitsCompression, FitsError, FitsWrite};
-
-pub use genericimageowned::GenericImageOwned;
-pub use genericimageref::GenericImageRef;
-
+mod imageowned;
+mod imageref;
+mod imagetraits;
 mod metadata;
-pub use metadata::{
-    GenericLineItem, GenericValue, CAMERANAME_KEY, EXPOSURE_KEY, PROGRAMNAME_KEY, TIMESTAMP_KEY,
-};
+mod optimumexposure;
 
 pub use coretraits::{Enlargeable, PixelStor};
 pub use demosaic::{BayerError, Debayer, DemosaicMethod};
+#[cfg(feature = "fitsio")]
+#[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
+pub use fitsio_interop::{create_fits, FitsCompression, FitsError, FitsWrite};
 pub use genericimage::GenericImage;
-pub use imagetraits::{BayerShift, CopyRoi, ImageProps, SelectRoi, ToLuma};
-use serde::{Deserialize, Serialize};
-
+pub use genericimageowned::GenericImageOwned;
+pub use genericimageref::GenericImageRef;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub use image::DynamicImage; // Used for image interop
-
-pub use serde::{Deserializer, Serializer};
-
 pub use imageowned::ImageOwned;
 pub use imageref::ImageRef;
-
-mod optimumexposure;
+pub use imagetraits::{BayerShift, ConvertPixelType, CopyRoi, ImageProps, SelectRoi, ToLuma};
+pub use metadata::{
+    GenericLineItem, GenericValue, InsertValue, MetaCollection, CAMERANAME_KEY, EXPOSURE_KEY,
+    PROGRAMNAME_KEY, TIMESTAMP_KEY,
+};
 pub use optimumexposure::{CalcOptExp, OptimumExposure, OptimumExposureBuilder};
+pub use serde::{Deserialize, Serialize};
+use serde::{Deserializer, Serializer};
 
 /// Image data with a dynamic pixel type, backed by a mutable slice of data.
 ///
@@ -175,18 +167,19 @@ pub enum DynamicImageOwned {
 ///
 /// The colorspace information is used to enable debayering of the image data, and
 /// for interpretation of single or multi-channel images.
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
-#[repr(u8)]
-#[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord, Serialize, Deserialize)]
 pub enum ColorSpace {
     /// Grayscale image.
-    Gray = 0b000,
+    Gray,
     /// Bayer mosaic image
-    Bayer(BayerPattern) = 0b001,
+    Bayer(BayerPattern),
     /// RGB image.
-    Rgb = 0b100,
+    Rgb,
     /// Custom color space.
-    Custom(u8, String) = 0b111,
+    ///
+    /// The first byte is the number of channels, and the second byte is the name of the color space.
+    Custom(u8, String),
 }
 
 /// Enum to describe the Bayer pattern of the image.

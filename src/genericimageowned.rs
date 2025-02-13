@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     genericimageref::GenericImageRef,
-    metadata::{name_check, InsertValue},
+    imagetraits::ConvertPixelType,
+    metadata::{name_check, InsertValue, MetaCollection},
     BayerError, CalcOptExp, Debayer, DemosaicMethod, DynamicImageOwned, GenericLineItem,
     ImageProps, OptimumExposure, SelectRoi, EXPOSURE_KEY, TIMESTAMP_KEY,
 };
@@ -40,7 +41,7 @@ use crate::{ColorSpace, DynamicImageRef};
 /// ```
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GenericImageOwned {
-    pub(crate) metadata: HashMap<String, GenericLineItem>,
+    pub(crate) metadata: MetaCollection,
     pub(crate) image: DynamicImageOwned,
 }
 
@@ -114,7 +115,7 @@ impl GenericImageOwned {
         if name.to_uppercase() == TIMESTAMP_KEY {
             return Err("Cannot re-insert timestamp key");
         }
-        T::insert_key_go(self, name, value)
+        T::insert(&mut self.metadata, name, value)
     }
 
     /// Remove a metadata value from the [`GenericImageOwned`].
@@ -128,13 +129,14 @@ impl GenericImageOwned {
     /// - `Err("Key not found")` if the key was not found.
     /// - `Err("Key cannot be empty")` if the key is an empty string.
     /// - `Err("Key cannot be longer than 80 characters")` if the key is longer than 80 characters.
-    pub fn remove_key(&mut self, name: &str) -> Result<(), &'static str> {
+    pub fn remove_key(&mut self, name: &str) -> Result<GenericLineItem, &'static str> {
         if name.to_uppercase() == TIMESTAMP_KEY {
             return Err("Cannot remove timestamp key");
         }
         name_check(name)?;
-        self.metadata.remove(name).ok_or("Key not found")?;
-        Ok(())
+        self.metadata
+            .remove(&name.to_uppercase())
+            .ok_or("Key not found")
     }
 
     /// Replace a metadata value in the [`GenericImageOwned`].
@@ -151,8 +153,8 @@ impl GenericImageOwned {
         &mut self,
         name: &str,
         value: T,
-    ) -> Result<(), &'static str> {
-        T::replace_go(self, name, value)
+    ) -> Result<GenericLineItem, &'static str> {
+        T::replace(&mut self.metadata, name, value)
     }
 
     /// Get the underlying [`DynamicImageOwned`].
@@ -186,14 +188,36 @@ impl GenericImageOwned {
         name_check(name).ok()?;
         self.metadata.get(name)
     }
+}
 
-    /// Convert the image to a [`GenericImageOwned`] with [`u8`] pixel type.
-    ///
-    /// Note: This operation is parallelized if the `rayon` feature is enabled.
-    pub fn into_u8(self) -> GenericImageOwned {
-        let img = self.image.into_u8();
-        GenericImageOwned {
-            metadata: self.metadata,
+impl ConvertPixelType for GenericImageOwned {
+    type OutputU8 = GenericImageOwned;
+    type OutputU16 = GenericImageOwned;
+    type OutputF32 = GenericImageOwned;
+
+    fn convert_u8(&self) -> Self::OutputU8 {
+        let img = self.image.convert_u8();
+        let meta = self.metadata.clone();
+        Self::OutputU8 {
+            metadata: meta,
+            image: img,
+        }
+    }
+
+    fn convert_u16(&self) -> Self::OutputU16 {
+        let img = self.image.convert_u16();
+        let meta = self.metadata.clone();
+        Self::OutputU16 {
+            metadata: meta,
+            image: img,
+        }
+    }
+
+    fn convert_f32(&self) -> Self::OutputF32 {
+        let img = self.image.convert_f32();
+        let meta = self.metadata.clone();
+        Self::OutputF32 {
+            metadata: meta,
             image: img,
         }
     }
@@ -231,8 +255,6 @@ impl SelectRoi for GenericImageOwned {
 }
 
 impl ImageProps for GenericImageOwned {
-    type OutputU8 = GenericImageOwned;
-
     fn width(&self) -> usize {
         self.image.width()
     }
@@ -259,13 +281,6 @@ impl ImageProps for GenericImageOwned {
 
     fn is_empty(&self) -> bool {
         self.image.is_empty()
-    }
-
-    fn cast_u8(&self) -> Self::OutputU8 {
-        Self::OutputU8 {
-            metadata: self.metadata.clone(),
-            image: self.image.clone().into_u8(),
-        }
     }
 }
 

@@ -4,7 +4,7 @@ use std::time::{Duration, SystemTime};
 
 use serde::Serialize;
 
-use crate::imagetraits::ImageProps;
+use crate::imagetraits::{ConvertPixelType, ImageProps};
 use crate::metadata::InsertValue;
 use crate::{genericimageowned::GenericImageOwned, genericimageref::GenericImageRef};
 use crate::{
@@ -101,7 +101,7 @@ impl GenericImage<'_> {
     /// - `Err("Key not found")` if the key was not found.
     /// - `Err("Key cannot be empty")` if the key is an empty string.
     /// - `Err("Key cannot be longer than 80 characters")` if the key is longer than 80 characters.
-    pub fn remove_key(&mut self, name: &str) -> Result<(), &'static str> {
+    pub fn remove_key(&mut self, name: &str) -> Result<GenericLineItem, &'static str> {
         dynamic_map!(self, ref mut image, { image.remove_key(name) })
     }
 
@@ -119,7 +119,7 @@ impl GenericImage<'_> {
         &mut self,
         name: &str,
         value: T,
-    ) -> Result<(), &'static str> {
+    ) -> Result<GenericLineItem, &'static str> {
         dynamic_map!(self, ref mut image, { image.replace_key(name, value) })
     }
 
@@ -151,8 +151,6 @@ impl GenericImage<'_> {
 }
 
 impl ImageProps for GenericImage<'_> {
-    type OutputU8 = GenericImageOwned;
-
     fn width(&self) -> usize {
         dynamic_map!(self, ref image, { image.image.width() })
     }
@@ -179,20 +177,6 @@ impl ImageProps for GenericImage<'_> {
 
     fn is_empty(&self) -> bool {
         dynamic_map!(self, ref image, { image.image.is_empty() })
-    }
-
-    fn cast_u8(&self) -> Self::OutputU8 {
-        let meta = self.get_metadata().clone();
-        match self {
-            GenericImage::Ref(image) => GenericImageOwned {
-                metadata: meta,
-                image: image.image.into_u8(),
-            },
-            GenericImage::Own(image) => GenericImageOwned {
-                metadata: meta,
-                image: image.image.clone().into_u8(),
-            },
-        }
     }
 }
 
@@ -267,6 +251,35 @@ impl<'a: 'b, 'b> GenericImage<'a> {
         match self {
             GenericImage::Ref(image) => Ok(image.debayer(method)?.into()),
             GenericImage::Own(image) => Ok(image.debayer(method)?.into()),
+        }
+    }
+}
+
+impl ConvertPixelType for GenericImage<'_> {
+    type OutputU8 = GenericImageOwned;
+
+    type OutputU16 = GenericImageOwned;
+
+    type OutputF32 = GenericImageOwned;
+
+    fn convert_u8(&self) -> Self::OutputU8 {
+        match self {
+            GenericImage::Ref(image) => image.convert_u8(),
+            GenericImage::Own(image) => image.convert_u8(),
+        }
+    }
+
+    fn convert_u16(&self) -> Self::OutputU16 {
+        match self {
+            GenericImage::Ref(image) => image.convert_u16(),
+            GenericImage::Own(image) => image.convert_u16(),
+        }
+    }
+
+    fn convert_f32(&self) -> Self::OutputF32 {
+        match self {
+            GenericImage::Ref(image) => image.convert_f32(),
+            GenericImage::Own(image) => image.convert_f32(),
         }
     }
 }

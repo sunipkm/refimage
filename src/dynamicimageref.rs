@@ -1,6 +1,7 @@
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
+use crate::imagetraits::ConvertPixelType;
 use crate::{
     BayerError, CalcOptExp, ColorSpace, DemosaicMethod, DynamicImageRef, ImageProps, ImageRef,
     OptimumExposure, PixelType, SelectRoi, ToLuma,
@@ -49,8 +50,6 @@ impl DynamicImageRef<'_> {
 }
 
 impl ImageProps for DynamicImageRef<'_> {
-    type OutputU8 = DynamicImageOwned;
-
     fn width(&self) -> usize {
         dynamic_map!(self, ref image, { image.width() })
     }
@@ -78,12 +77,37 @@ impl ImageProps for DynamicImageRef<'_> {
     fn is_empty(&self) -> bool {
         dynamic_map!(self, ref image, { image.is_empty() })
     }
+}
 
-    fn cast_u8(&self) -> Self::OutputU8 {
+impl ConvertPixelType for DynamicImageRef<'_> {
+    type OutputU8 = DynamicImageOwned;
+    type OutputU16 = DynamicImageOwned;
+    type OutputF32 = DynamicImageOwned;
+
+    fn convert_u8(&self) -> Self::OutputU8 {
+        use DynamicImageRef::*;
         match self {
-            DynamicImageRef::U8(data) => DynamicImageOwned::U8(data.into()),
-            DynamicImageRef::U16(data) => DynamicImageOwned::U8(data.into_u8()),
-            DynamicImageRef::F32(data) => DynamicImageOwned::U8(data.into_u8()),
+            U8(_) => self.into(),
+            U16(data) => DynamicImageOwned::U8(data.convert_u8()),
+            F32(data) => DynamicImageOwned::U8(data.convert_u8()),
+        }
+    }
+
+    fn convert_u16(&self) -> Self::OutputU16 {
+        use DynamicImageRef::*;
+        match self {
+            U8(data) => DynamicImageOwned::U16(data.convert_u16()),
+            U16(_) => self.into(),
+            F32(data) => DynamicImageOwned::U16(data.convert_u16()),
+        }
+    }
+
+    fn convert_f32(&self) -> Self::OutputF32 {
+        use DynamicImageRef::*;
+        match self {
+            U8(data) => DynamicImageOwned::F32(data.convert_f32()),
+            U16(data) => DynamicImageOwned::F32(data.convert_f32()),
+            F32(_) => self.into(),
         }
     }
 }
@@ -267,18 +291,6 @@ impl DynamicImageRef<'_> {
         match self {
             DynamicImageRef::F32(data) => Some(data.as_mut_slice()),
             _ => None,
-        }
-    }
-
-    /// Convert the image to a [`DynamicImageOwned`] with [`u8`] pixel type.
-    ///
-    /// Note: This operation is parallelized if the `rayon` feature is enabled.
-    pub fn into_u8(&self) -> DynamicImageOwned {
-        use DynamicImageRef::*;
-        match self {
-            U8(data) => DynamicImageOwned::U8(data.into()),
-            U16(data) => DynamicImageOwned::U8(data.into_u8()),
-            F32(data) => DynamicImageOwned::U8(data.into_u8()),
         }
     }
 }

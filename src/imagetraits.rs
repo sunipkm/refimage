@@ -98,8 +98,6 @@ pub trait ToLuma {
 
 /// A trait for accessing the properties of an image.
 pub trait ImageProps {
-    /// The output type of [`ImageProps::cast_u8`].
-    type OutputU8;
     /// Get the width of the image.
     fn width(&self) -> usize;
 
@@ -120,13 +118,26 @@ pub trait ImageProps {
 
     /// Check if the data is empty.
     fn is_empty(&self) -> bool;
+}
 
-    /// Convert the image to a `u8` image.
-    ///
-    /// Conversion is done by scaling the pixel values to the range `[0, 255]`.
-    ///
-    /// # Note: This operation is parallelized if the `rayon` feature is enabled.
-    fn cast_u8(&self) -> Self::OutputU8;
+/// A trait for converting an image to a different pixel type.
+pub trait ConvertPixelType {
+    /// The output type of [`ConvertImage::convert_u8`].
+    type OutputU8;
+    /// The output type of [`ConvertImage::convert_u16`].
+    type OutputU16;
+    /// The output type of [`ConvertImage::convert_f32`].
+    type OutputF32;
+
+    /// Convert the image to pixels of type `u8`.
+    /// This function will clamp the values to the range of the type `u8` (0-255).
+    fn convert_u8(&self) -> Self::OutputU8;
+    /// Convert the image to pixels of type `u16`.
+    /// This function will clamp the values to the range of the type `u16` (0-65535).
+    fn convert_u16(&self) -> Self::OutputU16;
+    /// Convert the image to pixels of type `f32`.
+    /// This function will clamp the values to the range of the type `f32` (0.0-1.0).
+    fn convert_f32(&self) -> Self::OutputF32;
 }
 
 /// A trait for selecting a region of interest (ROI) from an image.

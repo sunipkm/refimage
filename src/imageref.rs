@@ -1,9 +1,9 @@
 use std::time::Duration;
 
 use crate::{
-    coretraits::{cast_u8, Enlargeable},
+    coretraits::{cast_f32, cast_u16, cast_u8, Enlargeable},
     demosaic::{run_demosaic_imagedata, Debayer, RasterMut},
-    imagetraits::ImageProps,
+    imagetraits::{ConvertPixelType, ImageProps},
     BayerError, CalcOptExp, ColorSpace, CopyRoi, DemosaicMethod, ImageOwned, OptimumExposure,
     PixelStor, PixelType, SelectRoi, ToLuma,
 };
@@ -171,40 +171,87 @@ impl<'a, T: PixelStor> ImageRef<'a, T> {
 }
 
 impl<T: PixelStor> ImageProps for ImageRef<'_, T> {
-    type OutputU8 = ImageOwned<u8>;
-
+    #[inline(always)]
     fn width(&self) -> usize {
         self.width as usize
     }
 
+    #[inline(always)]
     fn height(&self) -> usize {
         self.height as usize
     }
 
+    #[inline(always)]
     fn channels(&self) -> u8 {
         self.channels
     }
 
+    #[inline(always)]
     fn color_space(&self) -> ColorSpace {
         self.cspace.clone()
     }
 
+    #[inline(always)]
     fn pixel_type(&self) -> PixelType {
         T::PIXEL_TYPE
     }
 
+    #[inline(always)]
     fn len(&self) -> usize {
         self.len
     }
 
+    #[inline(always)]
     fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
+}
 
-    fn cast_u8(&self) -> Self::OutputU8 {
-        let mut out = cast_u8(self.data);
-        out.truncate(self.len);
+impl<T: PixelStor> ConvertPixelType for ImageRef<'_, T> {
+    type OutputU8 = ImageOwned<u8>;
+    type OutputU16 = ImageOwned<u16>;
+    type OutputF32 = ImageOwned<f32>;
+
+    #[inline(always)]
+    fn convert_u8(&self) -> Self::OutputU8 {
+        let out = cast_u8(&self.data[..self.len]);
+        assert!(
+            out.len() == self.len,
+            "Length mismatch in cast_u8. This is a bug.",
+        );
         Self::OutputU8 {
+            data: out,
+            width: self.width() as _,
+            height: self.height() as _,
+            cspace: self.cspace.clone(),
+            channels: self.channels(),
+        }
+    }
+
+    #[inline(always)]
+    fn convert_u16(&self) -> Self::OutputU16 {
+        let out = cast_u16(&self.data[..self.len]);
+        assert!(
+            out.len() == self.len,
+            "Length mismatch in cast_u16. This is a bug.",
+        );
+        ImageOwned {
+            data: out,
+            width: self.width() as _,
+            height: self.height() as _,
+            cspace: self.cspace.clone(),
+            channels: self.channels(),
+        }
+    }
+
+    #[inline(always)]
+    fn convert_f32(&self) -> Self::OutputF32 {
+        let out = cast_f32(&self.data[..self.len]);
+        assert!(
+            out.len() == self.len,
+            "Length mismatch in cast_f32. This is a bug.",
+        );
+        ImageOwned {
             data: out,
             width: self.width() as _,
             height: self.height() as _,
@@ -261,25 +308,6 @@ impl<'a, T: PixelStor + AnyBitPattern> ImageRef<'a, T> {
             }
         })?;
         Self::new(data, width, height, cspace)
-    }
-}
-
-impl<T: PixelStor> ImageRef<'_, T> {
-    /// Convert the image to a [`ImageOwned`] with [`u8`] pixel type.
-    ///
-    /// Conversion is done by scaling the pixel values to the range `[0, 255]`.
-    ///
-    /// Note: This operation is parallelized if the `rayon` feature is enabled.
-    pub fn into_u8(&self) -> ImageOwned<u8> {
-        let mut out = cast_u8(self.data);
-        out.truncate(self.len);
-        ImageOwned {
-            data: out,
-            width: self.width() as _,
-            height: self.height() as _,
-            cspace: self.cspace.clone(),
-            channels: self.channels(),
-        }
     }
 }
 
@@ -364,7 +392,11 @@ impl<T: PixelStor + Zero> CopyRoi for ImageRef<'_, T> {
         let dhei = dest.height();
         let wid = dwid.min(swid - x);
         let hei = dhei.min(shei - y);
-        dest.data.fill(T::zero());
+        if dest.data.len() < dwid * dhei * channels {
+            dest.data = vec![T::zero(); dwid * dhei * channels];
+        } else {
+            dest.data.fill(T::zero());
+        }
         for h in 0..hei {
             let src = (y + h) * swid + x;
             let dst = h * dwid;

@@ -1,10 +1,15 @@
-use std::time::{Duration, SystemTime};
+use std::{
+    collections::HashMap,
+    time::{Duration, SystemTime},
+};
 
 use serde::{Deserialize, Serialize};
 
+use crate::ColorSpace;
 #[allow(unused)]
 use crate::GenericImage;
-use crate::{genericimageowned::GenericImageOwned, genericimageref::GenericImageRef, ColorSpace};
+
+extern crate paste;
 
 /// Key for the timestamp metadata.
 /// This key is inserted by default when creating a new [`GenericImageRef`], [`GenericImageOwned`] or [`GenericImage`].
@@ -50,6 +55,9 @@ pub struct GenericLineItem {
     pub(crate) value: GenericValue,
     pub(crate) comment: Option<String>,
 }
+
+/// A collection of metadata items.
+pub type MetaCollection = HashMap<String, GenericLineItem>;
 
 /// A type-erased enum to hold a metadata value.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -125,12 +133,17 @@ impl_from_genericvalue!(String, GenericValue::String);
 macro_rules! impl_tryinto_genericvalue {
     ($t:ty, $variant:path) => {
         impl TryInto<$t> for GenericValue {
-            type Error = String;
+            type Error = &'static str;
 
             fn try_into(self) -> Result<$t, Self::Error> {
                 match self {
                     $variant(x) => Ok(x),
-                    _ => Err(format!("Invalid type {:?}", self)),
+                    _ => Err(concat!(
+                        "Cannot convert ",
+                        stringify!($variant),
+                        " into ",
+                        stringify!($t)
+                    )),
                 }
             }
         }
@@ -152,128 +165,70 @@ impl_tryinto_genericvalue!(Duration, GenericValue::Duration);
 impl_tryinto_genericvalue!(SystemTime, GenericValue::SystemTime);
 impl_tryinto_genericvalue!(String, GenericValue::String);
 
-/// Trait to insert a metadata value into a [`GenericImageRef`].
+/// Trait to insert a metadata value into a [`MetaCollection`].
 pub trait InsertValue {
-    /// Insert a metadata value into a [`GenericImageRef`] by name.
-    fn insert_key_gi(f: &mut GenericImageRef, name: &str, value: Self) -> Result<(), &'static str>;
+    /// Insert a metadata value into a [`MetaCollection`] by name.
+    fn insert(f: &mut MetaCollection, name: &str, value: Self) -> Result<(), &'static str>;
 
-    /// Insert a metadata value into a [`GenericImageOwned`] by name.
-    fn insert_key_go(
-        f: &mut GenericImageOwned,
+    /// Replace a metadata value in a [`MetaCollection`] by name.
+    fn replace(
+        f: &mut MetaCollection,
         name: &str,
         value: Self,
-    ) -> Result<(), &'static str>;
-
-    /// Replace a metadata value in a [`GenericImageRef`] by name.
-    fn replace_gi(f: &mut GenericImageRef, name: &str, value: Self) -> Result<(), &'static str>;
-
-    /// Replace a metadata value in a [`GenericImageOwned`] by name.
-    fn replace_go(f: &mut GenericImageOwned, name: &str, value: Self) -> Result<(), &'static str>;
+    ) -> Result<GenericLineItem, &'static str>;
 }
 
 macro_rules! insert_value_impl {
     ($t:ty, $datatype:expr) => {
         impl InsertValue for $t {
-            fn insert_key_gi(
-                f: &mut GenericImageRef,
-                name: &str,
-                value: Self,
-            ) -> Result<(), &'static str> {
+            fn insert(f: &mut MetaCollection, name: &str, value: Self) -> Result<(), &'static str> {
                 name_check(name)?;
                 let line = GenericLineItem {
                     value: value.into(),
                     comment: None,
                 };
-                f.metadata.insert(name.to_uppercase(), line);
+                f.insert(name.to_uppercase(), line);
                 Ok(())
             }
 
-            fn replace_gi(
-                f: &mut GenericImageRef,
+            fn replace(
+                f: &mut MetaCollection,
                 name: &str,
                 value: Self,
-            ) -> Result<(), &'static str> {
-                name_check(name)?;
-                f.metadata.remove(name).ok_or("Key not found")?;
-                Self::insert_key_gi(f, name, value)
-            }
-
-            fn insert_key_go(
-                f: &mut GenericImageOwned,
-                name: &str,
-                value: Self,
-            ) -> Result<(), &'static str> {
+            ) -> Result<GenericLineItem, &'static str> {
                 name_check(name)?;
                 let line = GenericLineItem {
                     value: value.into(),
                     comment: None,
                 };
-                f.metadata.insert(name.to_uppercase(), line);
-                Ok(())
-            }
-
-            fn replace_go(
-                f: &mut GenericImageOwned,
-                name: &str,
-                value: Self,
-            ) -> Result<(), &'static str> {
-                name_check(name)?;
-                f.metadata.remove(name).ok_or("Key not found")?;
-                Self::insert_key_go(f, name, value)
+                f.insert(name.to_uppercase(), line).ok_or("Key not found")
             }
         }
 
         impl InsertValue for ($t, &str) {
-            fn insert_key_gi(
-                f: &mut GenericImageRef,
-                name: &str,
-                value: Self,
-            ) -> Result<(), &'static str> {
+            fn insert(f: &mut MetaCollection, name: &str, value: Self) -> Result<(), &'static str> {
                 name_check(name)?;
                 comment_check(value.1)?;
                 let line = GenericLineItem {
                     value: value.0.into(),
                     comment: Some(value.1.to_owned()),
                 };
-                f.metadata.insert(name.to_uppercase(), line);
+                f.insert(name.to_uppercase(), line);
                 Ok(())
             }
 
-            fn replace_gi(
-                f: &mut GenericImageRef,
+            fn replace(
+                f: &mut MetaCollection,
                 name: &str,
                 value: Self,
-            ) -> Result<(), &'static str> {
-                name_check(name)?;
-                comment_check(value.1)?;
-                f.metadata.remove(name).ok_or("Key not found")?;
-                Self::insert_key_gi(f, name, value)
-            }
-
-            fn insert_key_go(
-                f: &mut GenericImageOwned,
-                name: &str,
-                value: Self,
-            ) -> Result<(), &'static str> {
+            ) -> Result<GenericLineItem, &'static str> {
                 name_check(name)?;
                 comment_check(value.1)?;
                 let line = GenericLineItem {
                     value: value.0.into(),
                     comment: Some(value.1.to_owned()),
                 };
-                f.metadata.insert(name.to_uppercase(), line);
-                Ok(())
-            }
-
-            fn replace_go(
-                f: &mut GenericImageOwned,
-                name: &str,
-                value: Self,
-            ) -> Result<(), &'static str> {
-                name_check(name)?;
-                comment_check(value.1)?;
-                f.metadata.remove(name).ok_or("Key not found")?;
-                Self::insert_key_go(f, name, value)
+                f.insert(name.to_uppercase(), line).ok_or("Key not found")
             }
         }
     };
@@ -326,47 +281,34 @@ insert_value_impl!(Duration, PrvGenLineItem::Duration);
 insert_value_impl!(SystemTime, PrvGenLineItem::SystemTime);
 
 impl InsertValue for &str {
-    fn insert_key_gi(f: &mut GenericImageRef, name: &str, value: Self) -> Result<(), &'static str> {
+    fn insert(f: &mut MetaCollection, name: &str, value: Self) -> Result<(), &'static str> {
         name_check(name)?;
         str_value_check(value)?;
         let line = GenericLineItem {
             value: value.to_owned().into(),
             comment: None,
         };
-        f.metadata.insert(name.to_uppercase(), line);
+        f.insert(name.to_uppercase(), line);
         Ok(())
     }
 
-    fn replace_gi(f: &mut GenericImageRef, name: &str, value: Self) -> Result<(), &'static str> {
-        name_check(name)?;
-        f.metadata.remove(name).ok_or("Key not found")?;
-        Self::insert_key_gi(f, name, value)
-    }
-
-    fn insert_key_go(
-        f: &mut GenericImageOwned,
+    fn replace(
+        f: &mut MetaCollection,
         name: &str,
         value: Self,
-    ) -> Result<(), &'static str> {
+    ) -> Result<GenericLineItem, &'static str> {
         name_check(name)?;
         str_value_check(value)?;
-        let line = GenericLineItem {
+        let value = GenericLineItem {
             value: value.to_owned().into(),
             comment: None,
         };
-        f.metadata.insert(name.to_uppercase(), line);
-        Ok(())
-    }
-
-    fn replace_go(f: &mut GenericImageOwned, name: &str, value: Self) -> Result<(), &'static str> {
-        name_check(name)?;
-        f.metadata.remove(name).ok_or("Key not found")?;
-        Self::insert_key_go(f, name, value)
+        f.insert(name.to_uppercase(), value).ok_or("Key not found")
     }
 }
 
 impl InsertValue for (&str, &str) {
-    fn insert_key_gi(f: &mut GenericImageRef, name: &str, value: Self) -> Result<(), &'static str> {
+    fn insert(f: &mut MetaCollection, name: &str, value: Self) -> Result<(), &'static str> {
         name_check(name)?;
         str_value_check(value.0)?;
         comment_check(value.1)?;
@@ -374,106 +316,54 @@ impl InsertValue for (&str, &str) {
             value: value.0.to_owned().into(),
             comment: Some(value.1.to_owned()),
         };
-        f.metadata.insert(name.to_uppercase(), line);
+        f.insert(name.to_uppercase(), line);
         Ok(())
     }
 
-    fn replace_gi(f: &mut GenericImageRef, name: &str, value: Self) -> Result<(), &'static str> {
-        name_check(name)?;
-        str_value_check(value.0)?;
-        comment_check(value.1)?;
-        f.metadata.remove(name).ok_or("Key not found")?;
-        Self::insert_key_gi(f, name, value)
-    }
-
-    fn insert_key_go(
-        f: &mut GenericImageOwned,
+    fn replace(
+        f: &mut MetaCollection,
         name: &str,
         value: Self,
-    ) -> Result<(), &'static str> {
+    ) -> Result<GenericLineItem, &'static str> {
         name_check(name)?;
         str_value_check(value.0)?;
         comment_check(value.1)?;
-        let line = GenericLineItem {
+        let value = GenericLineItem {
             value: value.0.to_owned().into(),
             comment: Some(value.1.to_owned()),
         };
-        f.metadata.insert(name.to_uppercase(), line);
-        Ok(())
-    }
-
-    fn replace_go(f: &mut GenericImageOwned, name: &str, value: Self) -> Result<(), &'static str> {
-        name_check(name)?;
-        str_value_check(value.0)?;
-        comment_check(value.1)?;
-        f.metadata.remove(name).ok_or("Key not found")?;
-        Self::insert_key_go(f, name, value)
+        f.insert(name.to_uppercase(), value).ok_or("Key not found")
     }
 }
 
+macro_rules! impl_getter {
+    ($t:ty) => {
+        ::paste::paste! {
+            #[doc = "Get the metadata value of type [`" $t " `]."]
+            #[inline(always)]
+            pub fn [<get_value_ $t:lower>](&self) -> Option<$t> {
+                self.clone().try_into().ok()
+            }
+        }
+    };
+}
+
 impl GenericValue {
-    /// Get the `u8` metadata value.
-    pub fn get_value_u8(&self) -> Option<u8> {
-        // The clone here is a trivial copy, so it's fine.
-        self.clone().try_into().ok()
-    }
-
-    /// Get the `u16` metadata value.
-    pub fn get_value_u16(&self) -> Option<u16> {
-        self.clone().try_into().ok()
-    }
-
-    /// Get the `u32` metadata value.
-    pub fn get_value_u32(&self) -> Option<u32> {
-        self.clone().try_into().ok()
-    }
-
-    /// Get the `u64` metadata value.
-    pub fn get_value_u64(&self) -> Option<u64> {
-        self.clone().try_into().ok()
-    }
-
-    /// Get the `i8` metadata value.
-    pub fn get_value_i8(&self) -> Option<i8> {
-        self.clone().try_into().ok()
-    }
-
-    /// Get the `i16` metadata value.
-    pub fn get_value_i16(&self) -> Option<i16> {
-        self.clone().try_into().ok()
-    }
-
-    /// Get the `i32` metadata value.
-    pub fn get_value_i32(&self) -> Option<i32> {
-        self.clone().try_into().ok()
-    }
-
-    /// Get the `i64` metadata value.
-    pub fn get_value_i64(&self) -> Option<i64> {
-        self.clone().try_into().ok()
-    }
-
-    /// Get the `f32` metadata value.
-    pub fn get_value_f32(&self) -> Option<f32> {
-        self.clone().try_into().ok()
-    }
-
-    /// Get the `f64` metadata value.
-    pub fn get_value_f64(&self) -> Option<f64> {
-        self.clone().try_into().ok()
-    }
-
-    /// Get the `std::time::Duration` metadata value.
-    pub fn get_value_duration(&self) -> Option<Duration> {
-        self.clone().try_into().ok()
-    }
-
-    /// Get the `std::time::SystemTime` metadata value.
-    pub fn get_value_systemtime(&self) -> Option<SystemTime> {
-        self.clone().try_into().ok()
-    }
+    impl_getter!(u8);
+    impl_getter!(u16);
+    impl_getter!(u32);
+    impl_getter!(u64);
+    impl_getter!(i8);
+    impl_getter!(i16);
+    impl_getter!(i32);
+    impl_getter!(i64);
+    impl_getter!(f32);
+    impl_getter!(f64);
+    impl_getter!(Duration);
+    impl_getter!(SystemTime);
 
     /// Get the `String` metadata value.
+    #[inline(always)]
     pub fn get_value_string(&self) -> Option<&str> {
         match self {
             GenericValue::String(s) => Some(s.as_str()),
