@@ -52,10 +52,16 @@
 //! [`Runner`](pipeline::Runner) that processes successive frames with zero
 //! per-frame allocation (serial-tiled strategy).
 //!
+//! # FITS
+//! Writing [`GenericImageRef`] / [`GenericImageOwned`] to the [Flexible Image Transport
+//! System](https://fits.gsfc.nasa.gov/fits_standard.html) via the [`FitsWrite`] trait is
+//! always available — it is a pure-Rust implementation (no `cfitsio` linkage) and
+//! compiles on every target, `wasm32` included. It supports uncompressed output and the
+//! tile-compression convention with `GZIP_1` and `RICE_1`.
+//!
 //! # Optional Features
 //! Features are available to extend the functionalities of the core `refimage` data types:
 //! - `rayon`: Parallelizes the luminance / demosaic / cast kernels inside the [`pipeline`], and enables its parallel [`Strategy`](pipeline::Strategy) variants (<b>enabled</b> by default).
-//! - `fitsio`: Exposes [`FitsWrite`] trait to write [`GenericImageRef`] and [`GenericImageOwned`] (<b>disabled</b> by default).
 //! - `image`: Enables [`TryFrom`] conversions between [`DynamicImage`] and [`DynamicImageRef`], [`DynamicImageOwned`] (<b>disabled</b> by default).
 //! - `grow`: Lets a compiled [`Runner`](pipeline::Runner) reallocate its buffers when handed a frame whose shape differs from the one it was compiled for (<b>disabled</b> by default).
 //!
@@ -69,8 +75,7 @@ mod dynamicimage_serde;
 mod dynamicimageowned;
 mod dynamicimageref;
 mod error;
-#[cfg(feature = "fitsio")]
-mod fitsio_interop;
+mod fits;
 mod genericimage;
 mod genericimageowned;
 mod genericimageref;
@@ -88,9 +93,7 @@ pub use demosaic::{BayerError, DemosaicMethod};
 pub use dynamicimage_interop::{InteropError, InteropResult};
 pub use dynamicimage_serde::{SerdeError, SerdeResult};
 pub use error::{ImageError, ImageResult};
-#[cfg(feature = "fitsio")]
-#[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
-pub use fitsio_interop::{create_fits, FitsCompression, FitsError, FitsWrite};
+pub use fits::{create_fits, FitsCompression, FitsError, FitsResult, FitsWrite, FitsWriter};
 pub use genericimage::GenericImage;
 pub use genericimageowned::GenericImageOwned;
 pub use genericimageref::GenericImageRef;

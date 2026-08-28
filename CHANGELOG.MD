@@ -35,12 +35,29 @@
   `tests/wasm.rs` (a `wasm-bindgen-test` suite over image construction, the
   pipeline, metadata, and serde) and a GitHub Actions job that runs it. `rand`
   is now a non-wasm dev-dependency.
+- **Breaking:** the FITS writer is now a pure-Rust implementation with **no
+  `cfitsio` linkage**. It is always available (the `fitsio` Cargo feature is
+  removed) and compiles on every target, `wasm32` included. `FitsError` is now a
+  concrete `#[non_exhaustive]` enum (was a re-export of `fitsio::errors::Error`);
+  `FitsCompression` is reduced to `None` / `Gzip` (`GZIP_1`) / `Rice` (`RICE_1`,
+  integer images only — `HCOMPRESS`, `BZIP2`, `PLIO` and float quantization are
+  planned follow-ups). New: `FitsWrite::write_fits_to` / `fits_bytes` (serialise
+  without a filesystem), `FitsResult`, `FitsWriter`. Multi-channel images are now
+  written **planar** (`NAXIS3 = channels`); `write_fits` no longer rewrites the
+  path extension. Output is checked against `astropy.io.fits` and `cfitsio` in
+  the test suite.
+- **Breaking:** `GenericValue`'s numeric variants are collapsed — every integer
+  width folds into `GenericValue::Integer(i64)` and both floats into
+  `GenericValue::Real(f64)`. `u64` is no longer a supported metadata value type
+  (it cannot be promoted to `i64` losslessly). The public `insert_key` /
+  `get_value_*` API is unchanged apart from the dropped `get_value_u64`. The
+  `serde`/bincode wire format for metadata changes accordingly.
 - Dependency cleanup: dropped the unused `itertools` dependency and the
   `color-backtrace` dev-dependency; dropped the unused `aarch64_simd`,
-  `wasm_simd` and `extern_crate_alloc` `bytemuck` features. `chrono` is now an
-  optional dependency, activated only by the `fitsio` feature (its sole user),
-  and built with just `alloc` rather than `std`. Bumped `thiserror` to 2.0 and
-  refreshed the remaining version requirements.
+  `wasm_simd` and `extern_crate_alloc` `bytemuck` features. Dropped `chrono`
+  (the FITS date stamp is now formatted in-crate). Added `miniz_oxide` (pure
+  Rust, for `GZIP_1`) and a non-wasm `fitsio` dev-dependency (cross-checks).
+  Bumped `thiserror` to 2.0 and refreshed the remaining version requirements.
 
 ### 1.0.0-pre5 (2025-01-21)
 - Internal changes to `fitsio_interop` function signatures.

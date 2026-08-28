@@ -22,8 +22,8 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use refimage::pipeline::{ImageSpec, Pipeline, Strategy};
 use refimage::{
-    BayerPattern, ColorSpace, DemosaicMethod, DynamicImageOwned, DynamicImageRef,
-    GenericImageOwned, ImageProps, ImageRef, PixelType,
+    BayerPattern, ColorSpace, DemosaicMethod, DynamicImageOwned, DynamicImageRef, FitsCompression,
+    FitsWrite, GenericImageOwned, ImageOwned, ImageProps, ImageRef, PixelType,
 };
 use wasm_bindgen_test::wasm_bindgen_test;
 
@@ -118,4 +118,28 @@ fn generic_image_carries_metadata() {
             .and_then(|it| it.get_value().get_value_u16()),
         Some(42)
     );
+}
+
+#[wasm_bindgen_test]
+fn fits_bytes_on_wasm() {
+    let data: Vec<u16> = (0..16 * 16).map(|i| (i as u16).wrapping_mul(257)).collect();
+    let img =
+        DynamicImageOwned::from(ImageOwned::from_owned(data, 16, 16, ColorSpace::Gray).unwrap());
+    let stamp = UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+    let mut g = GenericImageOwned::new(stamp, img);
+    g.insert_key("EXPOSURE", Duration::from_millis(250))
+        .unwrap();
+
+    for comp in [
+        FitsCompression::None,
+        FitsCompression::Gzip,
+        FitsCompression::Rice,
+    ] {
+        let bytes = g.fits_bytes(comp).expect("fits_bytes");
+        assert_eq!(bytes.len() % 2880, 0, "{comp:?} not block-aligned");
+        assert!(
+            bytes.starts_with(b"SIMPLE  =                    T"),
+            "{comp:?}"
+        );
+    }
 }

@@ -7,10 +7,9 @@
 This crate provides a type-erased image container (`GenericImageRef`), backed by a contiguous slice (owned or referenced) of primitive (`u8`, `u16`, `f32`) pixels, with arbitrary color space (grayscale, Bayer pattern, RGB, ...) and color channels support (max. 255).
 Image sizes are limited to 65536 &times; 65536 for practical reasons.
 
-`GenericImageRef` and `GenericImageOwned` are powerful, since these metadata in the form of (`key`, `value`) pairs, with optional comments. Valid metadata keys are case-insensitive, 80-character strings, and values are up to 64-bit integer types, 32- and 64-bit floating point numbers, strings up-to 4096 characters, or `std::time::{SystemTime, Duration}`.
+`GenericImageRef` and `GenericImageOwned` carry metadata as (`key`, `value`) pairs with optional comments. Metadata keys are case-insensitive strings up to 80 characters; values are integers (stored as `i64`), 32-/64-bit floats (stored as `f64`), strings, `ColorSpace`, or `std::time::{SystemTime, Duration}`.
 
-`GenericImageRef` supports serialization, and, optionally can be saved in the open [Flexible Image Transport System (FITS)](https://fits.gsfc.nasa.gov/fits_standard.html) through the `FitsWrite` trait, exposed through the `fitsio` optional feature.
-FITS files support lossless compression, and saving of arbitrary metadata.
+`GenericImageRef` supports serialization, and can be saved to the open [Flexible Image Transport System (FITS)](https://fits.gsfc.nasa.gov/fits_standard.html) through the `FitsWrite` trait. The FITS writer is pure Rust (no `cfitsio` linkage), always available, and compiles on every target including `wasm32`. It supports uncompressed output and the tile-compression convention with `GZIP_1` (any pixel type) and `RICE_1` (integer images); output is verified against `astropy.io.fits`.
 
 `GenericImageRef` serializes to an internal representation which allows <i>de</i>serialization to `GenericImageOwned`.
 `GenericImageOwned` contains owned data, and is freely <i>ser</i>ialized-<i>de</i>serialized. 
@@ -42,7 +41,7 @@ metadata onto the result.
 
 ## `GenericImageOwned` and other `ImageOwned` types
 An image can be loaded using the [`image`](https://crates.io/crates/image) crate from disk, by enabling the `image` feature:
-```rust,no_run
+```rust,ignore
 use refimage::DynamicImageOwned;
 use image::open;
 
@@ -51,14 +50,18 @@ let img = DynamicImageOwned::try_from(img).expect("Could not convert image");
 ```
 
 ## Loading and storing a `GenericImageRef`
-A `GenericImageRef` is intended to be loaded and stored in a standard format, e.g. [bincode](https://crates.io/crates/bincode) - which follows trivially from the serialization of `GenericImageRef`. However, for more portable applications, with the `fitsio` feature, a `GenericImageRef` can be stored as a FITS file by importing the `FitsWrite` trait. 
-The FITS file is stored using the [`fitsio`](https://crates.io/crates/fitsio) crate, which is a thin wrapper around the `cfitsio` library.
-```rust,no_run
-use refimage::{FitsCompression, FitsWrite, GenericImageRef}; // we need the FitsWrite trait to be able to use the `write_fits` method.
+A `GenericImageRef` can be stored in a standard format such as [bincode](https://crates.io/crates/bincode) — which follows trivially from its `serde` implementation — or written to a FITS file through the `FitsWrite` trait. The FITS writer is pure Rust and always available.
+```rust,ignore
+use refimage::{FitsCompression, FitsWrite, GenericImageRef};
 use std::path::Path;
 let img: GenericImageRef = { todo!() }; // obtain a GenericImageRef
-img.write_fits(Path::new("/path/to/fitsimage.fit"), FitsCompression::None, true) // no compression, overwrite
+
+// RICE_1 tile compression; overwrite if it exists.
+img.write_fits(Path::new("/path/to/image.fits"), FitsCompression::Rice, true)
     .expect("Could not write FITS file.");
+
+// Or straight to bytes — handy on wasm, where there is no filesystem.
+let bytes: Vec<u8> = img.fits_bytes(FitsCompression::Gzip).unwrap();
 ```
 
 ## Conversions
@@ -100,10 +103,12 @@ assert_eq!(luma.color_space(), ColorSpace::Gray);
 ```
 `Strategy::Sequential` uses one ping-pong buffer pair; `Strategy::tiled`/`tiled_parallel`/`tiled_2d`/`tiled_2d_parallel` cut the frame into cache-sized tiles (bit-identical output). A serial-tiled `Runner` does **zero** heap allocation per frame once compiled. See the module docs for how geometric ops interact with tiling and for `Runner::recompile` / the `grow` feature.
 
+# FITS
+Writing `GenericImageRef` / `GenericImageOwned` to FITS via the `FitsWrite` trait is a core, always-available feature — a pure-Rust implementation with no `cfitsio` linkage. It writes uncompressed images and the tile-compression convention (`FitsCompression::{None, Gzip, Rice}`); multi-channel images are stored planar, `u16` carries `BZERO = 32768`, and metadata becomes header cards (`HIERARCH` for long keys, `CONTINUE` for long strings). Output is checked against `astropy.io.fits` and `cfitsio` in the test suite. `FitsWrite::fits_bytes` serialises to memory when there is no filesystem.
+
 # Optional Features
 Features are available to extend the functionalities of the core `refimage` data types:
 - `rayon`: Parallelizes luma / demosaic / cast inside the `pipeline`, and enables the parallel `pipeline` strategies (<b>enabled</b> by default).
-- `fitsio`: Exposes `FitsWrite` trait to write `GenericImageRef` and `GenericImageOwned` (<b>disabled</b> by default).
 - `image`: Enables `TryFrom` conversions between `image::DynamicImage` and `refimage::DynamicImageRef`, `refimage::DynamicImageOwned` (<b>disabled</b> by default).
 - `grow`: Lets a compiled pipeline `Runner` reallocate its buffers on a frame-shape change instead of erroring (<b>disabled</b> by default).
 
@@ -117,4 +122,4 @@ cargo test --target wasm32-unknown-unknown --no-default-features --tests
 
 (`--tests` skips the doc-tests, which rustdoc does not cross-compile.)
 
-The `fitsio` feature (which links the C `cfitsio` library) is not available on wasm.
+FITS writing works on wasm too (it is pure Rust); `FitsWrite::fits_bytes` returns the file as a `Vec<u8>` since `wasm32-unknown-unknown` has no filesystem.

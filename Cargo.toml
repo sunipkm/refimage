@@ -29,18 +29,13 @@ include = [
 # Always required.
 bytemuck = "1.23"
 crc32fast = "1.5"
+miniz_oxide = "0.8"
 num-traits = "0.2.19"
 paste = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
 
 # Optional: pulled in by the feature named after each crate (see [features]).
-# `chrono` is only used by the FITS date-stamp writer, and only needs `alloc`
-# (for `DelayedFormat`'s `Display`) — not `std` or `clock`.
-chrono = { version = "0.4", default-features = false, features = [
-    "alloc",
-], optional = true }
-fitsio = { version = "0.21", optional = true }
 image = { version = "0.25", optional = true, default-features = false }
 rayon = { version = "1.10", optional = true }
 
@@ -50,9 +45,10 @@ serde-generate = "0.34"
 serde_json = "1.0"
 serde-reflection = "0.6"
 
-# `rand` is only used by the benches, which never target wasm; keeping it off the
-# wasm build avoids `getrandom`'s `wasm32-unknown-unknown` opt-in.
+# Not built for wasm: `rand` (benches only) drags in `getrandom`'s wasm opt-in;
+# `fitsio` (cross-checks the pure-Rust FITS writer against cfitsio) links C.
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+fitsio = "0.21"
 rand = "0.8"
 
 # `tests/wasm.rs`:
@@ -64,13 +60,10 @@ wasm-bindgen-test = "0.3"
 # `refimage` always links `std` (it is built around `std::time::SystemTime` and
 # `HashMap`); the features below only add optional integrations.
 default = ["rayon"]
-full = ["default", "fitsio", "image", "grow"]
+full = ["default", "image", "grow"]
 
 # Parallel debayer / luminance / pixel-scale kernels in the pipeline.
 rayon = ["dep:rayon"]
-# `FitsWrite` / `create_fits`. Also pulls `chrono`, used only for the FITS
-# date-stamp string.
-fitsio = ["dep:fitsio", "dep:chrono"]
 # `TryFrom` conversions to and from `image::DynamicImage`.
 image = ["dep:image"]
 # Let a compiled pipeline `Runner` reallocate its buffers when `run` is handed a
@@ -95,7 +88,7 @@ path = "examples/test_debayer.rs"
 [[example]]
 name = "test_flow"
 path = "examples/test_flow.rs"
-required-features = ["full"]
+required-features = ["image"]
 
 [[example]]
 name = "pipeline"

@@ -56,10 +56,38 @@
       "Read(//tmp/**)",
       "Bash(set -e)",
       "Bash(echo \"wasm suite exit: $?\")",
-      "Bash(rg -n \"interleav|planar|channel.*major|// channels|chunks_exact\\\\\\(channels\\\\\\)|pixel.*interleav\" src/*.rs)"
+      "Bash(rg -n \"interleav|planar|channel.*major|// channels|chunks_exact\\\\\\(channels\\\\\\)|pixel.*interleav\" src/*.rs)",
+      "Bash(rg -n \"write_fits|append_fits|create_fits|FitsWrite|FitsCompression|FitsError|fitsio\" --iglob '!Cargo.lock' -l)",
+      "Bash(rg -n \"pub enum PixelType\" -A20 src/*.rs)",
+      "Bash(python3 -c \"import astropy; print\\('astropy', astropy.__version__\\)\")",
+      "Bash(python3 -c \"import numpy; print\\('numpy', numpy.__version__\\)\")",
+      "Bash(python3 -m pip --version)",
+      "Bash(/opt/homebrew/bin/python3 -c \"import sys,astropy,numpy; print\\(sys.version\\); print\\('astropy',astropy.__version__,'numpy',numpy.__version__\\); from astropy.io import fits; print\\('fits ok'\\)\")",
+      "Bash(/Users/sunip/.miniconda3/bin/python -c \"import astropy; print\\(astropy.__version__\\)\")",
+      "Bash(rg -n \"macro_rules! dynamic_map|dynamic_map!\" src/*.rs)",
+      "Bash(git rm *)",
+      "Read(//Users/sunip/.cargo/registry/src/**)",
+      "Read(//Users/sunip/.cargo/**)",
+      "Bash(brew list *)",
+      "Bash(sed -n '1,120p' /Users/sunip/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fitsio-sys-0.5.7/ext/cfitsio/ricecomp.c)",
+      "Read(//Users/sunip/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fitsio-sys-0.5.7/ext/cfitsio/**)",
+      "Bash(sed -n '120,330p' /Users/sunip/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fitsio-sys-0.5.7/ext/cfitsio/ricecomp.c)",
+      "Bash(sed -n '330,520p' /Users/sunip/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fitsio-sys-0.5.7/ext/cfitsio/ricecomp.c)",
+      "Bash(awk 'NR>=880 && NR<=1010' /Users/sunip/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fitsio-sys-0.5.7/ext/cfitsio/ricecomp.c)",
+      "Bash(sed -n '1043,1085p' /Users/sunip/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fitsio-sys-0.5.7/ext/cfitsio/ricecomp.c)",
+      "Bash(/opt/homebrew/Cellar/cfitsio/4.7.0/bin/fitsverify /tmp/dbg_none.fits)",
+      "Bash(rg -n \"fn read_image\\\\b|fn read_region|pub fn read_key\\\\b|ReadImage\" ~/.cargo/registry/src/*/fitsio-0.21.10/src/images.rs | head; echo \"---\"; sed -n '/impl ReadImage for Vec/,/^}/p' ~/.cargo/registry/src/*/fitsio-0.21.10/src/images.rs | head -60)",
+      "Bash(sed -n '95,160p' ~/.cargo/registry/src/*/fitsio-0.21.10/src/images.rs | sed -n '40,66p')",
+      "Bash(sed -n '36,55p' ~/.cargo/registry/src/*/fitsio-0.21.10/src/images.rs)",
+      "Bash(sed -i '' 's/let hdu = f.hdu\\(0\\).or_else\\(|_| f.hdu\\(1\\)\\).unwrap\\(\\);/let hdu = image_hdu\\(\\\\&mut f\\);/' tests/fits_roundtrip.rs)",
+      "Bash(python3 -c \"from astropy.io import fits; h=fits.open\\('test.fits'\\); h.info\\(\\); print\\(h[0].data.shape, h[0].data.dtype\\)\")",
+      "Bash(cargo doc *)",
+      "Bash(grep -A3 \"unresolved link to \\\\`GenericImage\")",
+      "Bash(awk '{s+=$4} END {print s\" tests passed\"}')"
     ],
     "additionalDirectories": [
-      "/private/tmp"
+      "/private/tmp",
+      "/Users/sunip/.cargo/registry/src/*/fitsio-0.21.10/src"
     ]
   }
 }

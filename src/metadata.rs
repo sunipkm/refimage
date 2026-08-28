@@ -97,29 +97,18 @@ pub struct GenericLineItem {
 pub type MetaCollection = HashMap<String, GenericLineItem>;
 
 /// A type-erased enum to hold a metadata value.
+///
+/// The set of variants mirrors what a FITS header card can carry. Integer metadata of
+/// any width is promoted losslessly to [`GenericValue::Integer`] (`i64`); `u64` is not a
+/// supported metadata type because it cannot be promoted without loss. `f32` and `f64`
+/// both land in [`GenericValue::Real`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum GenericValue {
-    /// An unsigned 8-bit integer.
-    U8(u8),
-    /// An unsigned 16-bit integer.
-    U16(u16),
-    /// An unsigned 32-bit integer.
-    U32(u32),
-    /// An unsigned 64-bit integer.
-    U64(u64),
-    /// A signed 8-bit integer.
-    I8(i8),
-    /// A signed 16-bit integer.
-    I16(i16),
-    /// A signed 32-bit integer.
-    I32(i32),
-    /// A signed 64-bit integer.
-    I64(i64),
-    /// A 32-bit floating point number.
-    F32(f32),
-    /// A 64-bit floating point number.
-    F64(f64),
+    /// An integer. All integer metadata is stored here as `i64`.
+    Integer(i64),
+    /// A floating point number. `f32` metadata is widened to `f64`.
+    Real(f64),
     /// Color space of the image ([`ColorSpace`]).
     ColorSpace(crate::ColorSpace),
     /// A [`Duration`].
@@ -142,6 +131,37 @@ impl GenericLineItem {
     }
 }
 
+/// `From<int> for GenericValue` via lossless widening to `i64`.
+macro_rules! impl_from_int {
+    ($t:ty) => {
+        impl From<$t> for GenericValue {
+            fn from(value: $t) -> Self {
+                GenericValue::Integer(i64::from(value))
+            }
+        }
+    };
+}
+
+impl_from_int!(u8);
+impl_from_int!(u16);
+impl_from_int!(u32);
+impl_from_int!(i8);
+impl_from_int!(i16);
+impl_from_int!(i32);
+impl_from_int!(i64);
+
+impl From<f32> for GenericValue {
+    fn from(value: f32) -> Self {
+        GenericValue::Real(f64::from(value))
+    }
+}
+
+impl From<f64> for GenericValue {
+    fn from(value: f64) -> Self {
+        GenericValue::Real(value)
+    }
+}
+
 macro_rules! impl_from_genericvalue {
     ($t:ty, $variant:path) => {
         impl From<$t> for GenericValue {
@@ -152,20 +172,58 @@ macro_rules! impl_from_genericvalue {
     };
 }
 
-impl_from_genericvalue!(u8, GenericValue::U8);
-impl_from_genericvalue!(u16, GenericValue::U16);
-impl_from_genericvalue!(u32, GenericValue::U32);
-impl_from_genericvalue!(u64, GenericValue::U64);
-impl_from_genericvalue!(i8, GenericValue::I8);
-impl_from_genericvalue!(i16, GenericValue::I16);
-impl_from_genericvalue!(i32, GenericValue::I32);
-impl_from_genericvalue!(i64, GenericValue::I64);
-impl_from_genericvalue!(f32, GenericValue::F32);
-impl_from_genericvalue!(f64, GenericValue::F64);
 impl_from_genericvalue!(ColorSpace, GenericValue::ColorSpace);
 impl_from_genericvalue!(Duration, GenericValue::Duration);
 impl_from_genericvalue!(SystemTime, GenericValue::SystemTime);
 impl_from_genericvalue!(String, GenericValue::String);
+
+/// `TryInto<int> for GenericValue` from the stored `i64`, range-checked.
+macro_rules! impl_tryinto_int {
+    ($t:ty) => {
+        impl TryInto<$t> for GenericValue {
+            type Error = MetadataError;
+
+            fn try_into(self) -> Result<$t, Self::Error> {
+                match self {
+                    GenericValue::Integer(x) => {
+                        <$t>::try_from(x).map_err(|_| MetadataError::WrongValueType)
+                    }
+                    _ => Err(MetadataError::WrongValueType),
+                }
+            }
+        }
+    };
+}
+
+impl_tryinto_int!(u8);
+impl_tryinto_int!(u16);
+impl_tryinto_int!(u32);
+impl_tryinto_int!(i8);
+impl_tryinto_int!(i16);
+impl_tryinto_int!(i32);
+impl_tryinto_int!(i64);
+
+impl TryInto<f32> for GenericValue {
+    type Error = MetadataError;
+
+    fn try_into(self) -> Result<f32, Self::Error> {
+        match self {
+            GenericValue::Real(x) => Ok(x as f32),
+            _ => Err(MetadataError::WrongValueType),
+        }
+    }
+}
+
+impl TryInto<f64> for GenericValue {
+    type Error = MetadataError;
+
+    fn try_into(self) -> Result<f64, Self::Error> {
+        match self {
+            GenericValue::Real(x) => Ok(x),
+            _ => Err(MetadataError::WrongValueType),
+        }
+    }
+}
 
 macro_rules! impl_tryinto_genericvalue {
     ($t:ty, $variant:path) => {
@@ -182,16 +240,6 @@ macro_rules! impl_tryinto_genericvalue {
     };
 }
 
-impl_tryinto_genericvalue!(u8, GenericValue::U8);
-impl_tryinto_genericvalue!(u16, GenericValue::U16);
-impl_tryinto_genericvalue!(u32, GenericValue::U32);
-impl_tryinto_genericvalue!(u64, GenericValue::U64);
-impl_tryinto_genericvalue!(i8, GenericValue::I8);
-impl_tryinto_genericvalue!(i16, GenericValue::I16);
-impl_tryinto_genericvalue!(i32, GenericValue::I32);
-impl_tryinto_genericvalue!(i64, GenericValue::I64);
-impl_tryinto_genericvalue!(f32, GenericValue::F32);
-impl_tryinto_genericvalue!(f64, GenericValue::F64);
 impl_tryinto_genericvalue!(ColorSpace, GenericValue::ColorSpace);
 impl_tryinto_genericvalue!(Duration, GenericValue::Duration);
 impl_tryinto_genericvalue!(SystemTime, GenericValue::SystemTime);
@@ -211,7 +259,7 @@ pub trait InsertValue {
 }
 
 macro_rules! insert_value_impl {
-    ($t:ty, $datatype:expr) => {
+    ($t:ty) => {
         impl InsertValue for $t {
             fn insert(
                 f: &mut MetaCollection,
@@ -307,20 +355,19 @@ fn str_value_check(value: &str) -> Result<(), MetadataError> {
     }
 }
 
-insert_value_impl!(u8, PrvGenLineItem::U8);
-insert_value_impl!(u16, PrvGenLineItem::U16);
-insert_value_impl!(u32, PrvGenLineItem::U32);
-insert_value_impl!(u64, PrvGenLineItem::U64);
-insert_value_impl!(i8, PrvGenLineItem::I8);
-insert_value_impl!(i16, PrvGenLineItem::I16);
-insert_value_impl!(i32, PrvGenLineItem::I32);
-insert_value_impl!(i64, PrvGenLineItem::I64);
-insert_value_impl!(f32, PrvGenLineItem::F32);
-insert_value_impl!(f64, PrvGenLineItem::F64);
-insert_value_impl!(ColorSpace, PrvGenLineItem::ColorSpace);
-insert_value_impl!(String, PrvGenLineItem::String);
-insert_value_impl!(Duration, PrvGenLineItem::Duration);
-insert_value_impl!(SystemTime, PrvGenLineItem::SystemTime);
+insert_value_impl!(u8);
+insert_value_impl!(u16);
+insert_value_impl!(u32);
+insert_value_impl!(i8);
+insert_value_impl!(i16);
+insert_value_impl!(i32);
+insert_value_impl!(i64);
+insert_value_impl!(f32);
+insert_value_impl!(f64);
+insert_value_impl!(ColorSpace);
+insert_value_impl!(String);
+insert_value_impl!(Duration);
+insert_value_impl!(SystemTime);
 
 impl InsertValue for &str {
     fn insert(f: &mut MetaCollection, name: &str, value: Self) -> Result<(), MetadataError> {
@@ -396,7 +443,6 @@ impl GenericValue {
     impl_getter!(u8);
     impl_getter!(u16);
     impl_getter!(u32);
-    impl_getter!(u64);
     impl_getter!(i8);
     impl_getter!(i16);
     impl_getter!(i32);
