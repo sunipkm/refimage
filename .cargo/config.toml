@@ -1,0 +1,5 @@
+# Run `tests/wasm.rs` under Node via wasm-bindgen's harness:
+#   cargo install wasm-bindgen-cli
+#   cargo test --target wasm32-unknown-unknown --no-default-features
+[target.wasm32-unknown-unknown]
+runner = "wasm-bindgen-test-runner"

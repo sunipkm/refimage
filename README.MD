@@ -106,3 +106,15 @@ Features are available to extend the functionalities of the core `refimage` data
 - `fitsio`: Exposes `FitsWrite` trait to write `GenericImageRef` and `GenericImageOwned` (<b>disabled</b> by default).
 - `image`: Enables `TryFrom` conversions between `image::DynamicImage` and `refimage::DynamicImageRef`, `refimage::DynamicImageOwned` (<b>disabled</b> by default).
 - `grow`: Lets a compiled pipeline `Runner` reallocate its buffers on a frame-shape change instead of erroring (<b>disabled</b> by default).
+
+# WebAssembly
+The core of `refimage` — image construction, the `pipeline`, metadata, and `serde` — runs on `wasm32-unknown-unknown`. It never calls `SystemTime::now()`, spawns threads, or touches the filesystem itself; the caller supplies timestamps, and the pipeline falls back to its serial kernels when `rayon` is off. `tests/wasm.rs` is a `wasm-bindgen-test` suite covering this:
+
+```sh
+cargo install wasm-bindgen-cli
+cargo test --target wasm32-unknown-unknown --no-default-features --tests
+```
+
+(`--tests` skips the doc-tests, which rustdoc does not cross-compile.)
+
+The `fitsio` feature (which links the C `cfitsio` library) is not available on wasm.

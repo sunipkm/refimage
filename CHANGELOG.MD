@@ -31,6 +31,16 @@
 - `DemosaicMethod` now derives `Serialize` / `Deserialize`.
 - Added the `pipeline` example; `test_debayer` / `test_flow` rewritten to the
   pipeline API.
+- `refimage` now builds and is tested on `wasm32-unknown-unknown`: added
+  `tests/wasm.rs` (a `wasm-bindgen-test` suite over image construction, the
+  pipeline, metadata, and serde) and a GitHub Actions job that runs it. `rand`
+  is now a non-wasm dev-dependency.
+- Dependency cleanup: dropped the unused `itertools` dependency and the
+  `color-backtrace` dev-dependency; dropped the unused `aarch64_simd`,
+  `wasm_simd` and `extern_crate_alloc` `bytemuck` features. `chrono` is now an
+  optional dependency, activated only by the `fitsio` feature (its sole user),
+  and built with just `alloc` rather than `std`. Bumped `thiserror` to 2.0 and
+  refreshed the remaining version requirements.
 
 ### 1.0.0-pre5 (2025-01-21)
 - Internal changes to `fitsio_interop` function signatures.

@@ -1425,7 +1425,7 @@ fn fill_tiled(
             );
     }
     #[cfg(not(feature = "rayon"))]
-    let _ = (parallel, cap_a, cap_b);
+    let _ = (parallel, cap_a, cap_b, demo_len);
 
     let out_u8 = &mut cast_slice_mut::<f32, u8>(out_buf)[..out_bytes];
     for (idx, band) in out_u8.chunks_mut(tile_rows * out_row).enumerate() {
