@@ -1,8 +1,7 @@
-use std::{
-    collections::HashMap,
-    time::{Duration, SystemTime},
-};
+use std::time::Duration;
 
+use chrono::{DateTime, Utc};
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -48,14 +47,15 @@ pub enum MetadataError {
 /// `Result` alias for [`MetadataError`].
 pub type MetadataResult<T> = Result<T, MetadataError>;
 
-/// Key for the timestamp metadata.
-/// This key is inserted by default when creating a new [`GenericImageRef`], [`GenericImageOwned`] or [`GenericImage`].
+/// Name of the timestamp field, reserved because [`Metadata`] stores it as a
+/// typed field rather than a map entry.
 pub const TIMESTAMP_KEY: &str = "TIMESTAMP";
 /// Key for the camera name metadata.
 pub const CAMERANAME_KEY: &str = "CAMERA";
 /// Key for the name of the program that generated this object.
 pub const PROGRAMNAME_KEY: &str = "PROGNAME";
-/// Key for exposure time metadata of the image.
+/// Name of the exposure field, reserved because [`Metadata`] stores it as a
+/// typed field rather than a map entry.
 pub const EXPOSURE_KEY: &str = "EXPOSURE";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -74,7 +74,7 @@ pub const EXPOSURE_KEY: &str = "EXPOSURE";
 /// - [`i8`] | [`i16`] | [`i32`] | [`i64`]
 /// - [`f32`] | [`f64`]
 /// - [`ColorSpace`]
-/// - [`std::time::Duration`] | [`std::time::SystemTime`]
+/// - [`std::time::Duration`] | [`chrono::DateTime<Utc>`](chrono::DateTime)
 /// - [`String`] | [`&str`]
 ///
 /// The metadata values are encapsulated in a type-erased enum [`GenericValue`].
@@ -82,26 +82,152 @@ pub const EXPOSURE_KEY: &str = "EXPOSURE";
 /// # Note
 /// - The metadata key is case-insensitive and is stored as an uppercase string.
 /// - When saving to a FITS file, the metadata comment may be truncated.
-/// - Metadata of type [`std::time::Duration`] or [`std::time::SystemTime`] are
-///   1. Stored as two consecutive metadata items, split into seconds ([`u64`])
-///      and nanoseconds ([`u64`]). The keys are suffixed with `_S` and `_NS`.
-///   2. Metadata of type [`Duration`] is stored as a single floating point
-///      number ([`f64`]), in seconds, under the original key.
+/// - Metadata of type [`std::time::Duration`] or [`chrono::DateTime<Utc>`](chrono::DateTime)
+///   is stored as two consecutive metadata items, split into seconds and
+///   nanoseconds, with keys suffixed `_S` and `_NS`, plus a convenient base card
+///   (`f64` seconds for a `Duration`, an ISO-8601 string for a timestamp).
 ///
 pub struct GenericLineItem {
     pub(crate) value: GenericValue,
     pub(crate) comment: Option<String>,
 }
 
-/// A collection of metadata items.
-pub type MetaCollection = HashMap<String, GenericLineItem>;
+/// A collection of metadata items, keyed by uppercase name and kept in
+/// insertion order.
+pub type MetaCollection = IndexMap<String, GenericLineItem>;
+
+/// Image metadata: a mandatory typed core plus an ordered map of extra items.
+///
+/// Every [`GenericImageRef`](crate::GenericImageRef) /
+/// [`GenericImageOwned`](crate::GenericImageOwned) carries one of these. The
+/// `timestamp` (a UTC [`DateTime`], unambiguous and timezone-free) and `exposure`
+/// are stored as typed fields — always present, never map lookups — so
+/// [`Metadata::timestamp`] is infallible. Everything else lives in an
+/// insertion-ordered [`MetaCollection`].
+///
+/// A zero [`exposure`](Metadata::exposure) (`Duration::ZERO`) means "unknown / not
+/// applicable" (e.g. a synthetic or stacked frame).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct Metadata {
+    timestamp: DateTime<Utc>,
+    exposure: Duration,
+    extra: MetaCollection,
+}
+
+impl Metadata {
+    /// Create a metadata block with an empty extra-item map.
+    ///
+    /// Pass `Duration::ZERO` for `exposure` when the image has no meaningful
+    /// single exposure.
+    pub fn new(timestamp: DateTime<Utc>, exposure: Duration) -> Self {
+        Self {
+            timestamp,
+            exposure,
+            extra: MetaCollection::new(),
+        }
+    }
+
+    /// The image creation timestamp (UTC).
+    pub fn timestamp(&self) -> DateTime<Utc> {
+        self.timestamp
+    }
+
+    /// The exposure duration (`Duration::ZERO` if unknown / not applicable).
+    pub fn exposure(&self) -> Duration {
+        self.exposure
+    }
+
+    /// Set the timestamp.
+    pub fn set_timestamp(&mut self, timestamp: DateTime<Utc>) {
+        self.timestamp = timestamp;
+    }
+
+    /// Set the exposure duration.
+    pub fn set_exposure(&mut self, exposure: Duration) {
+        self.exposure = exposure;
+    }
+
+    /// Borrow the ordered map of extra metadata items.
+    pub fn extra(&self) -> &MetaCollection {
+        &self.extra
+    }
+
+    /// Number of extra metadata items (excludes the typed timestamp / exposure).
+    pub fn len(&self) -> usize {
+        self.extra.len()
+    }
+
+    /// `true` if there are no extra metadata items.
+    pub fn is_empty(&self) -> bool {
+        self.extra.is_empty()
+    }
+
+    /// Iterate the extra metadata items in insertion order.
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &GenericLineItem)> {
+        self.extra.iter()
+    }
+
+    /// Look up an extra metadata item by name (case-insensitive).
+    pub fn get(&self, name: &str) -> Option<&GenericLineItem> {
+        self.extra.get(&name.to_uppercase())
+    }
+
+    /// Insert an extra metadata item.
+    ///
+    /// # Errors
+    /// [`MetadataError::ReservedKey`] for `TIMESTAMP` / `EXPOSURE` (use
+    /// [`set_timestamp`](Self::set_timestamp) / [`set_exposure`](Self::set_exposure)),
+    /// otherwise a key/comment/value validation error.
+    pub fn insert<T: InsertValue>(&mut self, name: &str, value: T) -> Result<(), MetadataError> {
+        reserved_check(name)?;
+        T::insert(&mut self.extra, name, value)
+    }
+
+    /// Replace an existing extra metadata item.
+    ///
+    /// # Errors
+    /// [`MetadataError::ReservedKey`] for `TIMESTAMP` / `EXPOSURE`,
+    /// [`MetadataError::KeyNotFound`] if the key is absent, otherwise a
+    /// validation error.
+    pub fn replace<T: InsertValue>(
+        &mut self,
+        name: &str,
+        value: T,
+    ) -> Result<GenericLineItem, MetadataError> {
+        reserved_check(name)?;
+        T::replace(&mut self.extra, name, value)
+    }
+
+    /// Remove an extra metadata item, returning it.
+    ///
+    /// # Errors
+    /// [`MetadataError::ReservedKey`] for `TIMESTAMP` / `EXPOSURE`,
+    /// [`MetadataError::KeyNotFound`] if the key is absent, otherwise a
+    /// key-validation error.
+    pub fn remove(&mut self, name: &str) -> Result<GenericLineItem, MetadataError> {
+        reserved_check(name)?;
+        name_check(name)?;
+        self.extra
+            .shift_remove(&name.to_uppercase())
+            .ok_or(MetadataError::KeyNotFound)
+    }
+}
+
+fn reserved_check(name: &str) -> Result<(), MetadataError> {
+    match name.to_uppercase().as_str() {
+        TIMESTAMP_KEY => Err(MetadataError::ReservedKey(TIMESTAMP_KEY)),
+        EXPOSURE_KEY => Err(MetadataError::ReservedKey(EXPOSURE_KEY)),
+        _ => Ok(()),
+    }
+}
 
 /// A type-erased enum to hold a metadata value.
 ///
 /// The set of variants mirrors what a FITS header card can carry. Integer metadata of
 /// any width is promoted losslessly to [`GenericValue::Integer`] (`i64`); `u64` is not a
 /// supported metadata type because it cannot be promoted without loss. `f32` and `f64`
-/// both land in [`GenericValue::Real`].
+/// both land in [`GenericValue::Real`]. Timestamps are UTC [`DateTime`]s.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum GenericValue {
@@ -113,8 +239,8 @@ pub enum GenericValue {
     ColorSpace(crate::ColorSpace),
     /// A [`Duration`].
     Duration(Duration),
-    /// A [`SystemTime`].
-    SystemTime(SystemTime),
+    /// A UTC timestamp.
+    Timestamp(DateTime<Utc>),
     /// A string.
     String(String),
 }
@@ -174,7 +300,7 @@ macro_rules! impl_from_genericvalue {
 
 impl_from_genericvalue!(ColorSpace, GenericValue::ColorSpace);
 impl_from_genericvalue!(Duration, GenericValue::Duration);
-impl_from_genericvalue!(SystemTime, GenericValue::SystemTime);
+impl_from_genericvalue!(DateTime<Utc>, GenericValue::Timestamp);
 impl_from_genericvalue!(String, GenericValue::String);
 
 /// `TryInto<int> for GenericValue` from the stored `i64`, range-checked.
@@ -242,7 +368,7 @@ macro_rules! impl_tryinto_genericvalue {
 
 impl_tryinto_genericvalue!(ColorSpace, GenericValue::ColorSpace);
 impl_tryinto_genericvalue!(Duration, GenericValue::Duration);
-impl_tryinto_genericvalue!(SystemTime, GenericValue::SystemTime);
+impl_tryinto_genericvalue!(DateTime<Utc>, GenericValue::Timestamp);
 impl_tryinto_genericvalue!(String, GenericValue::String);
 
 /// Trait to insert a metadata value into a [`MetaCollection`].
@@ -367,7 +493,7 @@ insert_value_impl!(f64);
 insert_value_impl!(ColorSpace);
 insert_value_impl!(String);
 insert_value_impl!(Duration);
-insert_value_impl!(SystemTime);
+insert_value_impl!(DateTime<Utc>);
 
 impl InsertValue for &str {
     fn insert(f: &mut MetaCollection, name: &str, value: Self) -> Result<(), MetadataError> {
@@ -450,7 +576,12 @@ impl GenericValue {
     impl_getter!(f32);
     impl_getter!(f64);
     impl_getter!(Duration);
-    impl_getter!(SystemTime);
+
+    /// Get the UTC timestamp metadata value.
+    #[inline(always)]
+    pub fn get_value_timestamp(&self) -> Option<DateTime<Utc>> {
+        self.clone().try_into().ok()
+    }
 
     /// Get the `String` metadata value.
     #[inline(always)]
@@ -471,12 +602,14 @@ mod test {
             BayerPattern, DemosaicMethod, DynamicImageOwned, DynamicImageRef, GenericImageOwned,
             ImageOwned, ImageProps, ImageRef,
         };
-        use std::time::SystemTime;
+        use chrono::DateTime;
+        use std::time::Duration;
 
         let data = vec![0u8; 256];
         let img = ImageOwned::from_owned(data, 16, 16, BayerPattern::Grbg.into()).unwrap();
         let img = DynamicImageOwned::from(img);
-        let mut img = GenericImageOwned::new(SystemTime::now(), img);
+        let ts = DateTime::from_timestamp(1_700_000_000, 0).unwrap();
+        let mut img = GenericImageOwned::new(ts, Duration::from_millis(10), img);
 
         img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
         img.insert_key("TESTING_THIS_LONG_KEY", "This is a long key")
@@ -500,5 +633,71 @@ mod test {
         assert_eq!(img.get_image().width(), img2.get_image().width());
         assert_eq!(img.get_image().height(), img2.get_image().height());
         assert_eq!(img.get_image().channels() * 3, img2.get_image().channels());
+    }
+
+    #[test]
+    fn metadata_typed_core_and_reserved_keys() {
+        use super::{Metadata, MetadataError};
+        use chrono::DateTime;
+        use std::time::Duration;
+
+        let ts = DateTime::from_timestamp(1_000_000, 0).unwrap();
+        let mut m = Metadata::new(ts, Duration::from_millis(250));
+        assert_eq!(m.timestamp(), ts);
+        assert_eq!(m.exposure(), Duration::from_millis(250));
+        assert!(m.is_empty());
+
+        assert_eq!(
+            m.insert("TIMESTAMP", 1u8),
+            Err(MetadataError::ReservedKey("TIMESTAMP"))
+        );
+        assert_eq!(
+            m.insert("exposure", 1u8),
+            Err(MetadataError::ReservedKey("EXPOSURE"))
+        );
+
+        m.insert("Camera", "cam").unwrap();
+        m.insert("GAIN", 3u16).unwrap();
+        assert_eq!(m.len(), 2);
+        // case-insensitive lookup
+        assert!(m.get("camera").is_some());
+        // insertion order is preserved
+        let keys: Vec<&str> = m.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(keys, ["CAMERA", "GAIN"]);
+
+        m.set_exposure(Duration::ZERO);
+        assert_eq!(m.exposure(), Duration::ZERO);
+        let epoch = DateTime::from_timestamp(0, 0).unwrap();
+        m.set_timestamp(epoch);
+        assert_eq!(m.timestamp(), epoch);
+
+        assert!(m.remove("GAIN").is_ok());
+        assert_eq!(m.remove("GAIN"), Err(MetadataError::KeyNotFound));
+        assert_eq!(m.len(), 1);
+    }
+
+    #[test]
+    fn metadata_roundtrips_through_bincode() {
+        use super::Metadata;
+        use chrono::DateTime;
+        use std::time::Duration;
+
+        let mut m = Metadata::new(
+            DateTime::from_timestamp(42, 0).unwrap(),
+            Duration::from_secs(1),
+        );
+        m.insert("A", 1i32).unwrap();
+        m.insert("B", "two").unwrap();
+        let bytes = bincode::serialize(&m).unwrap();
+        let back: Metadata = bincode::deserialize(&bytes).unwrap();
+        assert_eq!(m, back);
+
+        // pre-epoch timestamps round-trip too (they did not with `SystemTime`).
+        let pre = Metadata::new(
+            DateTime::from_timestamp(-2_000_000_000, 0).unwrap(),
+            Duration::ZERO,
+        );
+        let back: Metadata = bincode::deserialize(&bincode::serialize(&pre).unwrap()).unwrap();
+        assert_eq!(pre, back);
     }
 }

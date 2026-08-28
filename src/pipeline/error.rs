@@ -2,7 +2,11 @@
 
 use thiserror::Error;
 
-use crate::{BayerError, ImageError, PixelType};
+#[allow(unused_imports)]
+use crate::{
+    pipeline::{Op, Pipeline, Runner},
+    BayerError, ImageError, PixelType,
+};
 
 use super::ImageSpec;
 

@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use crate::{
-    imagetraits::ImageProps, CalcOptExp, ColorSpace, ImageError, OptimumExposure, PixelStor,
-    PixelType,
+    imagetraits::ImageProps, CalcOptExp, ColorSpace, ExposureResult, ImageError, OptimumExposure,
+    OptimumExposureResult, PixelStor, PixelType,
 };
 use bytemuck::{AnyBitPattern, PodCastError};
 
@@ -138,12 +138,12 @@ impl<'a, T: PixelStor> ImageRef<'a, T> {
     }
 
     /// Get an iterator over the data.
-    pub fn iter(&self) -> std::slice::Iter<T> {
+    pub fn iter(&self) -> core::slice::Iter<'_, T> {
         self.data[..self.len].iter()
     }
 
     /// Get a mutable iterator over the data.
-    pub fn iter_mut(&mut self) -> std::slice::IterMut<T> {
+    pub fn iter_mut(&mut self) -> core::slice::IterMut<'_, T> {
         self.data[..self.len].iter_mut()
     }
 
@@ -246,14 +246,14 @@ pub(crate) fn cast_msg(e: PodCastError) -> &'static str {
     }
 }
 
-impl<T: PixelStor + Ord> CalcOptExp for ImageRef<'_, T> {
+impl<T: PixelStor> CalcOptExp for ImageRef<'_, T> {
     fn calc_opt_exp(
-        self,
+        &mut self,
         eval: &OptimumExposure,
         exposure: Duration,
-        bin: u8,
-    ) -> Result<(Duration, u16), crate::ExposureError> {
-        eval.calculate(self.data, self.len, exposure, bin)
+        bin: u16,
+    ) -> ExposureResult<OptimumExposureResult> {
+        eval.calculate(self.as_mut_slice(), exposure, bin)
     }
 }
 
@@ -286,11 +286,14 @@ mod test {
             .build()
             .unwrap();
         let mut imgsrc = vec![0u8, 1, 2, 3, 4, 6, 5, 7, 8, 9, 10, 9, 8];
-        let img = crate::ImageRef::new(imgsrc.as_mut_slice(), 5, 2, crate::ColorSpace::Gray)
+        let mut img = crate::ImageRef::new(imgsrc.as_mut_slice(), 5, 2, crate::ColorSpace::Gray)
             .expect("Failed to create ImageOwned");
-        let exp = std::time::Duration::from_secs(10); // expected exposure
-        let bin = 1; // expected binning
-        let res = img.calc_opt_exp(&opt_exp, exp, bin).unwrap();
-        assert_eq!(res, (exp, bin as u16));
+        let res = img
+            .calc_opt_exp(&opt_exp, std::time::Duration::from_secs(10), 1)
+            .unwrap();
+        // Near-black frame -> exposure clamped to the 10 s default maximum.
+        assert_eq!(res.exposure, std::time::Duration::from_secs(10));
+        assert_eq!(res.bin, 1);
+        assert!(res.clamped);
     }
 }

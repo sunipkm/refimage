@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use crate::{
-    imagetraits::ImageProps, CalcOptExp, ColorSpace, ImageError, ImageRef, OptimumExposure,
-    PixelStor, PixelType,
+    imagetraits::ImageProps, CalcOptExp, ColorSpace, ExposureResult, ImageError, ImageRef,
+    OptimumExposure, OptimumExposureResult, PixelStor, PixelType,
 };
 use bytemuck::AnyBitPattern;
 
@@ -149,12 +149,12 @@ impl<T: PixelStor> ImageOwned<T> {
     }
 
     /// Get an iterator over the data.
-    pub fn iter(&self) -> std::slice::Iter<T> {
+    pub fn iter(&self) -> core::slice::Iter<'_, T> {
         self.data.iter()
     }
 
     /// Get a mutable iterator over the data.
-    pub fn iter_mut(&mut self) -> std::slice::IterMut<T> {
+    pub fn iter_mut(&mut self) -> core::slice::IterMut<'_, T> {
         self.data.iter_mut()
     }
 
@@ -268,15 +268,14 @@ impl<'a, T: PixelStor> From<&ImageRef<'a, T>> for ImageOwned<T> {
     }
 }
 
-impl<T: PixelStor + Ord> CalcOptExp for ImageOwned<T> {
+impl<T: PixelStor> CalcOptExp for ImageOwned<T> {
     fn calc_opt_exp(
-        mut self,
+        &mut self,
         eval: &OptimumExposure,
         exposure: Duration,
-        bin: u8,
-    ) -> Result<(Duration, u16), crate::ExposureError> {
-        let len = self.data.len();
-        eval.calculate(self.data.as_mut_slice(), len, exposure, bin)
+        bin: u16,
+    ) -> ExposureResult<OptimumExposureResult> {
+        eval.calculate(self.data.as_mut_slice(), exposure, bin)
     }
 }
 
@@ -300,11 +299,12 @@ mod test {
             .build()
             .unwrap();
         let img = vec![0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-        let img = crate::ImageOwned::from_owned(img, 5, 2, crate::ColorSpace::Gray)
+        let mut img = crate::ImageOwned::from_owned(img, 5, 2, crate::ColorSpace::Gray)
             .expect("Failed to create ImageOwned");
-        let exp = std::time::Duration::from_secs(10); // expected exposure
-        let bin = 1; // expected binning
-        let res = img.calc_opt_exp(&opt_exp, exp, bin).unwrap();
-        assert_eq!(res, (exp, bin as u16));
+        let res = img
+            .calc_opt_exp(&opt_exp, std::time::Duration::from_secs(10), 1)
+            .unwrap();
+        assert_eq!(res.exposure, std::time::Duration::from_secs(10));
+        assert_eq!(res.bin, 1);
     }
 }

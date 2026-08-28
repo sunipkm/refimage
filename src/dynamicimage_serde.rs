@@ -210,7 +210,7 @@ impl<T> DtypeContainer<'_, T> {
 
 type ByteResult<T> = Result<T, &'static str>;
 
-fn u8_slice_as_f32(buf: &[u8]) -> ByteResult<DtypeContainer<f32>> {
+fn u8_slice_as_f32(buf: &[u8]) -> ByteResult<DtypeContainer<'_, f32>> {
     let res = bytemuck::try_cast_slice(buf);
     match res {
         Ok(slc) => Ok(DtypeContainer::<'_, f32>::Slice(slc)),
@@ -231,7 +231,7 @@ fn u8_slice_as_f32(buf: &[u8]) -> ByteResult<DtypeContainer<f32>> {
     }
 }
 
-fn u8_slice_as_u16(buf: &[u8]) -> ByteResult<DtypeContainer<u16>> {
+fn u8_slice_as_u16(buf: &[u8]) -> ByteResult<DtypeContainer<'_, u16>> {
     let res = bytemuck::try_cast_slice(buf);
     match res {
         Ok(slc) => Ok(DtypeContainer::<u16>::Slice(slc)),

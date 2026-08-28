@@ -28,11 +28,16 @@ fn metadata_error_variants() {
     use refimage::{GenericImageRef, ImageProps};
     let mut buf = [0u8; 4];
     let img = DynamicImageRef::from(ImageRef::new(&mut buf, 2, 2, ColorSpace::Gray).unwrap());
-    let mut g = GenericImageRef::new(std::time::SystemTime::now(), img);
+    let ts = refimage::chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap();
+    let mut g = GenericImageRef::new(ts, std::time::Duration::ZERO, img);
 
     assert_eq!(
         g.insert_key("TIMESTAMP", 1u8).unwrap_err(),
         MetadataError::ReservedKey("TIMESTAMP")
+    );
+    assert_eq!(
+        g.insert_key("exposure", 1u8).unwrap_err(),
+        MetadataError::ReservedKey("EXPOSURE")
     );
     assert_eq!(g.insert_key("", 1u8).unwrap_err(), MetadataError::EmptyKey);
     assert_eq!(

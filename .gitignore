@@ -3,3 +3,4 @@
 serde-interop/**
 **/*.fit*
 **/*.png
+.cl*

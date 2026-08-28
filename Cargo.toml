@@ -28,7 +28,12 @@ include = [
 [dependencies]
 # Always required.
 bytemuck = "1.23"
+# Only `alloc` (for `DateTime::format`) + `serde` are needed. `clock` (and its OS
+# timezone deps / wasm-bindgen) is deliberately off — the crate never calls
+# `Utc::now()`; the caller supplies the timestamp.
+chrono = { version = "0.4.31", default-features = false, features = ["alloc", "serde"] }
 crc32fast = "1.5"
+indexmap = { version = "2", features = ["serde"] }
 miniz_oxide = "0.8"
 num-traits = "0.2.19"
 paste = "1.0"
@@ -46,8 +51,10 @@ serde_json = "1.0"
 serde-reflection = "0.6"
 
 # Not built for wasm: `rand` (benches only) drags in `getrandom`'s wasm opt-in;
-# `fitsio` (cross-checks the pure-Rust FITS writer against cfitsio) links C.
+# `fitsio` (cross-checks the pure-Rust FITS writer against cfitsio) links C;
+# `chrono`'s `clock` (for `Utc::now()` in tests / examples) pulls OS timezone deps.
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+chrono = { version = "0.4.31", features = ["clock"] }
 fitsio = "0.21"
 rand = "0.8"
 
@@ -57,8 +64,7 @@ rand = "0.8"
 wasm-bindgen-test = "0.3"
 
 [features]
-# `refimage` always links `std` (it is built around `std::time::SystemTime` and
-# `HashMap`); the features below only add optional integrations.
+# `refimage` always links `std`; the features below only add optional integrations.
 default = ["rayon"]
 full = ["default", "image", "grow"]
 

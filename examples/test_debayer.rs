@@ -1,4 +1,6 @@
-use std::time::SystemTime;
+use std::time::Duration;
+
+use chrono::Utc;
 
 use refimage::pipeline::Pipeline;
 use refimage::{
@@ -32,7 +34,7 @@ fn main() {
     assert!(a.color_space() == ColorSpace::Rgb);
     assert_eq!(a.as_raw_u8(), &expected);
 
-    let mut gimg = GenericImageOwned::new(SystemTime::now(), a);
+    let mut gimg = GenericImageOwned::new(Utc::now(), Duration::from_millis(20), a);
     gimg.insert_key("Camera", "Canon EOS 5D Mark III")
         .expect("Failed to insert key");
     gimg.insert_key("Lens", "EF24-70mm f/2.8L II USM")

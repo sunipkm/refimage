@@ -1,12 +1,15 @@
-use std::collections::HashMap;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::imagetraits::ImageProps;
 use crate::metadata::InsertValue;
 use crate::{genericimageowned::GenericImageOwned, genericimageref::GenericImageRef};
-use crate::{CalcOptExp, ColorSpace, GenericLineItem, OptimumExposure, PixelType};
+use crate::{
+    CalcOptExp, ColorSpace, ExposureResult, GenericLineItem, Metadata, OptimumExposure,
+    OptimumExposureResult, PixelType,
+};
 
 #[derive(Debug, PartialEq, Serialize)]
 /// A serializable, generic image with metadata, backed by either
@@ -51,37 +54,42 @@ macro_rules! dynamic_map(
 );
 
 impl GenericImage<'_> {
-    /// Get the timestamp of the image.
-    pub fn get_timestamp(&self) -> SystemTime {
+    /// Get the UTC timestamp of the image.
+    pub fn get_timestamp(&self) -> DateTime<Utc> {
         dynamic_map!(self, ref image, { image.get_timestamp() })
     }
 
-    /// Get the exposure time of the image.
-    pub fn get_exposure(&self) -> Option<Duration> {
+    /// Get the exposure time of the image (`Duration::ZERO` if not applicable).
+    pub fn get_exposure(&self) -> Duration {
         dynamic_map!(self, ref image, { image.get_exposure() })
+    }
+
+    /// Set the exposure time of the image.
+    pub fn set_exposure(&mut self, exposure: Duration) {
+        dynamic_map!(self, ref mut image, { image.set_exposure(exposure) })
     }
 
     /// Insert a metadata value into the [`GenericImage`].
     ///
     /// # Arguments
     /// - `name`: The name of the metadata value. The name must be non-empty and less than 80 characters.
-    /// - `value`: The value to insert. The value is either a primitive type, a `String`, or a `std::time::Duration` or `std::time::SystemTime` or a tuple of a primitive type and a comment ().
+    /// - `value`: The value to insert. The value is either a primitive type, a `String`, or a `std::time::Duration` or a UTC `chrono::DateTime` or a tuple of a primitive type and a comment ().
     /// # Valid Types
     /// The valid types for the metadata value are:
     /// - [`u8`] | [`u16`] | [`u32`] | [`u64`]
     /// - [`i8`] | [`i16`] | [`i32`] | [`i64`]
     /// - [`f32`] | [`f64`]
     /// - [`ColorSpace`]
-    /// - [`std::time::Duration`] | [`std::time::SystemTime`]
+    /// - [`std::time::Duration`] | [`chrono::DateTime<Utc>`](crate::chrono::DateTime)
     /// - [`String`] | [`&str`]
     ///
     /// # Note
     /// - The metadata key is case-insensitive and is stored as an uppercase string.
     /// - Re-inserting a timestamp key will return an error.
     /// - When saving to a FITS file, the metadata comment may be truncated.
-    /// - Metadata of type [`std::time::Duration`] or [`std::time::SystemTime`] is split
-    ///   and stored as two consecutive metadata items, with the same key, split into
-    ///   seconds ([`u64`]) and nanoseconds ([`u64`]).
+    /// - Metadata of type [`std::time::Duration`] or a UTC `chrono::DateTime` is
+    ///   stored as two consecutive metadata items split into seconds and nanoseconds
+    ///   (keys suffixed `_S` and `_NS`), plus a base card.
     pub fn insert_key<T: InsertValue>(
         &mut self,
         name: &str,
@@ -109,7 +117,7 @@ impl GenericImage<'_> {
     ///
     /// # Arguments
     /// - `name`: The name of the metadata value to replace.
-    /// - `value`: The new value to insert. The value is either a primitive type, a `String`, or a `std::time::Duration` or `std::time::SystemTime` or a tuple of a value type and a comment.
+    /// - `value`: The new value to insert. The value is either a primitive type, a `String`, or a `std::time::Duration` or a UTC `chrono::DateTime` or a tuple of a value type and a comment.
     ///
     /// # Returns
     /// - `Ok(())` if the key was replaced successfully.
@@ -131,20 +139,12 @@ impl GenericImage<'_> {
     //     dynamic_map!(self, ref image => image.get_image())
     // }
 
-    /// Get the contained metadata as a slice of [`GenericLineItem`]s.
-    ///
-    /// # Returns
-    /// A slice of [`GenericLineItem`]s containing the metadata.
-    pub fn get_metadata(&self) -> &HashMap<String, GenericLineItem> {
+    /// Borrow the image's [`Metadata`].
+    pub fn get_metadata(&self) -> &Metadata {
         dynamic_map!(self, ref image, { image.get_metadata() })
     }
 
-    /// Get a specific metadata value by name.
-    ///
-    /// Returns the first metadata value with the given name.
-    ///
-    /// # Arguments
-    /// - `name`: The name of the metadata value.
+    /// Get a specific extra metadata item by name (case-insensitive).
     pub fn get_key(&self, name: &str) -> Option<&GenericLineItem> {
         dynamic_map!(self, ref image, { image.get_key(name) })
     }
@@ -214,15 +214,33 @@ impl<'a> TryInto<GenericImageRef<'a>> for GenericImage<'a> {
 
 impl CalcOptExp for GenericImage<'_> {
     fn calc_opt_exp(
-        self,
+        &mut self,
         eval: &OptimumExposure,
         exposure: Duration,
-        bin: u8,
-    ) -> Result<(Duration, u16), crate::ExposureError> {
+        bin: u16,
+    ) -> ExposureResult<OptimumExposureResult> {
         match self {
             GenericImage::Ref(img) => img.calc_opt_exp(eval, exposure, bin),
             GenericImage::Own(img) => img.calc_opt_exp(eval, exposure, bin),
         }
+    }
+}
+
+impl GenericImage<'_> {
+    /// Optimum exposure and binning, using this image's own recorded
+    /// [`exposure`](Self::get_exposure).
+    ///
+    /// # Errors
+    /// [`ExposureError::ZeroExposure`](crate::ExposureError::ZeroExposure) if the
+    /// recorded exposure is `Duration::ZERO`, otherwise see
+    /// [`ExposureError`](crate::ExposureError).
+    pub fn optimum_exposure(
+        &mut self,
+        eval: &OptimumExposure,
+        bin: u16,
+    ) -> ExposureResult<OptimumExposureResult> {
+        let exposure = self.get_exposure();
+        self.calc_opt_exp(eval, exposure, bin)
     }
 }
 
@@ -303,10 +321,12 @@ fn test_optimum_exposure() {
     let img = crate::ImageRef::new(img.as_mut_slice(), 5, 2, crate::ColorSpace::Gray)
         .expect("Failed to create ImageOwned");
     let img = crate::DynamicImageRef::from(img);
-    let img = crate::GenericImageRef::new(SystemTime::now(), img);
-    let img = crate::GenericImage::from(img);
-    let exp = std::time::Duration::from_secs(10); // expected exposure
-    let bin = 1; // expected binning
-    let res = img.calc_opt_exp(&opt_exp, exp, bin).unwrap();
-    assert_eq!(res, (exp, bin as u16));
+    let ts = chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap();
+    let img = crate::GenericImageRef::new(ts, Duration::from_secs(2), img);
+    let mut img = crate::GenericImage::from(img);
+    let res = img
+        .calc_opt_exp(&opt_exp, std::time::Duration::from_secs(10), 1)
+        .unwrap();
+    assert_eq!(res.exposure, std::time::Duration::from_secs(10));
+    assert_eq!(res.bin, 1);
 }

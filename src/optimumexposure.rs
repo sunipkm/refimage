@@ -1,5 +1,5 @@
 #![warn(missing_docs)]
-use std::{cmp::Ord, time::Duration};
+use std::{cmp::Ordering, time::Duration};
 
 use thiserror::Error;
 
@@ -21,15 +21,20 @@ pub enum ExposureError {
     /// `min_allowed_exp >= max_allowed_exp`.
     #[error("minimum allowed exposure must be less than the maximum")]
     ExposureBounds,
-    /// `pixel_exclusion` exceeds the pixel count (or the 65536 cap at build time).
+    /// `pixel_exclusion` is not smaller than the pixel count (or exceeds the
+    /// 65536 cap at build time).
     #[error("pixel exclusion is larger than the number of pixels")]
     PixelExclusionTooLarge,
     /// `max_allowed_bin` exceeds 32.
     #[error("maximum allowed binning must be at most 32")]
     BinTooLarge,
-    /// The operation is not defined for floating-point images (`Ord` is required).
-    #[error("floating-point images are not supported by this operation")]
-    FloatUnsupported,
+    /// The image has no pixels.
+    #[error("cannot compute an exposure for an empty image")]
+    EmptyImage,
+    /// The reference `exposure` is `Duration::ZERO`, so no scale factor can be
+    /// derived from it.
+    #[error("reference exposure is zero")]
+    ZeroExposure,
 }
 
 /// `Result` alias for [`ExposureError`].
@@ -212,152 +217,148 @@ pub struct OptimumExposure {
     pixel_exclusion: u32,
 }
 
+/// Outcome of [`OptimumExposure::calculate`] / [`CalcOptExp::calc_opt_exp`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
+pub struct OptimumExposureResult {
+    /// Recommended exposure for the next acquisition.
+    pub exposure: Duration,
+    /// Recommended binning for the next acquisition (always `>= 1`).
+    pub bin: u16,
+    /// Measured value at the configured percentile, as a fraction of the pixel
+    /// type's full scale (`[0, 1]`).
+    pub measured: f32,
+    /// `true` if `measured` was already within
+    /// [`pixel_uncertainty`](OptimumExposureBuilder::pixel_uncertainty) of the
+    /// target; `exposure` and `bin` are then the unchanged inputs.
+    pub within_target: bool,
+    /// `true` if `exposure` was clamped to the configured min / max bound.
+    pub clamped: bool,
+}
+
+/// Multiply a [`Duration`] by an `f64`, saturating at [`Duration::MAX`] and
+/// flooring at [`Duration::ZERO`] instead of panicking on overflow or a
+/// non-finite factor.
+fn scale_duration(d: Duration, factor: f64) -> Duration {
+    let secs = d.as_secs_f64() * factor;
+    if !secs.is_finite() || secs < 0.0 {
+        return Duration::ZERO;
+    }
+    Duration::try_from_secs_f64(secs).unwrap_or(Duration::MAX)
+}
+
 impl OptimumExposure {
-    /// Find the optimum exposure time and binning to reach a target pixel value.
-    /// The algorithm does not use any hysteresis and uses simple scaling.
+    /// Find the optimum exposure and binning to bring the target pixel to
+    /// [`pixel_tgt`](OptimumExposureBuilder::pixel_tgt).
+    ///
+    /// The sample at the configured percentile is measured — ignoring the
+    /// [`pixel_exclusion`](OptimumExposureBuilder::pixel_exclusion) hottest
+    /// pixels — then the exposure is scaled linearly toward the target. When a
+    /// binning range is allowed, exposure is traded against binning to keep it
+    /// below [`max_allowed_exp`](OptimumExposureBuilder::max_allowed_exp).
     ///
     /// # Arguments
-    ///  * `mut img` - The image luminance data as a vector of u16 that is consumed.
-    ///  * `exposure` - The exposure duration used to obtain this image luminance data.
-    ///  * `bin` - The binning used to obtain this image luminance data.
-    ///
-    /// # Returns
-    ///  * `Ok((Duration, u16))` - The optimum exposure time and binning.
+    ///  * `img` - Image (or luminance) samples. **Reordered in place**: a
+    ///    partial ordering around the percentile is performed (`O(n)` average),
+    ///    so callers must not rely on the element order afterwards. `NaN`s are
+    ///    treated as equal.
+    ///  * `exposure` - Exposure used to acquire `img`.
+    ///  * `bin` - Binning used to acquire `img`.
     ///
     /// # Errors
-    ///  - Errors are returned as static string slices.
-    pub fn calculate<T: PixelStor + Ord>(
+    ///  * [`ExposureError::EmptyImage`] if `img` is empty.
+    ///  * [`ExposureError::PixelExclusionTooLarge`] if the configured exclusion
+    ///    leaves no pixels.
+    pub fn calculate<T: PixelStor>(
         &self,
         img: &mut [T],
-        len: usize,
         exposure: Duration,
-        bin: u8,
-    ) -> Result<(Duration, u16), ExposureError> {
-        let mut target_exposure;
-
-        let mut change_bin = true;
-
-        let pixel_tgt = self.pixel_tgt;
-        let pixel_uncertainty = self.pixel_uncertainty;
-        let percentile_pix = self.percentile_pix;
-        let min_allowed_exp = self.min_allowed_exp;
-        let max_allowed_exp = self.max_allowed_exp;
-        let max_allowed_bin = self.max_allowed_bin;
-        let pixel_exclusion = self.pixel_exclusion;
-
-        if !(1.6e-5f32..=1f32).contains(&pixel_tgt) {
-            return Err(ExposureError::PixelTargetRange);
+        bin: u16,
+    ) -> ExposureResult<OptimumExposureResult> {
+        let len = img.len();
+        if len == 0 {
+            return Err(ExposureError::EmptyImage);
         }
-
-        if !(1.6e-5f32..=1f32).contains(&pixel_uncertainty) {
-            return Err(ExposureError::PixelUncertaintyRange);
+        if exposure.is_zero() {
+            return Err(ExposureError::ZeroExposure);
         }
-
-        if !(0f32..=1f32).contains(&percentile_pix) {
-            return Err(ExposureError::PercentileRange);
-        }
-
-        if min_allowed_exp >= max_allowed_exp {
-            return Err(ExposureError::ExposureBounds);
-        }
-
-        if pixel_exclusion > img.len() as u32 {
+        if self.pixel_exclusion as usize >= len {
             return Err(ExposureError::PixelExclusionTooLarge);
         }
 
-        let max_allowed_bin = if max_allowed_bin < 2 {
-            1
+        let full_scale = T::DEFAULT_MAX_VALUE.to_f32();
+        let pixel_tgt = self.pixel_tgt * full_scale;
+        let pixel_uncertainty = self.pixel_uncertainty * full_scale;
+        let max_allowed_bin = self.max_allowed_bin.max(1);
+
+        // Percentile index, capped just below the hottest `pixel_exclusion`
+        // pixels so cosmic-ray hits and hot pixels don't drive the exposure.
+        let hot_cutoff = len - 1 - self.pixel_exclusion as usize;
+        let coord = if self.percentile_pix >= 1.0 {
+            hot_cutoff
         } else {
-            max_allowed_bin
+            ((self.percentile_pix * (len - 1) as f32).floor() as usize).min(hot_cutoff)
         };
 
-        let pixel_tgt = pixel_tgt * (T::DEFAULT_MAX_VALUE).to_f32();
-        let pixel_uncertainty = pixel_uncertainty * (T::DEFAULT_MAX_VALUE).to_f32();
-
-        if max_allowed_bin < 2 {
-            change_bin = false;
-        }
-        let mut bin = bin as u16;
-        img[..len].sort();
-        let mut coord: usize;
-        if percentile_pix > 0.99999 {
-            coord = len - 1_usize;
-        } else {
-            coord = (percentile_pix * (len - 1) as f32).floor() as usize;
-        }
-        if coord < pixel_exclusion as usize {
-            coord = len - 1 - pixel_exclusion as usize;
-        }
-        let val = img[..len].get(coord);
-        let val = match val {
-            Some(v) => (*v).to_f32(),
-            None => 1e-5_f32,
-        };
+        // Only the element that lands at `coord` matters — no full sort.
+        let (_, nth, _) =
+            img.select_nth_unstable_by(coord, |a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+        let val = (*nth).to_f32().max(1e-5);
+        let measured = (val / full_scale).clamp(0.0, 1.0);
 
         if (pixel_tgt - val).abs() < pixel_uncertainty {
-            return Ok((exposure, bin));
+            return Ok(OptimumExposureResult {
+                exposure,
+                bin: bin.max(1),
+                measured,
+                within_target: true,
+                clamped: false,
+            });
         }
 
-        let val = {
-            if val <= 1e-5 {
-                1e-5
-            } else {
-                val
-            }
-        };
+        // Linear scaling: exposure ∝ target / measured.
+        let mut target_exposure = scale_duration(exposure, (pixel_tgt as f64 / val as f64).abs());
+        let mut bin = bin.max(1);
 
-        target_exposure = Duration::from_secs_f64(
-            (pixel_tgt as f64 * exposure.as_micros() as f64 * 1e-6 / val as f64).abs(),
-        );
-
-        if change_bin {
-            let mut tgt_exp = target_exposure;
-            let mut bin_ = bin;
-            if tgt_exp < max_allowed_exp {
-                while tgt_exp < max_allowed_exp && bin_ > 2 {
-                    bin_ /= 2;
-                    tgt_exp *= 4;
+        if max_allowed_bin >= 2 {
+            if target_exposure < self.max_allowed_exp {
+                while target_exposure < self.max_allowed_exp && bin > 1 {
+                    bin /= 2;
+                    target_exposure = scale_duration(target_exposure, 4.0);
                 }
             } else {
-                while tgt_exp > max_allowed_exp && bin_ * 2 <= max_allowed_bin {
-                    bin_ *= 2;
-                    tgt_exp /= 4;
+                while target_exposure > self.max_allowed_exp
+                    && bin.saturating_mul(2) <= max_allowed_bin
+                {
+                    bin *= 2;
+                    target_exposure = scale_duration(target_exposure, 0.25);
                 }
             }
-            target_exposure = tgt_exp;
-            bin = bin_;
         }
 
-        if target_exposure > max_allowed_exp {
-            target_exposure = max_allowed_exp;
+        let mut clamped = false;
+        if target_exposure > self.max_allowed_exp {
+            target_exposure = self.max_allowed_exp;
+            clamped = true;
+        }
+        if target_exposure < self.min_allowed_exp {
+            target_exposure = self.min_allowed_exp;
+            clamped = true;
         }
 
-        if target_exposure < min_allowed_exp {
-            target_exposure = min_allowed_exp;
-        }
-
-        if bin < 1 {
-            bin = 1;
-        }
-        if bin > max_allowed_bin {
-            bin = max_allowed_bin;
-        }
-
-        Ok((target_exposure, bin))
+        Ok(OptimumExposureResult {
+            exposure: target_exposure,
+            bin: bin.clamp(1, max_allowed_bin),
+            measured,
+            within_target: false,
+            clamped,
+        })
     }
 
     /// Retrieve the builder for the [`OptimumExposure`] calculator.
     /// This is useful for changing the configuration of the calculator.
     pub fn get_builder(&self) -> OptimumExposureBuilder {
-        OptimumExposureBuilder {
-            percentile_pix: self.percentile_pix,
-            pixel_tgt: self.pixel_tgt,
-            pixel_uncertainty: self.pixel_uncertainty,
-            pixel_exclusion: self.pixel_exclusion,
-            min_allowed_exp: self.min_allowed_exp,
-            max_allowed_exp: self.max_allowed_exp,
-            max_allowed_bin: self.max_allowed_bin,
-        }
+        (*self).into()
     }
 }
 
@@ -365,7 +366,7 @@ impl OptimumExposure {
 ///
 /// This trait abstracts the retrieval of underlying image data.
 pub trait CalcOptExp {
-    /// Calculate the optimum exposure time and binning.
+    /// Calculate the optimum exposure and binning.
     ///
     /// # Arguments
     /// * `eval` - The [`OptimumExposure`] calculator.
@@ -376,13 +377,14 @@ pub trait CalcOptExp {
     /// See [`ExposureError`].
     ///
     /// # Note
-    /// The image data is consumed by the function.
+    /// The underlying pixel buffer is reordered in place (see
+    /// [`OptimumExposure::calculate`]).
     fn calc_opt_exp(
-        self,
+        &mut self,
         eval: &OptimumExposure,
         exposure: Duration,
-        bin: u8,
-    ) -> Result<(Duration, u16), ExposureError>;
+        bin: u16,
+    ) -> ExposureResult<OptimumExposureResult>;
 }
 
 #[cfg(test)]
@@ -396,21 +398,71 @@ mod test {
             .build()
             .unwrap();
         let mut img = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-        let exp = Duration::from_secs(10); // expected exposure
-        let bin = 1; // expected binning
-        let len = img.len();
-        let res = opt_exp.calculate(&mut img, len, exp, bin).unwrap();
-        assert_eq!(res, (exp, bin as u16));
+        let exp = Duration::from_secs(10);
+        let res = opt_exp.calculate(&mut img, exp, 1).unwrap();
+        // A near-black frame wants a much longer exposure -> clamped to the max.
+        assert_eq!(res.exposure, opt_exp.max_allowed_exp);
+        assert_eq!(res.bin, 1);
+        assert!(res.clamped);
+        assert!(!res.within_target);
+
         assert_eq!(
             opt_exp.get_builder(),
             OptimumExposureBuilder::default().pixel_exclusion(1)
         );
-        let img = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0];
-        let img = crate::ImageOwned::from_owned(img, 5, 2, crate::ColorSpace::Gray)
+
+        let img = vec![0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0];
+        let mut img = crate::ImageOwned::from_owned(img, 5, 2, crate::ColorSpace::Gray)
             .expect("Failed to create ImageOwned");
-        let exp = Duration::from_secs(10); // expected exposure
-        let bin = 1; // expected binning
-        let res = img.calc_opt_exp(&opt_exp, exp, bin).unwrap();
-        assert_eq!(res, (exp, bin as u16));
+        let res = img.calc_opt_exp(&opt_exp, exp, 1).unwrap();
+        assert_eq!(res.exposure, opt_exp.max_allowed_exp);
+        assert_eq!(res.bin, 1);
+    }
+
+    #[test]
+    fn already_on_target_is_unchanged() {
+        let eval = OptimumExposureBuilder::default()
+            .pixel_exclusion(0)
+            .build()
+            .unwrap();
+        // percentile pixel sits right on `pixel_tgt` (40000 / 65536 of u16 range).
+        let mut img = vec![40_000u16; 1000];
+        let exp = Duration::from_millis(200);
+        let res = eval.calculate(&mut img, exp, 2).unwrap();
+        assert!(res.within_target);
+        assert_eq!(res.exposure, exp);
+        assert_eq!(res.bin, 2);
+        assert!(!res.clamped);
+    }
+
+    #[test]
+    fn empty_and_over_excluded_images_error() {
+        let eval = OptimumExposureBuilder::default().build().unwrap();
+        assert_eq!(
+            eval.calculate(&mut [] as &mut [u16], Duration::from_secs(1), 1),
+            Err(ExposureError::EmptyImage)
+        );
+        let eval = OptimumExposureBuilder::default()
+            .pixel_exclusion(8)
+            .build()
+            .unwrap();
+        let mut img = vec![0u16; 8];
+        assert_eq!(
+            eval.calculate(&mut img, Duration::from_secs(1), 1),
+            Err(ExposureError::PixelExclusionTooLarge)
+        );
+    }
+
+    #[test]
+    fn float_images_are_supported() {
+        let eval = OptimumExposureBuilder::default()
+            .pixel_exclusion(0)
+            .build()
+            .unwrap();
+        // Bright frame (percentile pixel near full scale) -> shorten the exposure.
+        let mut img = vec![0.9f32; 500];
+        let res = eval.calculate(&mut img, Duration::from_secs(1), 1).unwrap();
+        assert!(res.measured > 0.8);
+        assert!(res.exposure < Duration::from_secs(1));
     }
 }

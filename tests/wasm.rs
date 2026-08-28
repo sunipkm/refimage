@@ -18,8 +18,9 @@
 //! nothing on every other target.
 #![cfg(target_arch = "wasm32")]
 
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::Duration;
 
+use refimage::chrono::DateTime;
 use refimage::pipeline::{ImageSpec, Pipeline, Strategy};
 use refimage::{
     BayerPattern, ColorSpace, DemosaicMethod, DynamicImageOwned, DynamicImageRef, FitsCompression,
@@ -108,8 +109,8 @@ fn generic_image_carries_metadata() {
 
     // A caller-supplied timestamp — no `SystemTime::now()`, which panics on
     // `wasm32-unknown-unknown`.
-    let stamp = UNIX_EPOCH + Duration::from_secs(1_700_000_000);
-    let mut g = GenericImageOwned::new(stamp, img);
+    let stamp = DateTime::from_timestamp(1_700_000_000, 0).unwrap();
+    let mut g = GenericImageOwned::new(stamp, Duration::ZERO, img);
     g.insert_key("GAIN", 42u16).unwrap();
 
     assert_eq!(g.get_timestamp(), stamp);
@@ -125,15 +126,14 @@ fn fits_bytes_on_wasm() {
     let data: Vec<u16> = (0..16 * 16).map(|i| (i as u16).wrapping_mul(257)).collect();
     let img =
         DynamicImageOwned::from(ImageOwned::from_owned(data, 16, 16, ColorSpace::Gray).unwrap());
-    let stamp = UNIX_EPOCH + Duration::from_secs(1_700_000_000);
-    let mut g = GenericImageOwned::new(stamp, img);
-    g.insert_key("EXPOSURE", Duration::from_millis(250))
-        .unwrap();
+    let stamp = DateTime::from_timestamp(1_700_000_000, 0).unwrap();
+    let g = GenericImageOwned::new(stamp, Duration::from_millis(250), img);
 
     for comp in [
         FitsCompression::None,
         FitsCompression::Gzip,
         FitsCompression::Rice,
+        FitsCompression::Hcompress,
     ] {
         let bytes = g.fits_bytes(comp).expect("fits_bytes");
         assert_eq!(bytes.len() % 2880, 0, "{comp:?} not block-aligned");
@@ -142,4 +142,25 @@ fn fits_bytes_on_wasm() {
             "{comp:?}"
         );
     }
+
+    // f32 + Rice exercises the quantization path (seeded RNG table) on wasm.
+    let f: Vec<f32> = (0..16 * 16)
+        .map(|i| (i as f32 * 0.1).sin() * 40.0 + 100.0)
+        .collect();
+    let fimg =
+        DynamicImageOwned::from(ImageOwned::from_owned(f, 16, 16, ColorSpace::Gray).unwrap());
+    let gf = GenericImageOwned::new(stamp, Duration::ZERO, fimg);
+    for comp in [FitsCompression::Rice, FitsCompression::Hcompress] {
+        let bytes = gf.fits_bytes(comp).expect("f32 compress");
+        assert_eq!(bytes.len() % 2880, 0);
+    }
+
+    // In-memory multi-HDU file — no filesystem on wasm.
+    let mut w =
+        refimage::create_fits_to(Vec::new(), FitsCompression::Rice).expect("create_fits_to");
+    g.append_fits(&mut w).expect("append 1");
+    g.append_fits(&mut w).expect("append 2");
+    let file = w.finish().expect("finish");
+    assert_eq!(file.len() % 2880, 0);
+    assert!(file.starts_with(b"SIMPLE  =                    T"));
 }

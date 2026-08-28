@@ -254,11 +254,11 @@ fn run_into_reproduces_copy_to() {
 /// `apply_meta` carries a `GenericImageRef`'s metadata onto the owned result.
 #[test]
 fn apply_meta_preserves_metadata() {
-    use std::time::SystemTime;
+    use std::time::Duration;
     let mut data: Vec<u16> = (0..24).collect();
     let dynref = gray16(4, 6, &mut data);
-    let ts = SystemTime::now();
-    let mut gen = GenericImageRef::new(ts, dynref);
+    let ts = chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap();
+    let mut gen = GenericImageRef::new(ts, Duration::from_millis(50), dynref);
     gen.insert_key("CAMERA", "test-cam").unwrap();
 
     let out = Pipeline::new()
@@ -267,6 +267,7 @@ fn apply_meta_preserves_metadata() {
         .unwrap();
     assert_eq!(out.get_metadata(), gen.get_metadata());
     assert_eq!(out.get_timestamp(), ts);
+    assert_eq!(out.get_exposure(), Duration::from_millis(50));
     assert_eq!(out.pixel_type(), PixelType::U8);
 }
 

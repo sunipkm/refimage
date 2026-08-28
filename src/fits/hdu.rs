@@ -28,8 +28,19 @@ pub(super) enum Tile {
     I16(Vec<i16>),
     /// Signed 8-bit (`u8` image reinterpreted).
     I8(Vec<i8>),
-    /// Raw big-endian bytes (`f32` image).
-    Be(Vec<u8>),
+    /// 32-bit float values (`f32` image).
+    F32(Vec<f32>),
+}
+
+impl Tile {
+    /// FITS-native big-endian bytes for this tile.
+    pub(super) fn to_be_bytes(&self) -> Vec<u8> {
+        match self {
+            Tile::I8(v) => v.iter().map(|&x| x as u8).collect(),
+            Tile::I16(v) => v.iter().flat_map(|x| x.to_be_bytes()).collect(),
+            Tile::F32(v) => v.iter().flat_map(|x| x.to_be_bytes()).collect(),
+        }
+    }
 }
 
 impl<'a> ImageView<'a> {
@@ -125,14 +136,52 @@ impl<'a> ImageView<'a> {
                     .map(|c| (p[idx(c)] as i32 - 32768) as i16)
                     .collect(),
             ),
-            Pixels::F32(p) => {
-                let mut b = Vec::with_capacity(self.w * 4);
-                for c in 0..self.w {
-                    b.extend_from_slice(&p[idx(c)].to_be_bytes());
-                }
-                Tile::Be(b)
+            Pixels::F32(p) => Tile::F32((0..self.w).map(|c| p[idx(c)]).collect()),
+        }
+    }
+
+    /// One whole plane, row-major, as FITS-native `i32` — for HCOMPRESS, which is 2-D.
+    /// `u8` stays unsigned `0..=255`; `u16` is offset by `-32768`. `f32` is quantized
+    /// separately, so it is not handled here.
+    pub(super) fn plane_i32(&self, plane: usize) -> Vec<i32> {
+        let mut out = Vec::with_capacity(self.w * self.h);
+        for row in 0..self.h {
+            for col in 0..self.w {
+                let idx = self.interleaved_index(plane, row, col);
+                out.push(match self.pixels {
+                    Pixels::U8(p) => p[idx] as i32,
+                    Pixels::U16(p) => p[idx] as i32 - 32768,
+                    Pixels::F32(_) => unreachable!("f32 planes are quantized before HCOMPRESS"),
+                });
             }
         }
+        out
+    }
+
+    /// One whole `f32` plane, row-major (for per-tile HCOMPRESS quantization).
+    pub(super) fn plane_f32(&self, plane: usize) -> Vec<f32> {
+        let mut out = Vec::with_capacity(self.w * self.h);
+        for row in 0..self.h {
+            for col in 0..self.w {
+                let idx = self.interleaved_index(plane, row, col);
+                match self.pixels {
+                    Pixels::F32(p) => out.push(p[idx]),
+                    _ => unreachable!("plane_f32 on a non-float image"),
+                }
+            }
+        }
+        out
+    }
+
+    /// The whole `f32` image, planar order (for the global noise estimate).
+    pub(super) fn planar_f32(&self) -> Vec<f32> {
+        let mut out = Vec::with_capacity(self.w * self.h * self.ch);
+        for t in 0..self.n_tiles() {
+            if let Tile::F32(v) = self.tile(t) {
+                out.extend_from_slice(&v);
+            }
+        }
+        out
     }
 
     /// The whole image as one planar, big-endian, FITS-native byte blob (uncompressed
@@ -140,15 +189,7 @@ impl<'a> ImageView<'a> {
     pub(super) fn native_be(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(self.w * self.h * self.ch * self.bytepix());
         for t in 0..self.n_tiles() {
-            match self.tile(t) {
-                Tile::I8(v) => out.extend(v.iter().map(|&x| x as u8)),
-                Tile::I16(v) => {
-                    for x in v {
-                        out.extend_from_slice(&x.to_be_bytes());
-                    }
-                }
-                Tile::Be(v) => out.extend_from_slice(&v),
-            }
+            out.extend_from_slice(&self.tile(t).to_be_bytes());
         }
         out
     }

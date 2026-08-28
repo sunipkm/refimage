@@ -7,9 +7,9 @@
 This crate provides a type-erased image container (`GenericImageRef`), backed by a contiguous slice (owned or referenced) of primitive (`u8`, `u16`, `f32`) pixels, with arbitrary color space (grayscale, Bayer pattern, RGB, ...) and color channels support (max. 255).
 Image sizes are limited to 65536 &times; 65536 for practical reasons.
 
-`GenericImageRef` and `GenericImageOwned` carry metadata as (`key`, `value`) pairs with optional comments. Metadata keys are case-insensitive strings up to 80 characters; values are integers (stored as `i64`), 32-/64-bit floats (stored as `f64`), strings, `ColorSpace`, or `std::time::{SystemTime, Duration}`.
+`GenericImageRef` and `GenericImageOwned` always carry a `Metadata` block: a mandatory typed core (`timestamp: chrono::DateTime<Utc>`, `exposure: Duration` — `Duration::ZERO` meaning "not applicable") plus an insertion-ordered map of extra (`key`, `value`) pairs with optional comments. Metadata keys are case-insensitive strings up to 80 characters (`TIMESTAMP` / `EXPOSURE` are reserved); values are integers (stored as `i64`), 32-/64-bit floats (stored as `f64`), strings, `ColorSpace`, `std::time::Duration`, or a UTC `chrono::DateTime`. `chrono` is re-exported as `refimage::chrono`.
 
-`GenericImageRef` supports serialization, and can be saved to the open [Flexible Image Transport System (FITS)](https://fits.gsfc.nasa.gov/fits_standard.html) through the `FitsWrite` trait. The FITS writer is pure Rust (no `cfitsio` linkage), always available, and compiles on every target including `wasm32`. It supports uncompressed output and the tile-compression convention with `GZIP_1` (any pixel type) and `RICE_1` (integer images); output is verified against `astropy.io.fits`.
+`GenericImageRef` supports serialization, and can be saved to the open [Flexible Image Transport System (FITS)](https://fits.gsfc.nasa.gov/fits_standard.html) through the `FitsWrite` trait. The FITS writer is pure Rust (no `cfitsio` linkage), always available, and compiles on every target including `wasm32`. It supports uncompressed output and the tile-compression convention: `GZIP_1` (lossless, any pixel type), `RICE_1` and `HCOMPRESS_1` (both lossless for `u8`/`u16`; `f32` is quantized with `SUBTRACTIVE_DITHER_1`). Output is verified against `astropy.io.fits` and `cfitsio`.
 
 `GenericImageRef` serializes to an internal representation which allows <i>de</i>serialization to `GenericImageOwned`.
 `GenericImageOwned` contains owned data, and is freely <i>ser</i>ialized-<i>de</i>serialized. 
@@ -21,7 +21,8 @@ appropriate, contiguous, backing storage and image format:
 ```rust
 use refimage::{BayerPattern, ImageRef, DemosaicMethod, DynamicImageRef, GenericImageOwned};
 use refimage::pipeline::Pipeline;
-use std::time::SystemTime;
+use refimage::chrono::DateTime;
+use std::time::Duration;
 
 let mut data = vec![0u8; 256]; // this is the backing store
 // acquire(&mut data); // this function populates the backing store with the image pixels
@@ -29,7 +30,10 @@ let img = ImageRef::new(&mut data, 16, 16, BayerPattern::Grbg.into()).unwrap(); 
 let img = DynamicImageRef::from(img); // convert the `ImageRef` object to `DynamicImageRef`
 // All pixel conversions go through a `Pipeline`; `apply` runs it once and owns the result.
 let img = Pipeline::new().debayer(DemosaicMethod::Nearest).apply(&img).expect("Could not debayer");
-let mut img = GenericImageOwned::new(SystemTime::now(), img); // attach metadata
+// A UTC timestamp and an exposure (`Duration::ZERO` if not applicable) are mandatory.
+// In application code the timestamp is usually `chrono::Utc::now()`.
+let ts = DateTime::from_timestamp(1_700_000_000, 0).unwrap();
+let mut img = GenericImageOwned::new(ts, Duration::from_millis(20), img);
 img.insert_key("CAMERA", ("Rust Test Program", "Name of the camera used to capture the image")).unwrap();
 let json = serde_json::to_string(&img).unwrap(); // serialize the image to JSON
 let rimg: GenericImageOwned = serde_json::from_str(&json).unwrap(); // deserialize to GenericImageOwned
@@ -104,7 +108,7 @@ assert_eq!(luma.color_space(), ColorSpace::Gray);
 `Strategy::Sequential` uses one ping-pong buffer pair; `Strategy::tiled`/`tiled_parallel`/`tiled_2d`/`tiled_2d_parallel` cut the frame into cache-sized tiles (bit-identical output). A serial-tiled `Runner` does **zero** heap allocation per frame once compiled. See the module docs for how geometric ops interact with tiling and for `Runner::recompile` / the `grow` feature.
 
 # FITS
-Writing `GenericImageRef` / `GenericImageOwned` to FITS via the `FitsWrite` trait is a core, always-available feature — a pure-Rust implementation with no `cfitsio` linkage. It writes uncompressed images and the tile-compression convention (`FitsCompression::{None, Gzip, Rice}`); multi-channel images are stored planar, `u16` carries `BZERO = 32768`, and metadata becomes header cards (`HIERARCH` for long keys, `CONTINUE` for long strings). Output is checked against `astropy.io.fits` and `cfitsio` in the test suite. `FitsWrite::fits_bytes` serialises to memory when there is no filesystem.
+Writing `GenericImageRef` / `GenericImageOwned` to FITS via the `FitsWrite` trait is a core, always-available feature — a pure-Rust implementation with no `cfitsio` linkage. It writes uncompressed images and the tile-compression convention (`FitsCompression::{None, Gzip, Rice, Hcompress}`). `Gzip` is lossless for any pixel type; `Rice` and `Hcompress` are lossless for `u8`/`u16` and quantize `f32` with `SUBTRACTIVE_DITHER_1`. `Rice` and `Gzip` tile by image row; `Hcompress` (the H-transform + quadtree coder, min. 4×4) compresses each channel plane as one tile. Multi-channel images are stored planar, `u16` carries `BZERO = 32768`, and metadata becomes header cards (`HIERARCH` for long keys, `CONTINUE` for long strings). Output is checked against `astropy.io.fits` and `cfitsio` in the test suite. Everything works without a filesystem: `FitsWrite::fits_bytes` returns a single image as a `Vec<u8>`, and `create_fits_to(sink, compression)` builds a multi-HDU file into any `Write` sink (`create_fits` is the on-disk shortcut).
 
 # Optional Features
 Features are available to extend the functionalities of the core `refimage` data types:
@@ -113,7 +117,7 @@ Features are available to extend the functionalities of the core `refimage` data
 - `grow`: Lets a compiled pipeline `Runner` reallocate its buffers on a frame-shape change instead of erroring (<b>disabled</b> by default).
 
 # WebAssembly
-The core of `refimage` — image construction, the `pipeline`, metadata, and `serde` — runs on `wasm32-unknown-unknown`. It never calls `SystemTime::now()`, spawns threads, or touches the filesystem itself; the caller supplies timestamps, and the pipeline falls back to its serial kernels when `rayon` is off. `tests/wasm.rs` is a `wasm-bindgen-test` suite covering this:
+The core of `refimage` — image construction, the `pipeline`, metadata, and `serde` — runs on `wasm32-unknown-unknown`. It never reads a system clock (`chrono` is pulled in without its `clock` feature), spawns threads, or touches the filesystem itself; the caller supplies timestamps, and the pipeline falls back to its serial kernels when `rayon` is off. `tests/wasm.rs` is a `wasm-bindgen-test` suite covering this:
 
 ```sh
 cargo install wasm-bindgen-cli
@@ -122,4 +126,4 @@ cargo test --target wasm32-unknown-unknown --no-default-features --tests
 
 (`--tests` skips the doc-tests, which rustdoc does not cross-compile.)
 
-FITS writing works on wasm too (it is pure Rust); `FitsWrite::fits_bytes` returns the file as a `Vec<u8>` since `wasm32-unknown-unknown` has no filesystem.
+FITS writing works on wasm too (it is pure Rust): `FitsWrite::fits_bytes` returns a single image as a `Vec<u8>`, and `create_fits_to(Vec::new(), compression)` builds a multi-HDU file in memory — `wasm32-unknown-unknown` has no filesystem.

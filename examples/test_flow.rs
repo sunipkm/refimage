@@ -1,13 +1,14 @@
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
+use chrono::Utc;
 use image::DynamicImage;
 use refimage::pipeline::Pipeline;
+use refimage::OptimumExposureBuilder;
 use refimage::{
     BayerPattern, ColorSpace, DemosaicMethod, DynamicImageRef, FitsCompression, FitsWrite,
     GenericImageRef, ImageProps, ImageRef,
 };
-use refimage::{CalcOptExp, OptimumExposureBuilder};
 
 fn main() {
     // color_backtrace::install();
@@ -21,7 +22,7 @@ fn main() {
     let img = ImageRef::new(&mut src, 4, 4, BayerPattern::Rggb.into())
         .expect("Failed to create ImageRef");
     let img = DynamicImageRef::from(img);
-    let mut img = GenericImageRef::new(SystemTime::now(), img);
+    let mut img = GenericImageRef::new(Utc::now(), Duration::from_secs(1), img);
     img.insert_key("Camera", "Canon EOS 5D Mark III")
         .expect("Failed to insert key");
     img.insert_key("Lens", "EF24-70mm f/2.8L II USM")
@@ -52,7 +53,7 @@ fn main() {
     }
 
     // A second pass to luminance, again metadata-preserving.
-    let gray = Pipeline::new()
+    let mut gray = Pipeline::new()
         .debayer(DemosaicMethod::None)
         .to_luma()
         .apply_meta(&img)
@@ -61,8 +62,9 @@ fn main() {
         .pixel_exclusion(1)
         .build()
         .expect("Failed to build OptimumExposure");
-    let (exp, _) = gray
-        .calc_opt_exp(&eval, Duration::from_secs(1), 1)
+    // `optimum_exposure` sources the reference exposure from the image's metadata.
+    let res = gray
+        .optimum_exposure(&eval, 1)
         .expect("Failed to calculate optimum exposure");
-    println!("Optimum exposure: {exp:?}");
+    println!("Optimum exposure: {:?} (bin {})", res.exposure, res.bin);
 }

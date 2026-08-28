@@ -29,13 +29,14 @@
 //! # Usage
 //! ```
 //! use refimage::{ImageRef, ColorSpace, DynamicImageRef, GenericImageRef, GenericImageOwned};
-//! use std::time::SystemTime;
-//! use std::path::Path;
+//! use refimage::chrono::DateTime;
+//! use std::time::Duration;
 //!
 //! let mut data = vec![1u8, 2, 3, 4, 5, 6, 0, 0]; // 3x2 grayscale image, with extra padding that will be ignored
 //! let img = ImageRef::new(&mut data, 3, 2, ColorSpace::Gray).unwrap(); // Create ImageRef
 //! let img = DynamicImageRef::from(img); // Convert to DynamicImageRef
-//! let mut img = GenericImageRef::new(SystemTime::now(), img); // Create GenericImageRef with creation time info
+//! let now = DateTime::from_timestamp(1_700_000_000, 0).unwrap(); // in an app: chrono::Utc::now()
+//! let mut img = GenericImageRef::new(now, Duration::from_millis(20), img); // timestamp + exposure are mandatory
 //! img.insert_key("CAMERANAME", "Canon EOS 5D Mark IV".to_string()).unwrap(); // Insert metadata
 //! let serialized = bincode::serialize(&img).unwrap(); // Serialize the image
 //! let deserialized: GenericImageOwned = bincode::deserialize(&serialized).unwrap(); // Deserialize the image
@@ -86,6 +87,11 @@ mod metadata;
 mod optimumexposure;
 pub mod pipeline;
 
+/// Re-export of the [`chrono`](https://docs.rs/chrono) crate. Image timestamps are
+/// [`chrono::DateTime<Utc>`](chrono::DateTime); the caller supplies them (typically
+/// `refimage::chrono::Utc::now()` — which needs `chrono`'s `clock` feature, so add
+/// `chrono` as a direct dependency of your binary if you rely on `now()`).
+pub use chrono;
 pub use coretraits::{Enlargeable, PixelStor};
 pub use demosaic::{BayerError, DemosaicMethod};
 #[cfg(feature = "image")]
@@ -93,7 +99,9 @@ pub use demosaic::{BayerError, DemosaicMethod};
 pub use dynamicimage_interop::{InteropError, InteropResult};
 pub use dynamicimage_serde::{SerdeError, SerdeResult};
 pub use error::{ImageError, ImageResult};
-pub use fits::{create_fits, FitsCompression, FitsError, FitsResult, FitsWrite, FitsWriter};
+pub use fits::{
+    create_fits, create_fits_to, FitsCompression, FitsError, FitsResult, FitsWrite, FitsWriter,
+};
 pub use genericimage::GenericImage;
 pub use genericimageowned::GenericImageOwned;
 pub use genericimageref::GenericImageRef;
@@ -104,11 +112,12 @@ pub use imageowned::ImageOwned;
 pub use imageref::ImageRef;
 pub use imagetraits::{BayerShift, ImageProps};
 pub use metadata::{
-    GenericLineItem, GenericValue, InsertValue, MetaCollection, MetadataError, MetadataResult,
-    CAMERANAME_KEY, EXPOSURE_KEY, PROGRAMNAME_KEY, TIMESTAMP_KEY,
+    GenericLineItem, GenericValue, InsertValue, MetaCollection, Metadata, MetadataError,
+    MetadataResult, CAMERANAME_KEY, EXPOSURE_KEY, PROGRAMNAME_KEY, TIMESTAMP_KEY,
 };
 pub use optimumexposure::{
     CalcOptExp, ExposureError, ExposureResult, OptimumExposure, OptimumExposureBuilder,
+    OptimumExposureResult,
 };
 pub use serde::{Deserialize, Serialize};
 use serde::{Deserializer, Serializer};
@@ -297,6 +306,7 @@ mod test {
 macro_rules! insert_as_doc {
     { $content:expr } => {
         #[allow(unused_doc_comments)]
+        #[allow(missing_abi)]
         #[doc = $content] extern { }
     }
 }
