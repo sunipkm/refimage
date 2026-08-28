@@ -1,7 +1,39 @@
 #![warn(missing_docs)]
 use std::{cmp::Ord, time::Duration};
 
+use thiserror::Error;
+
 use crate::PixelStor;
+
+/// Errors from configuring or running the optimum-exposure calculator.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[non_exhaustive]
+pub enum ExposureError {
+    /// `pixel_tgt` is outside `[1.6e-5, 1.0]`.
+    #[error("target pixel value must be in [1.6e-5, 1.0]")]
+    PixelTargetRange,
+    /// `pixel_uncertainty` is outside `[1.6e-5, 1.0]`.
+    #[error("pixel uncertainty must be in [1.6e-5, 1.0]")]
+    PixelUncertaintyRange,
+    /// `percentile_pix` is outside `[0.0, 1.0]`.
+    #[error("percentile must be in [0.0, 1.0]")]
+    PercentileRange,
+    /// `min_allowed_exp >= max_allowed_exp`.
+    #[error("minimum allowed exposure must be less than the maximum")]
+    ExposureBounds,
+    /// `pixel_exclusion` exceeds the pixel count (or the 65536 cap at build time).
+    #[error("pixel exclusion is larger than the number of pixels")]
+    PixelExclusionTooLarge,
+    /// `max_allowed_bin` exceeds 32.
+    #[error("maximum allowed binning must be at most 32")]
+    BinTooLarge,
+    /// The operation is not defined for floating-point images (`Ord` is required).
+    #[error("floating-point images are not supported by this operation")]
+    FloatUnsupported,
+}
+
+/// `Result` alias for [`ExposureError`].
+pub type ExposureResult<T> = Result<T, ExposureError>;
 
 #[derive(Debug, Clone, PartialEq)]
 /// Builder for the [`OptimumExposure`] calculator.
@@ -106,29 +138,29 @@ impl OptimumExposureBuilder {
     }
 
     /// Build the [`OptimumExposure`] object.
-    pub fn build(self) -> Result<OptimumExposure, &'static str> {
+    pub fn build(self) -> Result<OptimumExposure, ExposureError> {
         if !(1.6e-5f32..=1f32).contains(&self.pixel_tgt) {
-            return Err("Target pixel value must be between 1.6e-5 and 1");
+            return Err(ExposureError::PixelTargetRange);
         }
 
         if !(1.6e-5f32..=1f32).contains(&self.pixel_uncertainty) {
-            return Err("Pixel uncertainty must be between 1.6e-5 and 1");
+            return Err(ExposureError::PixelUncertaintyRange);
         }
 
         if self.percentile_pix < 0f32 || self.percentile_pix > 1f32 {
-            return Err("Percentile must be between 0 and 1.");
+            return Err(ExposureError::PercentileRange);
         }
 
         if self.min_allowed_exp >= self.max_allowed_exp {
-            return Err("Minimum allowed exposure must be less than maximum allowed exposure");
+            return Err(ExposureError::ExposureBounds);
         }
 
         if self.pixel_exclusion > 65536 {
-            return Err("Pixel exclusion must be less than 65536");
+            return Err(ExposureError::PixelExclusionTooLarge);
         }
 
         if self.max_allowed_bin > 32 {
-            return Err("Maximum allowed binning must be less than 32");
+            return Err(ExposureError::BinTooLarge);
         }
 
         Ok(OptimumExposure {
@@ -200,7 +232,7 @@ impl OptimumExposure {
         len: usize,
         exposure: Duration,
         bin: u8,
-    ) -> Result<(Duration, u16), &'static str> {
+    ) -> Result<(Duration, u16), ExposureError> {
         let mut target_exposure;
 
         let mut change_bin = true;
@@ -214,23 +246,23 @@ impl OptimumExposure {
         let pixel_exclusion = self.pixel_exclusion;
 
         if !(1.6e-5f32..=1f32).contains(&pixel_tgt) {
-            return Err("Target pixel value must be between 1.6e-5 and 1");
+            return Err(ExposureError::PixelTargetRange);
         }
 
         if !(1.6e-5f32..=1f32).contains(&pixel_uncertainty) {
-            return Err("Pixel uncertainty must be between 1.6e-5 and 1");
+            return Err(ExposureError::PixelUncertaintyRange);
         }
 
         if !(0f32..=1f32).contains(&percentile_pix) {
-            return Err("Percentile must be between 0 and 1");
+            return Err(ExposureError::PercentileRange);
         }
 
         if min_allowed_exp >= max_allowed_exp {
-            return Err("Minimum allowed exposure must be less than maximum allowed exposure");
+            return Err(ExposureError::ExposureBounds);
         }
 
         if pixel_exclusion > img.len() as u32 {
-            return Err("Pixel exclusion must be less than the number of pixels");
+            return Err(ExposureError::PixelExclusionTooLarge);
         }
 
         let max_allowed_bin = if max_allowed_bin < 2 {
@@ -340,9 +372,8 @@ pub trait CalcOptExp {
     /// * `exposure` - The exposure duration used to obtain the image data.
     /// * `bin` - The binning used to obtain the image data.
     ///
-    /// # Returns
-    /// * `Ok((Duration, u16))` - The optimum exposure time and binning.
-    /// * `Err(&'static str)` - Error message.
+    /// # Errors
+    /// See [`ExposureError`].
     ///
     /// # Note
     /// The image data is consumed by the function.
@@ -351,7 +382,7 @@ pub trait CalcOptExp {
         eval: &OptimumExposure,
         exposure: Duration,
         bin: u8,
-    ) -> Result<(Duration, u16), &'static str>;
+    ) -> Result<(Duration, u16), ExposureError>;
 }
 
 #[cfg(test)]

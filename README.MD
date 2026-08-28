@@ -20,22 +20,25 @@ FITS files support lossless compression, and saving of arbitrary metadata.
 A `GenericImageRef` is obtained from a `ImageRef` object, created with the
 appropriate, contiguous, backing storage and image format:
 ```rust
-use refimage::{BayerPattern, ImageRef, Debayer, DemosaicMethod, DynamicImageRef, GenericImageRef, GenericImageOwned};
+use refimage::{BayerPattern, ImageRef, DemosaicMethod, DynamicImageRef, GenericImageOwned};
+use refimage::pipeline::Pipeline;
 use std::time::SystemTime;
 
 let mut data = vec![0u8; 256]; // this is the backing store
 // acquire(&mut data); // this function populates the backing store with the image pixels
-let img = ImageRef::new(&mut data, 16, 16, BayerPattern::Grbg.into()).unwrap(); // Create a 4x4 image backed by the vector
+let img = ImageRef::new(&mut data, 16, 16, BayerPattern::Grbg.into()).unwrap(); // 16x16 image backed by the vector
 let img = DynamicImageRef::from(img); // convert the `ImageRef` object to `DynamicImageRef`
-let img = img.debayer(DemosaicMethod::Nearest).expect("Could not debayer"); // debayer the image using nearest neighbor method
-let mut img = GenericImageOwned::new(SystemTime::now(), img); // Convert to a GenericImageRef
-// insert the camera information as metadata
-img.insert_key("CAMERA", ("Rust Test Program", "Name of the camera used to capture the image"));
+// All pixel conversions go through a `Pipeline`; `apply` runs it once and owns the result.
+let img = Pipeline::new().debayer(DemosaicMethod::Nearest).apply(&img).expect("Could not debayer");
+let mut img = GenericImageOwned::new(SystemTime::now(), img); // attach metadata
+img.insert_key("CAMERA", ("Rust Test Program", "Name of the camera used to capture the image")).unwrap();
 let json = serde_json::to_string(&img).unwrap(); // serialize the image to JSON
 let rimg: GenericImageOwned = serde_json::from_str(&json).unwrap(); // deserialize to GenericImageOwned
 assert_eq!(&img, &rimg); // Confirm that deserialized image matches the original
 ```
-The intention behind `*ImageRef` is to minimize unnecessary allocations.
+The intention behind `*ImageRef` is to minimize unnecessary allocations. A metadata-bearing
+`GenericImageRef` can be run through a pipeline with `Pipeline::apply_meta`, which carries the
+metadata onto the result.
 
 ## `GenericImageOwned` and other `ImageOwned` types
 An image can be loaded using the [`image`](https://crates.io/crates/image) crate from disk, by enabling the `image` feature:
@@ -58,13 +61,48 @@ img.write_fits(Path::new("/path/to/fitsimage.fit"), FitsCompression::None, true)
     .expect("Could not write FITS file.");
 ```
 
-## Additional Features
-`ToLuma` trait is implemented on all image functions.
-Luminance calculation is done in-place.
-`SelectRoi` and `CopyRoi` traits allow ROI extraction from images.
+## Conversions
+
+Debayering, luminance, pixel-type conversion, affine pixel scaling, cropping, ROI
+extraction, flips and 90° rotations are all `Op`s on a [`Pipeline`](#reusable-processing-pipelines).
+There is no separate per-type trait API — build a `Pipeline` and call `apply` (or
+`apply_meta` to keep metadata, or compile a `Runner` for a frame stream).
+
+## Reusable processing pipelines
+Every conversion is a step in a `Pipeline`. For a one-off, `Pipeline::apply(&img)` compiles,
+runs once, and returns an owned image. For acquisition loops that run the same chain over
+every frame, compile a `Runner` once and reuse its buffers:
+```rust
+use refimage::{BayerPattern, ColorSpace, DemosaicMethod, DynamicImageRef, ImageRef, PixelType};
+use refimage::pipeline::{ImageSpec, Pipeline, Strategy};
+
+// A declarative, cloneable, serializable recipe.
+let recipe = Pipeline::new()
+    .crop(0, 0, 64, 64)
+    .debayer(DemosaicMethod::Linear)
+    .to_luma()
+    .scale(1.2, 4.0)
+    .convert(PixelType::U8)
+    .flip_vertical();
+
+// Compile against a concrete frame format: validates the chain and
+// pre-allocates every buffer it will ever need.
+let spec = ImageSpec::new(64, 64, ColorSpace::Bayer(BayerPattern::Rggb), PixelType::U16);
+let mut runner = recipe.compile(spec, Strategy::tiled_parallel(16)).unwrap();
+
+// Run it per frame; the result borrows the runner's internal buffer.
+let mut frame = vec![0u16; 64 * 64];
+let img = DynamicImageRef::from(
+    ImageRef::new(&mut frame, 64, 64, ColorSpace::Bayer(BayerPattern::Rggb)).unwrap(),
+);
+let luma = runner.run(&img).unwrap();
+assert_eq!(luma.color_space(), ColorSpace::Gray);
+```
+`Strategy::Sequential` uses one ping-pong buffer pair; `Strategy::tiled`/`tiled_parallel`/`tiled_2d`/`tiled_2d_parallel` cut the frame into cache-sized tiles (bit-identical output). A serial-tiled `Runner` does **zero** heap allocation per frame once compiled. See the module docs for how geometric ops interact with tiling and for `Runner::recompile` / the `grow` feature.
 
 # Optional Features
 Features are available to extend the functionalities of the core `refimage` data types:
-- `rayon`: Parallelizes `to_luma`, `to_luma_custom`, `to_u8` and `debayer` functions (<b>enabled</b> by default).
+- `rayon`: Parallelizes luma / demosaic / cast inside the `pipeline`, and enables the parallel `pipeline` strategies (<b>enabled</b> by default).
 - `fitsio`: Exposes `FitsWrite` trait to write `GenericImageRef` and `GenericImageOwned` (<b>disabled</b> by default).
 - `image`: Enables `TryFrom` conversions between `image::DynamicImage` and `refimage::DynamicImageRef`, `refimage::DynamicImageOwned` (<b>disabled</b> by default).
+- `grow`: Lets a compiled pipeline `Runner` reallocate its buffers on a frame-shape change instead of erroring (<b>disabled</b> by default).

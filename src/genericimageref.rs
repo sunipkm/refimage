@@ -1,21 +1,18 @@
 use std::{
     collections::HashMap,
-    num::NonZeroUsize,
     time::{Duration, SystemTime},
 };
 
 use serde::Serialize;
 
 use crate::{
-    genericimageowned::GenericImageOwned,
-    imagetraits::ConvertPixelType,
-    metadata::{name_check, InsertValue, MetaCollection},
-    BayerError, CalcOptExp, Debayer, DemosaicMethod, DynamicImageRef, GenericLineItem, ImageProps,
-    OptimumExposure, SelectRoi, EXPOSURE_KEY, TIMESTAMP_KEY,
+    metadata::{name_check, InsertValue, MetaCollection, MetadataError},
+    CalcOptExp, DynamicImageRef, GenericLineItem, ImageProps, OptimumExposure, EXPOSURE_KEY,
+    TIMESTAMP_KEY,
 };
 
 #[allow(unused_imports)]
-use crate::ColorSpace;
+use crate::{ColorSpace, GenericImageOwned};
 
 /// A serializable, generic image with metadata, backed by [`DynamicImageRef`].
 ///
@@ -105,14 +102,18 @@ impl<'a> GenericImageRef<'a> {
     ///
     /// # Note
     /// - The metadata key is case-insensitive and is stored as an uppercase string.
-    /// - Re-inserting a timestamp key will return an error.
+    /// - Re-inserting a timestamp key returns [`MetadataError::ReservedKey`].
     /// - When saving to a FITS file, the metadata comment may be truncated.
     /// - Metadata of type [`std::time::Duration`] or [`std::time::SystemTime`] is split
     ///   and stored as two consecutive metadata items, with the same key, split into
     ///   seconds ([`u64`]) and nanoseconds ([`u64`]).
-    pub fn insert_key<T: InsertValue>(&mut self, name: &str, value: T) -> Result<(), &'static str> {
+    pub fn insert_key<T: InsertValue>(
+        &mut self,
+        name: &str,
+        value: T,
+    ) -> Result<(), MetadataError> {
         if name.to_uppercase() == TIMESTAMP_KEY {
-            return Err("Cannot re-insert timestamp key");
+            return Err(MetadataError::ReservedKey(TIMESTAMP_KEY));
         }
         T::insert(&mut self.metadata, name, value)
     }
@@ -122,20 +123,17 @@ impl<'a> GenericImageRef<'a> {
     /// # Arguments
     /// - `name`: The name of the metadata value to remove.
     ///
-    /// # Returns
-    /// - `Ok(())` if the key was removed successfully.
-    /// - `Err("Can not remove timestamp key")` if the key is the timestamp key.
-    /// - `Err("Key not found")` if the key was not found.
-    /// - `Err("Key cannot be empty")` if the key is an empty string.
-    /// - `Err("Key cannot be longer than 80 characters")` if the key is longer than 80 characters.
-    pub fn remove_key(&mut self, name: &str) -> Result<GenericLineItem, &'static str> {
+    /// # Errors
+    /// [`MetadataError::ReservedKey`] for the timestamp key,
+    /// [`MetadataError::KeyNotFound`] if absent, or a key-validation error.
+    pub fn remove_key(&mut self, name: &str) -> Result<GenericLineItem, MetadataError> {
         if name.to_uppercase() == TIMESTAMP_KEY {
-            return Err("Cannot remove timestamp key");
+            return Err(MetadataError::ReservedKey(TIMESTAMP_KEY));
         }
         name_check(name)?;
         self.metadata
             .remove(&name.to_uppercase())
-            .ok_or("Key not found")
+            .ok_or(MetadataError::KeyNotFound)
     }
 
     /// Replace a metadata value in the [`GenericImageRef`].
@@ -144,15 +142,13 @@ impl<'a> GenericImageRef<'a> {
     /// - `name`: The name of the metadata value to replace.
     /// - `value`: The new value to insert. The value is either a primitive type, a `String`, or a `std::time::Duration` or `std::time::SystemTime` or a tuple of a value type and a comment.
     ///
-    /// # Returns
-    /// - `Ok(())` if the key was replaced successfully.
-    /// - `Err("Key not found")` if the key was not found.
-    ///
+    /// # Errors
+    /// [`MetadataError::KeyNotFound`] if the key was not present.
     pub fn replace_key<T: InsertValue>(
         &mut self,
         name: &str,
         value: T,
-    ) -> Result<GenericLineItem, &'static str> {
+    ) -> Result<GenericLineItem, MetadataError> {
         T::replace(&mut self.metadata, name, value)
     }
 
@@ -189,49 +185,24 @@ impl<'a> GenericImageRef<'a> {
     }
 }
 
-impl Debayer for GenericImageRef<'_> {
-    type Output = GenericImageOwned;
-    fn debayer(&self, method: DemosaicMethod) -> Result<Self::Output, BayerError> {
-        let img = self.image.debayer(method)?;
-        let meta = self.metadata.clone();
-        Ok(Self::Output {
-            metadata: meta,
-            image: img,
-        })
-    }
-}
-
 impl CalcOptExp for GenericImageRef<'_> {
     fn calc_opt_exp(
         mut self,
         eval: &OptimumExposure,
         exposure: Duration,
         bin: u8,
-    ) -> Result<(Duration, u16), &'static str> {
+    ) -> Result<(Duration, u16), crate::ExposureError> {
         match &mut self.image {
-            DynamicImageRef::U8(img) => {let len = img.len(); eval.calculate(img.as_mut_slice(), len, exposure, bin)},
-            DynamicImageRef::U16(img) => {let len = img.len(); eval.calculate(img.as_mut_slice(), len, exposure, bin)},
-            DynamicImageRef::F32(_) => Err("Floating point images are not supported for this operation, since Ord is not implemented for floating point types."),
+            DynamicImageRef::U8(img) => {
+                let len = img.len();
+                eval.calculate(img.as_mut_slice(), len, exposure, bin)
+            }
+            DynamicImageRef::U16(img) => {
+                let len = img.len();
+                eval.calculate(img.as_mut_slice(), len, exposure, bin)
+            }
+            DynamicImageRef::F32(_) => Err(crate::ExposureError::FloatUnsupported),
         }
-    }
-}
-
-impl SelectRoi for GenericImageRef<'_> {
-    type Output = GenericImageOwned;
-
-    fn select_roi(
-        &self,
-        x: usize,
-        y: usize,
-        width: NonZeroUsize,
-        height: NonZeroUsize,
-    ) -> Result<Self::Output, &'static str> {
-        let img = self.image.select_roi(x, y, width, height)?;
-        let meta = self.metadata.clone();
-        Ok(Self::Output {
-            metadata: meta,
-            image: img,
-        })
     }
 }
 
@@ -262,39 +233,6 @@ impl ImageProps for GenericImageRef<'_> {
 
     fn is_empty(&self) -> bool {
         self.image.is_empty()
-    }
-}
-
-impl ConvertPixelType for GenericImageRef<'_> {
-    type OutputU8 = GenericImageOwned;
-    type OutputU16 = GenericImageOwned;
-    type OutputF32 = GenericImageOwned;
-
-    fn convert_u8(&self) -> Self::OutputU8 {
-        let img = self.image.convert_u8();
-        let meta = self.metadata.clone();
-        GenericImageOwned {
-            metadata: meta,
-            image: img,
-        }
-    }
-
-    fn convert_u16(&self) -> Self::OutputU16 {
-        let img = self.image.convert_u16();
-        let meta = self.metadata.clone();
-        GenericImageOwned {
-            metadata: meta,
-            image: img,
-        }
-    }
-
-    fn convert_f32(&self) -> Self::OutputF32 {
-        let img = self.image.convert_f32();
-        let meta = self.metadata.clone();
-        GenericImageOwned {
-            metadata: meta,
-            image: img,
-        }
     }
 }
 

@@ -2,14 +2,16 @@
 
 use thiserror::Error;
 
+use crate::ColorSpace;
+
 pub type BayerResult<T> = Result<T, BayerError>;
 
 #[derive(Debug, Error)]
 /// Error codes for the Bayer demosaicing.
 pub enum BayerError {
-    #[error("Invalid Color Filter Array: {0}")]
-    /// Generic failure.  Please try to make something more meaningful.
-    InvalidColorSpace(&'static str),
+    #[error("{0:?} is not a Bayer color space")]
+    /// The image's color space is not a Bayer mosaic.
+    InvalidColorSpace(ColorSpace),
     #[error("Wrong color resolution")]
     /// The image is not the right size.
     WrongResolution,

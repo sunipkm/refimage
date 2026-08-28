@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    num::NonZeroUsize,
     time::{Duration, SystemTime},
 };
 
@@ -8,10 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     genericimageref::GenericImageRef,
-    imagetraits::ConvertPixelType,
     metadata::{name_check, InsertValue, MetaCollection},
-    BayerError, CalcOptExp, Debayer, DemosaicMethod, DynamicImageOwned, GenericLineItem,
-    ImageProps, OptimumExposure, SelectRoi, EXPOSURE_KEY, TIMESTAMP_KEY,
+    CalcOptExp, DynamicImageOwned, GenericLineItem, ImageProps, OptimumExposure, EXPOSURE_KEY,
+    TIMESTAMP_KEY,
 };
 
 #[allow(unused_imports)]
@@ -111,9 +109,13 @@ impl GenericImageOwned {
     /// - Metadata of type [`std::time::Duration`] or [`std::time::SystemTime`] is split
     ///   and stored as two consecutive metadata items, with the same key, split into
     ///   seconds ([`u64`]) and nanoseconds ([`u64`]).
-    pub fn insert_key<T: InsertValue>(&mut self, name: &str, value: T) -> Result<(), &'static str> {
+    pub fn insert_key<T: InsertValue>(
+        &mut self,
+        name: &str,
+        value: T,
+    ) -> Result<(), crate::MetadataError> {
         if name.to_uppercase() == TIMESTAMP_KEY {
-            return Err("Cannot re-insert timestamp key");
+            return Err(crate::MetadataError::ReservedKey(TIMESTAMP_KEY));
         }
         T::insert(&mut self.metadata, name, value)
     }
@@ -129,14 +131,14 @@ impl GenericImageOwned {
     /// - `Err("Key not found")` if the key was not found.
     /// - `Err("Key cannot be empty")` if the key is an empty string.
     /// - `Err("Key cannot be longer than 80 characters")` if the key is longer than 80 characters.
-    pub fn remove_key(&mut self, name: &str) -> Result<GenericLineItem, &'static str> {
+    pub fn remove_key(&mut self, name: &str) -> Result<GenericLineItem, crate::MetadataError> {
         if name.to_uppercase() == TIMESTAMP_KEY {
-            return Err("Cannot remove timestamp key");
+            return Err(crate::MetadataError::ReservedKey(TIMESTAMP_KEY));
         }
         name_check(name)?;
         self.metadata
             .remove(&name.to_uppercase())
-            .ok_or("Key not found")
+            .ok_or(crate::MetadataError::KeyNotFound)
     }
 
     /// Replace a metadata value in the [`GenericImageOwned`].
@@ -153,7 +155,7 @@ impl GenericImageOwned {
         &mut self,
         name: &str,
         value: T,
-    ) -> Result<GenericLineItem, &'static str> {
+    ) -> Result<GenericLineItem, crate::MetadataError> {
         T::replace(&mut self.metadata, name, value)
     }
 
@@ -187,70 +189,6 @@ impl GenericImageOwned {
     pub fn get_key(&self, name: &str) -> Option<&GenericLineItem> {
         name_check(name).ok()?;
         self.metadata.get(name)
-    }
-}
-
-impl ConvertPixelType for GenericImageOwned {
-    type OutputU8 = GenericImageOwned;
-    type OutputU16 = GenericImageOwned;
-    type OutputF32 = GenericImageOwned;
-
-    fn convert_u8(&self) -> Self::OutputU8 {
-        let img = self.image.convert_u8();
-        let meta = self.metadata.clone();
-        Self::OutputU8 {
-            metadata: meta,
-            image: img,
-        }
-    }
-
-    fn convert_u16(&self) -> Self::OutputU16 {
-        let img = self.image.convert_u16();
-        let meta = self.metadata.clone();
-        Self::OutputU16 {
-            metadata: meta,
-            image: img,
-        }
-    }
-
-    fn convert_f32(&self) -> Self::OutputF32 {
-        let img = self.image.convert_f32();
-        let meta = self.metadata.clone();
-        Self::OutputF32 {
-            metadata: meta,
-            image: img,
-        }
-    }
-}
-
-impl Debayer for GenericImageOwned {
-    type Output = GenericImageOwned;
-    fn debayer(&self, method: DemosaicMethod) -> Result<Self::Output, BayerError> {
-        let img = self.image.debayer(method)?;
-        let meta = self.metadata.clone();
-        Ok(Self::Output {
-            metadata: meta,
-            image: img,
-        })
-    }
-}
-
-impl SelectRoi for GenericImageOwned {
-    type Output = GenericImageOwned;
-
-    fn select_roi(
-        &self,
-        x: usize,
-        y: usize,
-        width: NonZeroUsize,
-        height: NonZeroUsize,
-    ) -> Result<Self::Output, &'static str> {
-        let img = self.image.select_roi(x, y, width, height)?;
-        let meta = self.metadata.clone();
-        Ok(Self::Output {
-            metadata: meta,
-            image: img,
-        })
     }
 }
 
@@ -291,11 +229,11 @@ impl GenericImageOwned {
     /// image data with the result of the function.
     ///
     /// # Arguments
-    /// - `f`: The function to apply to the image data.
-    ///   The function must take a reference to an [`DynamicImageOwned`] and return a [`DynamicImageRef`].
-    pub fn operate<F>(&self, f: F) -> Result<Self, &'static str>
+    /// - `f`: The function to apply to the image data. It takes a reference to the
+    ///   current [`DynamicImageOwned`] and returns a new one (or any error `E`).
+    pub fn operate<F, E>(&self, f: F) -> Result<Self, E>
     where
-        F: FnOnce(&DynamicImageOwned) -> Result<DynamicImageOwned, &'static str>,
+        F: FnOnce(&DynamicImageOwned) -> Result<DynamicImageOwned, E>,
     {
         let img = f(&(self.image))?;
         Ok(GenericImageOwned {
@@ -320,11 +258,17 @@ impl CalcOptExp for GenericImageOwned {
         eval: &OptimumExposure,
         exposure: Duration,
         bin: u8,
-    ) -> Result<(Duration, u16), &'static str> {
+    ) -> Result<(Duration, u16), crate::ExposureError> {
         match &mut self.image {
-            DynamicImageOwned::U8(img) => {let len = img.len(); eval.calculate(img.as_mut_slice(), len, exposure, bin)},
-            DynamicImageOwned::U16(img) => {let len = img.len(); eval.calculate(img.as_mut_slice(), len, exposure, bin)},
-            DynamicImageOwned::F32(_) => Err("Floating point images are not supported for this operation, since Ord is not implemented for floating point types."),
+            DynamicImageOwned::U8(img) => {
+                let len = img.len();
+                eval.calculate(img.as_mut_slice(), len, exposure, bin)
+            }
+            DynamicImageOwned::U16(img) => {
+                let len = img.len();
+                eval.calculate(img.as_mut_slice(), len, exposure, bin)
+            }
+            DynamicImageOwned::F32(_) => Err(crate::ExposureError::FloatUnsupported),
         }
     }
 }

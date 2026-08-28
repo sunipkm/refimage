@@ -40,11 +40,24 @@
 //! let serialized = bincode::serialize(&img).unwrap(); // Serialize the image
 //! let deserialized: GenericImageOwned = bincode::deserialize(&serialized).unwrap(); // Deserialize the image
 //! ```
+//! # Processing pipelines
+//! All pixel conversions — debayer, luminance, pixel-type conversion, affine pixel
+//! scaling, crop, ROI, flips, 90° rotations — are [`Op`](pipeline::Op)s on a
+//! declarative, reusable [`Pipeline`](pipeline::Pipeline). [`apply`](pipeline::Pipeline::apply)
+//! runs it once and returns an owned image;
+//! [`apply_meta`](pipeline::Pipeline::apply_meta) does the same while carrying a
+//! [`GenericImageRef`]'s metadata across.
+//! [`compile`](pipeline::Pipeline::compile)-ing against a concrete
+//! [`ImageSpec`](pipeline::ImageSpec) pre-allocates every buffer, yielding a
+//! [`Runner`](pipeline::Runner) that processes successive frames with zero
+//! per-frame allocation (serial-tiled strategy).
+//!
 //! # Optional Features
 //! Features are available to extend the functionalities of the core `refimage` data types:
-//! - `rayon`: Parallelizes [`GenericImageRef::to_luma`] (and similar), [`GenericImageRef::to_luma_custom`], [`GenericImageRef::into_u8`] and [`GenericImageRef::debayer`] functions (<b>enabled</b> by default).
+//! - `rayon`: Parallelizes the luminance / demosaic / cast kernels inside the [`pipeline`], and enables its parallel [`Strategy`](pipeline::Strategy) variants (<b>enabled</b> by default).
 //! - `fitsio`: Exposes [`FitsWrite`] trait to write [`GenericImageRef`] and [`GenericImageOwned`] (<b>disabled</b> by default).
 //! - `image`: Enables [`TryFrom`] conversions between [`DynamicImage`] and [`DynamicImageRef`], [`DynamicImageOwned`] (<b>disabled</b> by default).
+//! - `grow`: Lets a compiled [`Runner`](pipeline::Runner) reallocate its buffers when handed a frame whose shape differs from the one it was compiled for (<b>disabled</b> by default).
 //!
 
 mod coreimpls;
@@ -55,6 +68,7 @@ mod dynamicimage_interop;
 mod dynamicimage_serde;
 mod dynamicimageowned;
 mod dynamicimageref;
+mod error;
 #[cfg(feature = "fitsio")]
 mod fitsio_interop;
 mod genericimage;
@@ -65,9 +79,15 @@ mod imageref;
 mod imagetraits;
 mod metadata;
 mod optimumexposure;
+pub mod pipeline;
 
 pub use coretraits::{Enlargeable, PixelStor};
-pub use demosaic::{BayerError, Debayer, DemosaicMethod};
+pub use demosaic::{BayerError, DemosaicMethod};
+#[cfg(feature = "image")]
+#[cfg_attr(docsrs, doc(cfg(feature = "image")))]
+pub use dynamicimage_interop::{InteropError, InteropResult};
+pub use dynamicimage_serde::{SerdeError, SerdeResult};
+pub use error::{ImageError, ImageResult};
 #[cfg(feature = "fitsio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "fitsio")))]
 pub use fitsio_interop::{create_fits, FitsCompression, FitsError, FitsWrite};
@@ -79,12 +99,14 @@ pub use genericimageref::GenericImageRef;
 pub use image::DynamicImage; // Used for image interop
 pub use imageowned::ImageOwned;
 pub use imageref::ImageRef;
-pub use imagetraits::{BayerShift, ConvertPixelType, CopyRoi, ImageProps, SelectRoi, ToLuma};
+pub use imagetraits::{BayerShift, ImageProps};
 pub use metadata::{
-    GenericLineItem, GenericValue, InsertValue, MetaCollection, CAMERANAME_KEY, EXPOSURE_KEY,
-    PROGRAMNAME_KEY, TIMESTAMP_KEY,
+    GenericLineItem, GenericValue, InsertValue, MetaCollection, MetadataError, MetadataResult,
+    CAMERANAME_KEY, EXPOSURE_KEY, PROGRAMNAME_KEY, TIMESTAMP_KEY,
 };
-pub use optimumexposure::{CalcOptExp, OptimumExposure, OptimumExposureBuilder};
+pub use optimumexposure::{
+    CalcOptExp, ExposureError, ExposureResult, OptimumExposure, OptimumExposureBuilder,
+};
 pub use serde::{Deserialize, Serialize};
 use serde::{Deserializer, Serializer};
 
@@ -229,31 +251,34 @@ pub enum PixelType {
 mod test {
     #[test]
     fn test_debayer() {
-        use crate::demosaic::Debayer;
+        use crate::pipeline::Pipeline;
         use crate::ImageProps;
         // color_backtrace::install();
-        let mut src = [
+        let mut src: [u8; 16] = [
             229, 67, 95, 146, 232, 51, 229, 241, 169, 161, 15, 52, 45, 175, 98, 197,
         ];
-        let expected = [
+        let expected: [u8; 48] = [
             229, 0, 0, 0, 67, 0, 95, 0, 0, 0, 146, 0, 0, 232, 0, 0, 0, 51, 0, 229, 0, 0, 0, 241,
             169, 0, 0, 0, 161, 0, 15, 0, 0, 0, 52, 0, 0, 45, 0, 0, 0, 175, 0, 98, 0, 0, 0, 197,
         ];
-        let img = crate::ImageRef::create(
-            &mut src,
-            4,
-            4,
-            crate::ColorSpace::Bayer(crate::BayerPattern::Rggb),
-        )
-        .expect("Failed to create ImageRef");
-        let a = img.debayer(crate::DemosaicMethod::None);
-        assert!(a.is_ok());
-        let a = a.unwrap(); // at this point, a is an ImageRef struct
+        let img = crate::DynamicImageRef::from(
+            crate::ImageRef::new(
+                &mut src,
+                4,
+                4,
+                crate::ColorSpace::Bayer(crate::BayerPattern::Rggb),
+            )
+            .expect("Failed to create ImageRef"),
+        );
+        let a = Pipeline::new()
+            .debayer(crate::DemosaicMethod::None)
+            .apply(&img)
+            .expect("debayer pipeline");
         assert!(a.channels() == 3);
         assert!(a.width() == 4);
         assert!(a.height() == 4);
         assert!(a.color_space() == crate::ColorSpace::Rgb);
-        assert_eq!(a.as_slice(), &expected);
+        assert_eq!(a.as_raw_u8(), &expected);
     }
 }
 

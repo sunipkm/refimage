@@ -4,12 +4,49 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::ColorSpace;
 #[allow(unused)]
 use crate::GenericImage;
 
 extern crate paste;
+
+/// Errors from inserting, replacing, removing, or reading metadata.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[non_exhaustive]
+pub enum MetadataError {
+    /// The key is empty.
+    #[error("metadata key cannot be empty")]
+    EmptyKey,
+    /// The key is longer than 80 characters.
+    #[error("metadata key cannot be longer than 80 characters")]
+    KeyTooLong,
+    /// The comment is empty.
+    #[error("metadata comment cannot be empty")]
+    EmptyComment,
+    /// The comment is longer than 4096 characters.
+    #[error("metadata comment cannot be longer than 4096 characters")]
+    CommentTooLong,
+    /// The string value is empty.
+    #[error("metadata value cannot be empty")]
+    EmptyValue,
+    /// The string value is longer than 4096 characters.
+    #[error("metadata value cannot be longer than 4096 characters")]
+    ValueTooLong,
+    /// No entry exists for the requested key.
+    #[error("metadata key not found")]
+    KeyNotFound,
+    /// The key names a reserved entry that cannot be inserted, replaced or removed.
+    #[error("metadata key {0:?} is reserved")]
+    ReservedKey(&'static str),
+    /// A stored [`GenericValue`] was requested as an incompatible type.
+    #[error("metadata value has a different type")]
+    WrongValueType,
+}
+
+/// `Result` alias for [`MetadataError`].
+pub type MetadataResult<T> = Result<T, MetadataError>;
 
 /// Key for the timestamp metadata.
 /// This key is inserted by default when creating a new [`GenericImageRef`], [`GenericImageOwned`] or [`GenericImage`].
@@ -133,17 +170,12 @@ impl_from_genericvalue!(String, GenericValue::String);
 macro_rules! impl_tryinto_genericvalue {
     ($t:ty, $variant:path) => {
         impl TryInto<$t> for GenericValue {
-            type Error = &'static str;
+            type Error = MetadataError;
 
             fn try_into(self) -> Result<$t, Self::Error> {
                 match self {
                     $variant(x) => Ok(x),
-                    _ => Err(concat!(
-                        "Cannot convert ",
-                        stringify!($variant),
-                        " into ",
-                        stringify!($t)
-                    )),
+                    _ => Err(MetadataError::WrongValueType),
                 }
             }
         }
@@ -168,20 +200,24 @@ impl_tryinto_genericvalue!(String, GenericValue::String);
 /// Trait to insert a metadata value into a [`MetaCollection`].
 pub trait InsertValue {
     /// Insert a metadata value into a [`MetaCollection`] by name.
-    fn insert(f: &mut MetaCollection, name: &str, value: Self) -> Result<(), &'static str>;
+    fn insert(f: &mut MetaCollection, name: &str, value: Self) -> Result<(), MetadataError>;
 
     /// Replace a metadata value in a [`MetaCollection`] by name.
     fn replace(
         f: &mut MetaCollection,
         name: &str,
         value: Self,
-    ) -> Result<GenericLineItem, &'static str>;
+    ) -> Result<GenericLineItem, MetadataError>;
 }
 
 macro_rules! insert_value_impl {
     ($t:ty, $datatype:expr) => {
         impl InsertValue for $t {
-            fn insert(f: &mut MetaCollection, name: &str, value: Self) -> Result<(), &'static str> {
+            fn insert(
+                f: &mut MetaCollection,
+                name: &str,
+                value: Self,
+            ) -> Result<(), MetadataError> {
                 name_check(name)?;
                 let line = GenericLineItem {
                     value: value.into(),
@@ -195,18 +231,23 @@ macro_rules! insert_value_impl {
                 f: &mut MetaCollection,
                 name: &str,
                 value: Self,
-            ) -> Result<GenericLineItem, &'static str> {
+            ) -> Result<GenericLineItem, MetadataError> {
                 name_check(name)?;
                 let line = GenericLineItem {
                     value: value.into(),
                     comment: None,
                 };
-                f.insert(name.to_uppercase(), line).ok_or("Key not found")
+                f.insert(name.to_uppercase(), line)
+                    .ok_or(MetadataError::KeyNotFound)
             }
         }
 
         impl InsertValue for ($t, &str) {
-            fn insert(f: &mut MetaCollection, name: &str, value: Self) -> Result<(), &'static str> {
+            fn insert(
+                f: &mut MetaCollection,
+                name: &str,
+                value: Self,
+            ) -> Result<(), MetadataError> {
                 name_check(name)?;
                 comment_check(value.1)?;
                 let line = GenericLineItem {
@@ -221,45 +262,46 @@ macro_rules! insert_value_impl {
                 f: &mut MetaCollection,
                 name: &str,
                 value: Self,
-            ) -> Result<GenericLineItem, &'static str> {
+            ) -> Result<GenericLineItem, MetadataError> {
                 name_check(name)?;
                 comment_check(value.1)?;
                 let line = GenericLineItem {
                     value: value.0.into(),
                     comment: Some(value.1.to_owned()),
                 };
-                f.insert(name.to_uppercase(), line).ok_or("Key not found")
+                f.insert(name.to_uppercase(), line)
+                    .ok_or(MetadataError::KeyNotFound)
             }
         }
     };
 }
 
-pub(crate) fn name_check(name: &str) -> Result<(), &'static str> {
+pub(crate) fn name_check(name: &str) -> Result<(), MetadataError> {
     if name.is_empty() {
-        Err("Key cannot be empty")
+        Err(MetadataError::EmptyKey)
     } else if name.len() > 80 {
-        Err("Key cannot be longer than 80 characters")
+        Err(MetadataError::KeyTooLong)
     } else {
         Ok(())
     }
 }
 
-fn comment_check(comment: &str) -> Result<(), &'static str> {
+fn comment_check(comment: &str) -> Result<(), MetadataError> {
     if comment.is_empty() {
-        Err("Comment cannot be empty")
+        Err(MetadataError::EmptyComment)
     } else if comment.len() > 4096 {
-        Err("Comment cannot be longer than 4096 characters")
+        Err(MetadataError::CommentTooLong)
     } else {
         Ok(())
     }
 }
 
 #[allow(dead_code)]
-fn str_value_check(value: &str) -> Result<(), &'static str> {
+fn str_value_check(value: &str) -> Result<(), MetadataError> {
     if value.is_empty() {
-        Err("Value cannot be empty")
+        Err(MetadataError::EmptyValue)
     } else if value.len() > 4096 {
-        Err("Value cannot be longer than 4096 characters")
+        Err(MetadataError::ValueTooLong)
     } else {
         Ok(())
     }
@@ -281,7 +323,7 @@ insert_value_impl!(Duration, PrvGenLineItem::Duration);
 insert_value_impl!(SystemTime, PrvGenLineItem::SystemTime);
 
 impl InsertValue for &str {
-    fn insert(f: &mut MetaCollection, name: &str, value: Self) -> Result<(), &'static str> {
+    fn insert(f: &mut MetaCollection, name: &str, value: Self) -> Result<(), MetadataError> {
         name_check(name)?;
         str_value_check(value)?;
         let line = GenericLineItem {
@@ -296,19 +338,20 @@ impl InsertValue for &str {
         f: &mut MetaCollection,
         name: &str,
         value: Self,
-    ) -> Result<GenericLineItem, &'static str> {
+    ) -> Result<GenericLineItem, MetadataError> {
         name_check(name)?;
         str_value_check(value)?;
         let value = GenericLineItem {
             value: value.to_owned().into(),
             comment: None,
         };
-        f.insert(name.to_uppercase(), value).ok_or("Key not found")
+        f.insert(name.to_uppercase(), value)
+            .ok_or(MetadataError::KeyNotFound)
     }
 }
 
 impl InsertValue for (&str, &str) {
-    fn insert(f: &mut MetaCollection, name: &str, value: Self) -> Result<(), &'static str> {
+    fn insert(f: &mut MetaCollection, name: &str, value: Self) -> Result<(), MetadataError> {
         name_check(name)?;
         str_value_check(value.0)?;
         comment_check(value.1)?;
@@ -324,7 +367,7 @@ impl InsertValue for (&str, &str) {
         f: &mut MetaCollection,
         name: &str,
         value: Self,
-    ) -> Result<GenericLineItem, &'static str> {
+    ) -> Result<GenericLineItem, MetadataError> {
         name_check(name)?;
         str_value_check(value.0)?;
         comment_check(value.1)?;
@@ -332,7 +375,8 @@ impl InsertValue for (&str, &str) {
             value: value.0.to_owned().into(),
             comment: Some(value.1.to_owned()),
         };
-        f.insert(name.to_uppercase(), value).ok_or("Key not found")
+        f.insert(name.to_uppercase(), value)
+            .ok_or(MetadataError::KeyNotFound)
     }
 }
 
@@ -376,8 +420,11 @@ mod test {
 
     #[test]
     fn test_operate_owned() {
-        use crate::Debayer;
-        use crate::{BayerPattern, DynamicImageOwned, GenericImageOwned, ImageOwned, ImageProps};
+        use crate::pipeline::Pipeline;
+        use crate::{
+            BayerPattern, DemosaicMethod, DynamicImageOwned, DynamicImageRef, GenericImageOwned,
+            ImageOwned, ImageProps, ImageRef,
+        };
         use std::time::SystemTime;
 
         let data = vec![0u8; 256];
@@ -390,11 +437,18 @@ mod test {
             .unwrap();
         let img2 = img
             .operate(|x| {
-                let x = x.debayer(crate::DemosaicMethod::Linear).unwrap();
-                Ok(x)
+                let mut raw = x.as_raw_u8().to_vec();
+                let src = DynamicImageRef::from(
+                    ImageRef::<u8>::from_u8_mut(&mut raw, x.width(), x.height(), x.color_space())
+                        .unwrap(),
+                );
+                Pipeline::new()
+                    .debayer(DemosaicMethod::Linear)
+                    .apply(&src)
+                    .map_err(|_| "debayer failed")
             })
             .unwrap();
-        let img3 = img.operate(|x| Ok(x.clone())).unwrap();
+        let img3 = img.operate(|x| Ok::<_, &str>(x.clone())).unwrap();
         assert_eq!(img, img3);
         assert_eq!(img.get_metadata(), img2.get_metadata());
         assert_eq!(img.get_image().width(), img2.get_image().width());

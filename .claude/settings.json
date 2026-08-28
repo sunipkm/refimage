@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -n \"^    }$\\\\|^}$\\\\|pub fn run\\\\|fn run_chain\\\\|enum Demosaic\" src/pipeline.rs)",
+      "Bash(cargo build *)",
+      "Bash(cargo test *)",
+      "Bash(cargo run *)",
+      "Bash(cargo clippy *)",
+      "Bash(perl -0pi -e 's/::create\\\\\\(d, w, h, cs\\\\\\)\\\\.map_err\\\\\\(PipelineError::Image\\\\\\)\\\\?/::create\\(d, w, h, cs\\)?/g' src/pipeline.rs)",
+      "Bash(perl -0pi -e 's/\\\\/\\\\/ If the buffer is not the correct length for a f32 slice, err\\\\.\\\\n\\(\\\\s+\\)Err\\\\\\(err\\\\.to_string\\\\\\(\\\\\\)\\\\\\)/Err\\(cast_err\\(err\\)\\)/g' src/dynamicimage_serde.rs)",
+      "Bash(perl -0pi -e 's/Err\\\\\\(cast_err\\\\\\(err\\\\\\)\\\\\\)/Err\\(crate::imageref::cast_msg\\(err\\)\\)/g' src/dynamicimage_serde.rs)",
+      "Bash(perl -0pi -e ' *)",
+      "Bash(grep -n \"Err\\(\\\\\"\\\\|-> Result<\\(\\), &'static str>\\\\|-> Result<GenericLineItem, &'static str>\\\\|ok_or\\(\\\\\"Key not found\\\\\"\\)\\\\|Cannot re-insert\\\\|Cannot remove\\\\|Image is not GenericImageRef\\\\|metadata::{\" src/genericimageowned.rs src/genericimage.rs)",
+      "Bash(cargo fmt *)",
+      "Bash(echo \"exit $?\")",
+      "Bash(git mv *)",
+      "Bash(/bin/ls src/pipeline/)",
+      "Bash(echo \"fmt exit $?\")",
+      "Bash(echo \"exit $? \\(1 = no matches, good\\)\")"
+    ]
+  }
+}

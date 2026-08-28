@@ -1,6 +1,6 @@
 [package]
 name = "refimage"
-version = "1.0.0-pre5"
+version = "1.0.0-pre6"
 edition = "2021"
 resolver = "2"
 
@@ -54,7 +54,11 @@ serde-reflection = "0.4"
 [features]
 default = ["rayon"]
 fitsio = ["dep:fitsio"]
-full = ["default", "fitsio", "image"]
+full = ["default", "fitsio", "image", "grow"]
+# Let a compiled pipeline `Runner` reallocate its buffers when `run` is handed a
+# frame whose shape differs from the one it was compiled for. Off by default so
+# acquisition loops keep a hard no-allocation guarantee at steady state.
+grow = []
 image = ["dep:image"]
 rayon = ["dep:rayon"]
 
@@ -76,3 +80,7 @@ path = "examples/test_debayer.rs"
 name = "test_flow"
 path = "examples/test_flow.rs"
 required-features = ["full"]
+
+[[example]]
+name = "pipeline"
+path = "examples/pipeline.rs"

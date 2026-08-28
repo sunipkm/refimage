@@ -1,27 +1,12 @@
 //! Demosaicing without any interpolation.
 use crate::demosaic::RasterMut;
 use crate::demosaic::{BayerError, BayerRead, BayerResult, ColorFilterArray};
-use crate::{ImageOwned, ImageProps, ImageRef, PixelStor};
+use crate::{ImageProps, ImageRef, PixelStor};
 
 use super::border_none::BorderNone;
 
 pub fn run_imagedata<T>(
     src: &ImageRef<'_, T>,
-    cfa: ColorFilterArray,
-    dst: &mut RasterMut<'_, T>,
-) -> BayerResult<()>
-where
-    T: PixelStor,
-{
-    if src.width() < 2 || src.height() < 2 {
-        return Err(BayerError::WrongResolution);
-    }
-
-    debayer(src.as_slice(), cfa, dst)
-}
-
-pub fn run_imageowned<T>(
-    src: &ImageOwned<T>,
     cfa: ColorFilterArray,
     dst: &mut RasterMut<'_, T>,
 ) -> BayerResult<()>
@@ -76,19 +61,39 @@ macro_rules! apply_kernel_g {
     }};
 }
 
+/// Scratch elements [`debayer_serial`] needs for a `width`-pixel image.
+pub(super) fn serial_scratch_len(width: usize) -> usize {
+    width
+}
+
 fn debayer<T>(r: &[T], cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
 where
     T: PixelStor,
 {
+    let mut scratch = vec![T::zero(); serial_scratch_len(dst.w)];
+    debayer_serial(r, cfa, dst, &mut scratch)
+}
+
+/// Serial demosaic writing its one working row into caller-provided `scratch`
+/// (at least [`serial_scratch_len`] elements). No allocation.
+pub(super) fn debayer_serial<T>(
+    r: &[T],
+    cfa: ColorFilterArray,
+    dst: &mut RasterMut<'_, T>,
+    scratch: &mut [T],
+) -> BayerResult<()>
+where
+    T: PixelStor,
+{
     let (w, h) = (dst.w, dst.h);
-    let mut curr = vec![T::zero(); w];
+    let curr = &mut scratch[..w];
     let mut cfa = cfa;
 
     let rdr = BorderNone::new();
 
     for y in 0..h {
         let row = dst.borrow_row_mut(y);
-        rdr.read_row(r, &mut curr)?;
+        rdr.read_row(r, curr)?;
         apply_kernel_row!(row, curr, cfa, w);
         cfa = cfa.next_y();
     }

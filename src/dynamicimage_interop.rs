@@ -1,14 +1,42 @@
 //! Image interop
 use image::ImageBuffer;
+use thiserror::Error;
 
 use crate::{
     ColorSpace, DynamicImage, DynamicImageRef, GenericImage, GenericImageOwned, GenericImageRef,
-    ImageProps,
+    ImageError, ImageProps,
 };
+
+/// Errors from converting between [`image::DynamicImage`] and this crate's types.
+#[derive(Debug, Clone, PartialEq, Error)]
+#[non_exhaustive]
+pub enum InteropError {
+    /// The image has more than 4 channels.
+    #[error("too many channels: {0}")]
+    TooManyChannels(u8),
+    /// `Gray32F` has no representation in this crate.
+    #[error("Gray32F images are not supported")]
+    Gray32FUnsupported,
+    /// The color space cannot be mapped to an [`image`] buffer type.
+    #[error("unsupported color space: {0:?}")]
+    UnsupportedColorSpace(ColorSpace),
+    /// The [`image::DynamicImage`] variant has no representation in this crate.
+    #[error("unsupported image::DynamicImage variant")]
+    UnknownImageType,
+    /// The pixel buffer could not be wrapped in an [`image`] buffer (bad length).
+    #[error("could not build image buffer")]
+    BadBuffer,
+    /// Rebuilding this crate's image from the decoded buffer failed.
+    #[error(transparent)]
+    Image(#[from] ImageError),
+}
+
+/// `Result` alias for [`InteropError`].
+pub type InteropResult<T> = Result<T, InteropError>;
 
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 impl<'a> TryFrom<DynamicImageRef<'a>> for DynamicImage {
-    type Error = &'static str;
+    type Error = InteropError;
 
     fn try_from(value: DynamicImageRef<'a>) -> Result<Self, Self::Error> {
         use DynamicImageRef::*;
@@ -17,35 +45,35 @@ impl<'a> TryFrom<DynamicImageRef<'a>> for DynamicImage {
         let cspace = value.color_space();
         let channels = value.channels();
         if channels > 4 {
-            return Err("Too many channels");
+            return Err(InteropError::TooManyChannels(channels));
         }
         match cspace {
             ColorSpace::Gray => match value {
                 U8(data) => Ok(DynamicImage::ImageLuma8(
                     ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create Gray8 image")?,
+                        .ok_or(InteropError::BadBuffer)?,
                 )),
                 U16(data) => Ok(DynamicImage::ImageLuma16(
                     ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create Gray16 image")?,
+                        .ok_or(InteropError::BadBuffer)?,
                 )),
-                F32(_) => Err("Gray32F not supported"),
+                F32(_) => Err(InteropError::Gray32FUnsupported),
             },
             ColorSpace::Rgb => match value {
                 U8(data) => Ok(DynamicImage::ImageRgb8(
                     ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create Rgb8 image")?,
+                        .ok_or(InteropError::BadBuffer)?,
                 )),
                 U16(data) => Ok(DynamicImage::ImageRgb16(
                     ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create Rgb16 image")?,
+                        .ok_or(InteropError::BadBuffer)?,
                 )),
                 F32(data) => Ok(DynamicImage::ImageRgb32F(
                     ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create Rgb32F image")?,
+                        .ok_or(InteropError::BadBuffer)?,
                 )),
             },
-            _ => Err("Unsupported color space"),
+            _ => Err(InteropError::UnsupportedColorSpace(cspace)),
         }
     }
 }
@@ -54,40 +82,50 @@ use crate::{DynamicImageOwned, ImageOwned};
 
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 impl TryFrom<DynamicImage> for DynamicImageOwned {
-    type Error = &'static str;
+    type Error = InteropError;
 
     fn try_from(data: DynamicImage) -> Result<Self, Self::Error> {
         let wid = data.width() as u16;
         let hei = data.height() as u16;
         match data {
-            DynamicImage::ImageLuma8(data) => Ok(DynamicImageOwned::U8(
-                ImageOwned::new(data.into_raw(), wid.into(), hei.into(), ColorSpace::Gray)
-                    .map_err(|_| "Could not create DynamicImageOwned from ImageLuma8")?,
-            )),
-            DynamicImage::ImageRgb8(data) => Ok(DynamicImageOwned::U8(
-                ImageOwned::new(data.into_raw(), wid.into(), hei.into(), ColorSpace::Rgb)
-                    .map_err(|_| "Could not create DynamicImageOwned from ImageRgb8")?,
-            )),
-            DynamicImage::ImageLuma16(data) => Ok(DynamicImageOwned::U16(
-                ImageOwned::new(data.into_raw(), wid.into(), hei.into(), ColorSpace::Gray)
-                    .map_err(|_| "Could not create DynamicImageOwned from ImageLuma16")?,
-            )),
-            DynamicImage::ImageRgb16(data) => Ok(DynamicImageOwned::U16(
-                ImageOwned::new(data.into_raw(), wid.into(), hei.into(), ColorSpace::Rgb)
-                    .map_err(|_| "Could not create DynamicImageOwned from ImageRgb16")?,
-            )),
-            DynamicImage::ImageRgb32F(data) => Ok(DynamicImageOwned::F32(
-                ImageOwned::new(data.into_raw(), wid.into(), hei.into(), ColorSpace::Rgb)
-                    .map_err(|_| "Could not create DynamicImageOwned from ImageRgb32F")?,
-            )),
-            _ => Err("Unknown image type"),
+            DynamicImage::ImageLuma8(data) => Ok(DynamicImageOwned::U8(ImageOwned::new(
+                data.into_raw(),
+                wid.into(),
+                hei.into(),
+                ColorSpace::Gray,
+            )?)),
+            DynamicImage::ImageRgb8(data) => Ok(DynamicImageOwned::U8(ImageOwned::new(
+                data.into_raw(),
+                wid.into(),
+                hei.into(),
+                ColorSpace::Rgb,
+            )?)),
+            DynamicImage::ImageLuma16(data) => Ok(DynamicImageOwned::U16(ImageOwned::new(
+                data.into_raw(),
+                wid.into(),
+                hei.into(),
+                ColorSpace::Gray,
+            )?)),
+            DynamicImage::ImageRgb16(data) => Ok(DynamicImageOwned::U16(ImageOwned::new(
+                data.into_raw(),
+                wid.into(),
+                hei.into(),
+                ColorSpace::Rgb,
+            )?)),
+            DynamicImage::ImageRgb32F(data) => Ok(DynamicImageOwned::F32(ImageOwned::new(
+                data.into_raw(),
+                wid.into(),
+                hei.into(),
+                ColorSpace::Rgb,
+            )?)),
+            _ => Err(InteropError::UnknownImageType),
         }
     }
 }
 
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 impl TryFrom<DynamicImageOwned> for DynamicImage {
-    type Error = &'static str;
+    type Error = InteropError;
 
     fn try_from(value: DynamicImageOwned) -> Result<Self, Self::Error> {
         use DynamicImageOwned::*;
@@ -96,41 +134,41 @@ impl TryFrom<DynamicImageOwned> for DynamicImage {
         let cspace = value.color_space();
         let channels = value.channels();
         if channels > 4 {
-            return Err("Too many channels");
+            return Err(InteropError::TooManyChannels(channels));
         }
         match cspace {
             ColorSpace::Gray => match value {
                 U8(data) => Ok(DynamicImage::ImageLuma8(
                     ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create Gray8 image")?,
+                        .ok_or(InteropError::BadBuffer)?,
                 )),
                 U16(data) => Ok(DynamicImage::ImageLuma16(
                     ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create Gray16 image")?,
+                        .ok_or(InteropError::BadBuffer)?,
                 )),
-                F32(_) => Err("Gray32F not supported"),
+                F32(_) => Err(InteropError::Gray32FUnsupported),
             },
             ColorSpace::Rgb => match value {
                 U8(data) => Ok(DynamicImage::ImageRgb8(
                     ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create Rgb8 image")?,
+                        .ok_or(InteropError::BadBuffer)?,
                 )),
                 U16(data) => Ok(DynamicImage::ImageRgb16(
                     ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create Rgb16 image")?,
+                        .ok_or(InteropError::BadBuffer)?,
                 )),
                 F32(data) => Ok(DynamicImage::ImageRgb32F(
                     ImageBuffer::from_vec(width, height, data.into_vec())
-                        .ok_or("Could not create Rgb32F image")?,
+                        .ok_or(InteropError::BadBuffer)?,
                 )),
             },
-            _ => Err("Unsupported color space"),
+            _ => Err(InteropError::UnsupportedColorSpace(cspace)),
         }
     }
 }
 
 impl TryFrom<GenericImageOwned> for DynamicImage {
-    type Error = &'static str;
+    type Error = InteropError;
 
     fn try_from(value: GenericImageOwned) -> Result<Self, Self::Error> {
         value.image.try_into()
@@ -138,7 +176,7 @@ impl TryFrom<GenericImageOwned> for DynamicImage {
 }
 
 impl TryFrom<GenericImageRef<'_>> for DynamicImage {
-    type Error = &'static str;
+    type Error = InteropError;
 
     fn try_from(value: GenericImageRef<'_>) -> Result<Self, Self::Error> {
         value.image.try_into()
@@ -146,7 +184,7 @@ impl TryFrom<GenericImageRef<'_>> for DynamicImage {
 }
 
 impl TryFrom<GenericImage<'_>> for DynamicImage {
-    type Error = &'static str;
+    type Error = InteropError;
 
     fn try_from(value: GenericImage<'_>) -> Result<Self, Self::Error> {
         match value {

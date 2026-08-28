@@ -2,7 +2,7 @@
 
 use crate::demosaic::RasterMut;
 use crate::demosaic::{BayerError, BayerRead, BayerResult, ColorFilterArray};
-use crate::{ImageOwned, ImageProps, ImageRef, PixelStor};
+use crate::{ImageProps, ImageRef, PixelStor};
 
 use super::border_replicate::BorderReplicate;
 
@@ -10,21 +10,6 @@ const PADDING: usize = 1;
 
 pub fn run_imagedata<T>(
     src: &ImageRef<'_, T>,
-    cfa: ColorFilterArray,
-    dst: &mut RasterMut<'_, T>,
-) -> BayerResult<()>
-where
-    T: PixelStor,
-{
-    if src.width() < 2 || src.height() < 2 {
-        return Err(BayerError::WrongResolution);
-    }
-
-    debayer(src.as_slice(), cfa, dst)
-}
-
-pub fn run_imageowned<T>(
-    src: &ImageOwned<T>,
     cfa: ColorFilterArray,
     dst: &mut RasterMut<'_, T>,
 ) -> BayerResult<()>
@@ -94,18 +79,40 @@ macro_rules! apply_kernel_g {
 
 /*--------------------------------------------------------------*/
 
+/// Scratch elements [`debayer_serial`] needs for a `width`-pixel image.
+pub(super) fn serial_scratch_len(width: usize) -> usize {
+    2 * (2 * PADDING + width)
+}
+
 fn debayer<T>(r: &[T], cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
 where
     T: PixelStor,
 {
+    let mut scratch = vec![T::zero(); serial_scratch_len(dst.w)];
+    debayer_serial(r, cfa, dst, &mut scratch)
+}
+
+/// Serial demosaic working entirely inside caller-provided `scratch` (at least
+/// [`serial_scratch_len`] elements). No allocation.
+pub(super) fn debayer_serial<T>(
+    r: &[T],
+    cfa: ColorFilterArray,
+    dst: &mut RasterMut<'_, T>,
+    scratch: &mut [T],
+) -> BayerResult<()>
+where
+    T: PixelStor,
+{
     let (w, h) = (dst.w, dst.h);
-    let mut prev = vec![T::zero(); 2 * PADDING + w];
-    let mut curr = vec![T::zero(); 2 * PADDING + w];
+    let rl = 2 * PADDING + w;
+    let (prev, curr) = scratch.split_at_mut(rl);
+    let mut prev = &mut prev[..rl];
+    let mut curr = &mut curr[..rl];
     let mut cfa = cfa;
 
     let rdr = BorderReplicate::new(w, PADDING);
-    rdr.read_row(r, &mut prev)?;
-    rdr.read_row(r, &mut curr)?;
+    rdr.read_row(r, prev)?;
+    rdr.read_row(r, curr)?;
 
     {
         // y = 0.
@@ -123,7 +130,7 @@ where
 
     for y in 2..h {
         rotate!(prev <- curr);
-        rdr.read_row(r, &mut curr)?;
+        rdr.read_row(r, curr)?;
 
         let row = dst.borrow_row_mut(y);
         apply_kernel_row!(row, prev, curr, cfa, w);

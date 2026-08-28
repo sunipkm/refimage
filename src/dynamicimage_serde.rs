@@ -1,7 +1,38 @@
 use crate::imagetraits::ImageProps;
-use crate::{ColorSpace, DynamicImageOwned, DynamicImageRef, ImageOwned, PixelType};
+use crate::{ColorSpace, DynamicImageOwned, DynamicImageRef, ImageError, ImageOwned, PixelType};
 use crate::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+/// Errors from (de)serializing a [`DynamicImageOwned`] / [`DynamicImageRef`] to
+/// or from the crate's internal wire format.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[non_exhaustive]
+pub enum SerdeError {
+    /// The stored CRC32 does not match the payload.
+    #[error("data checksum mismatch")]
+    Checksum,
+    /// The reconstructed image has a different channel count than recorded.
+    #[error("channel count mismatch: recorded {expected}, image has {got}")]
+    ChannelMismatch {
+        /// Channel count recorded in the stream.
+        expected: u8,
+        /// Channel count of the reconstructed image.
+        got: u8,
+    },
+    /// The pixel-type discriminant is not one of `{8, 16, -32}`.
+    #[error("invalid pixel type discriminant")]
+    InvalidPixelType,
+    /// Reinterpreting the byte payload as the pixel type failed.
+    #[error("byte cast failed: {0}")]
+    Cast(&'static str),
+    /// Rebuilding the image from the decoded fields failed.
+    #[error(transparent)]
+    Image(#[from] ImageError),
+}
+
+/// `Result` alias for [`SerdeError`].
+pub type SerdeResult<T> = Result<T, SerdeError>;
 
 #[derive(Serialize, Deserialize)]
 struct SerialImage {
@@ -16,7 +47,7 @@ struct SerialImage {
 }
 
 impl<'a> TryFrom<&'a DynamicImageRef<'a>> for SerialImage {
-    type Error = &'static str;
+    type Error = SerdeError;
 
     fn try_from(data: &'a DynamicImageRef<'a>) -> Result<Self, Self::Error> {
         let width = data.width();
@@ -54,7 +85,7 @@ impl Serialize for DynamicImageRef<'_> {
 }
 
 impl TryFrom<&DynamicImageOwned> for SerialImage {
-    type Error = &'static str;
+    type Error = SerdeError;
 
     fn try_from(data: &DynamicImageOwned) -> Result<Self, Self::Error> {
         let width = data.width();
@@ -80,55 +111,62 @@ impl TryFrom<&DynamicImageOwned> for SerialImage {
 }
 
 impl TryFrom<SerialImage> for DynamicImageOwned {
-    type Error = &'static str;
+    type Error = SerdeError;
 
     fn try_from(data: SerialImage) -> Result<Self, Self::Error> {
         let width = data.width;
         let height = data.height;
         let channels = data.channels;
         let cspace = data.cspace;
-        let pixeltype = data.pixeltype.try_into()?;
+        let pixeltype: PixelType = data
+            .pixeltype
+            .try_into()
+            .map_err(|_| SerdeError::InvalidPixelType)?;
         #[allow(unused_mut)]
         let mut out = data.data;
         let crc = crc32fast::hash(&out);
         if data.crc != crc {
-            return Err("Invalid data checksum");
+            return Err(SerdeError::Checksum);
+        }
+        fn check<T: crate::PixelStor>(img: &ImageOwned<T>, expected: u8) -> SerdeResult<()> {
+            if img.channels() == expected {
+                Ok(())
+            } else {
+                Err(SerdeError::ChannelMismatch {
+                    expected,
+                    got: img.channels(),
+                })
+            }
         }
         match pixeltype {
             PixelType::U8 => {
                 let img = ImageOwned::new(out, width.into(), height.into(), cspace)?;
-                if img.channels() != channels {
-                    return Err("Data length does not match image size.");
-                }
+                check(&img, channels)?;
                 Ok(DynamicImageOwned::U8(img))
             }
             PixelType::U16 => {
-                let data = u8_slice_as_u16(&out).map_err(|_| "Could not cast u8 slice as u16")?;
+                let data = u8_slice_as_u16(&out).map_err(SerdeError::Cast)?;
                 let img = ImageOwned::new(
                     data.as_slice().to_vec(),
                     width.into(),
                     height.into(),
                     cspace,
                 )?;
-                if img.channels() != channels {
-                    return Err("Data length does not match image size.");
-                }
+                check(&img, channels)?;
                 Ok(DynamicImageOwned::U16(img))
             }
             PixelType::F32 => {
-                let data = u8_slice_as_f32(&out).map_err(|_| "Could not cast u8 slice as f32")?;
+                let data = u8_slice_as_f32(&out).map_err(SerdeError::Cast)?;
                 let img = ImageOwned::new(
                     data.as_slice().to_vec(),
                     width.into(),
                     height.into(),
                     cspace,
                 )?;
-                if img.channels() != channels {
-                    return Err("Data length does not match image size.");
-                }
+                check(&img, channels)?;
                 Ok(DynamicImageOwned::F32(img))
             }
-            _ => Err("Invalid pixel type."),
+            other => Err(SerdeError::Image(ImageError::InvalidPixelType(other as i8))),
         }
     }
 }
@@ -170,7 +208,7 @@ impl<T> DtypeContainer<'_, T> {
     }
 }
 
-type ByteResult<T> = Result<T, String>;
+type ByteResult<T> = Result<T, &'static str>;
 
 fn u8_slice_as_f32(buf: &[u8]) -> ByteResult<DtypeContainer<f32>> {
     let res = bytemuck::try_cast_slice(buf);
@@ -187,10 +225,7 @@ fn u8_slice_as_f32(buf: &[u8]) -> ByteResult<DtypeContainer<f32>> {
                     }
                     Ok(DtypeContainer::Vec(vec))
                 }
-                _ => {
-                    // If the buffer is not the correct length for a f32 slice, err.
-                    Err(err.to_string())
-                }
+                _ => Err(crate::imageref::cast_msg(err)),
             }
         }
     }
@@ -211,10 +246,7 @@ fn u8_slice_as_u16(buf: &[u8]) -> ByteResult<DtypeContainer<u16>> {
                     }
                     Ok(DtypeContainer::Vec(vec))
                 }
-                _ => {
-                    // If the buffer is not the correct length for a f32 slice, err.
-                    Err(err.to_string())
-                }
+                _ => Err(crate::imageref::cast_msg(err)),
             }
         }
     }

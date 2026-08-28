@@ -2,11 +2,12 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use image::DynamicImage;
+use refimage::pipeline::Pipeline;
 use refimage::{
     BayerPattern, ColorSpace, DemosaicMethod, DynamicImageRef, FitsCompression, FitsWrite,
-    GenericImageRef, ImageProps, ImageRef, ToLuma,
+    GenericImageRef, ImageProps, ImageRef,
 };
-use refimage::{CalcOptExp, GenericImage, OptimumExposureBuilder};
+use refimage::{CalcOptExp, OptimumExposureBuilder};
 
 fn main() {
     // color_backtrace::install();
@@ -25,16 +26,18 @@ fn main() {
         .expect("Failed to insert key");
     img.insert_key("Lens", "EF24-70mm f/2.8L II USM")
         .expect("Failed to insert key");
-    let img = GenericImage::from(img);
-    let mut debayered = img
+
+    // Debayer through the pipeline, carrying the metadata onto the result.
+    let debayered = Pipeline::new()
         .debayer(DemosaicMethod::None)
+        .apply_meta(&img)
         .expect("Failed to debayer");
     assert!(debayered.channels() == 3);
     assert!(debayered.width() == 4);
     assert!(debayered.height() == 4);
     assert!(debayered.color_space() == ColorSpace::Rgb);
-    let ptr = debayered.as_slice_u8().unwrap();
-    assert_eq!(ptr, &expected);
+    assert_eq!(debayered.as_raw_u8(), &expected);
+
     debayered
         .write_fits(PathBuf::from("./test.fits"), FitsCompression::None, true)
         .expect("Failed to write FITS");
@@ -42,13 +45,23 @@ fn main() {
         .clone()
         .try_into()
         .expect("Failed to convert to DynamicImage");
-    dimg.save("test.png").expect("Failed to save image");
-    debayered.to_luma().expect("Failed to convert to luma");
+    // Saving needs an encoder feature on the `image` crate; ignore if unavailable.
+    match dimg.save("test.png") {
+        Ok(()) => println!("wrote test.png"),
+        Err(e) => println!("skipped PNG save: {e}"),
+    }
+
+    // A second pass to luminance, again metadata-preserving.
+    let gray = Pipeline::new()
+        .debayer(DemosaicMethod::None)
+        .to_luma()
+        .apply_meta(&img)
+        .expect("Failed to convert to luma");
     let eval = OptimumExposureBuilder::default()
         .pixel_exclusion(1)
         .build()
         .expect("Failed to build OptimumExposure");
-    let (exp, _) = debayered
+    let (exp, _) = gray
         .calc_opt_exp(&eval, Duration::from_secs(1), 1)
         .expect("Failed to calculate optimum exposure");
     println!("Optimum exposure: {exp:?}");

@@ -1,35 +1,36 @@
 #[cfg(feature = "rayon")]
 use rayon::{iter::ParallelIterator, slice::ParallelSliceMut};
 
-use crate::{demosaic::ColorFilterArray, BayerPattern, ColorSpace, PixelStor, PixelType};
+use crate::{
+    demosaic::ColorFilterArray, BayerError, BayerPattern, ColorSpace, ImageError, PixelStor,
+    PixelType,
+};
 
 impl TryFrom<i8> for PixelType {
-    type Error = &'static str;
+    type Error = ImageError;
 
     fn try_from(value: i8) -> Result<Self, Self::Error> {
         match value {
             8 => Ok(Self::U8),
             16 => Ok(Self::U16),
             -32 => Ok(Self::F32),
-            _ => Err("Invalid value for PixelType"),
+            other => Err(ImageError::InvalidPixelType(other)),
         }
     }
 }
 
-impl TryInto<ColorFilterArray> for ColorSpace {
-    type Error = &'static str;
+impl TryFrom<ColorSpace> for ColorFilterArray {
+    type Error = BayerError;
 
-    fn try_into(self) -> Result<ColorFilterArray, Self::Error> {
-        match self {
-            ColorSpace::Bayer(pat) => match pat {
-                BayerPattern::Bggr => Ok(ColorFilterArray::Bggr),
-                BayerPattern::Gbrg => Ok(ColorFilterArray::Gbrg),
-                BayerPattern::Grbg => Ok(ColorFilterArray::Grbg),
-                BayerPattern::Rggb => Ok(ColorFilterArray::Rggb),
-            },
-            ColorSpace::Gray => Err("Gray color space not supported in Bayer images."),
-            ColorSpace::Rgb => Err("RGB color space not supported in Bayer images."),
-            ColorSpace::Custom(_, _) => Err("Custom color space not supported in Bayer images."),
+    fn try_from(value: ColorSpace) -> Result<ColorFilterArray, Self::Error> {
+        match value {
+            ColorSpace::Bayer(pat) => Ok(match pat {
+                BayerPattern::Bggr => ColorFilterArray::Bggr,
+                BayerPattern::Gbrg => ColorFilterArray::Gbrg,
+                BayerPattern::Grbg => ColorFilterArray::Grbg,
+                BayerPattern::Rggb => ColorFilterArray::Rggb,
+            }),
+            other => Err(BayerError::InvalidColorSpace(other)),
         }
     }
 }
@@ -42,15 +43,10 @@ impl Into<ColorSpace> for BayerPattern {
 }
 
 /// Run the luminance conversion on a slice of pixel data.
-pub(crate) fn run_luma<T: PixelStor>(
-    channels: usize,
-    len: usize,
-    data: &mut [T],
-    wts: &[f64],
-) -> Result<(), &'static str> {
-    if channels != wts.len() {
-        return Err("Number of channels and weights do not match.");
-    }
+///
+/// The caller (the pipeline) guarantees `channels == wts.len()`.
+pub(crate) fn run_luma<T: PixelStor>(channels: usize, len: usize, data: &mut [T], wts: &[f64]) {
+    debug_assert_eq!(channels, wts.len());
     #[cfg(not(feature = "rayon"))]
     {
         let len = len / channels;
@@ -97,7 +93,6 @@ pub(crate) fn run_luma<T: PixelStor>(
             }
         }
     }
-    Ok(())
 }
 
 impl ColorSpace {

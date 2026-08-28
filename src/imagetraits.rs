@@ -1,12 +1,4 @@
-use std::num::NonZeroUsize;
-
 use crate::{BayerPattern, ColorSpace, PixelType};
-
-#[allow(unused_imports)]
-use crate::{
-    DynamicImageOwned, DynamicImageRef, GenericImage, GenericImageOwned, GenericImageRef,
-    ImageOwned, ImageRef,
-};
 
 /// A trait for shifting Bayer patterns.
 pub trait BayerShift {
@@ -69,33 +61,6 @@ impl BayerShift for BayerPattern {
     }
 }
 
-/// A trait for converting an image to a luminance image.
-///
-/// This trait is implemented for [`ImageRef`], [`DynamicImageRef`], [`GenericImageRef`] and
-/// their owned counterparts, [`ImageOwned`], [`DynamicImageOwned`], [`GenericImageOwned`]
-/// and [`GenericImage`].
-pub trait ToLuma {
-    /// Convert the image to a luminance image.
-    ///
-    /// This function uses the formula `Y = 0.299R + 0.587G + 0.114B` to calculate the
-    /// corresponding luminance image.
-    ///
-    /// # Errors
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB image.
-    fn to_luma(&mut self) -> Result<(), &'static str>;
-
-    /// Convert the image to a luminance image with custom coefficients.
-    ///
-    /// # Arguments
-    /// - `wts`: The weights to use for the conversion.
-    ///
-    /// # Errors
-    /// - If the image is not debayered and is not a grayscale image.
-    /// - If the image is not an RGB image.
-    fn to_luma_custom(&mut self, coeffs: &[f64]) -> Result<(), &'static str>;
-}
-
 /// A trait for accessing the properties of an image.
 pub trait ImageProps {
     /// Get the width of the image.
@@ -118,63 +83,4 @@ pub trait ImageProps {
 
     /// Check if the data is empty.
     fn is_empty(&self) -> bool;
-}
-
-/// A trait for converting an image to a different pixel type.
-pub trait ConvertPixelType {
-    /// The output type of [`ConvertImage::convert_u8`].
-    type OutputU8;
-    /// The output type of [`ConvertImage::convert_u16`].
-    type OutputU16;
-    /// The output type of [`ConvertImage::convert_f32`].
-    type OutputF32;
-
-    /// Convert the image to pixels of type `u8`.
-    /// This function will clamp the values to the range of the type `u8` (0-255).
-    fn convert_u8(&self) -> Self::OutputU8;
-    /// Convert the image to pixels of type `u16`.
-    /// This function will clamp the values to the range of the type `u16` (0-65535).
-    fn convert_u16(&self) -> Self::OutputU16;
-    /// Convert the image to pixels of type `f32`.
-    /// This function will clamp the values to the range of the type `f32` (0.0-1.0).
-    fn convert_f32(&self) -> Self::OutputF32;
-}
-
-/// A trait for selecting a region of interest (ROI) from an image.
-pub trait SelectRoi {
-    /// The output type of [`SelectRoi::select_roi`].
-    type Output;
-
-    /// Select a region of interest from the image.
-    ///
-    /// If the ROI is of size zero in any dimension, the function will return an empty image.
-    /// If the ROI is completely out of bounds, the function will return an error.
-    ///
-    /// # Arguments
-    /// - `x`: The x-coordinate of the top-left corner of the ROI.
-    /// - `y`: The y-coordinate of the top-left corner of the ROI.
-    /// - `width`: The width of the ROI.
-    /// - `height`: The height of the ROI.
-    ///
-    /// # Errors
-    /// - If the ROI is completely out of bounds.
-    /// - If the ROI is of size zero in any dimension.
-    fn select_roi(
-        &self,
-        x: usize,
-        y: usize,
-        width: NonZeroUsize,
-        height: NonZeroUsize,
-    ) -> Result<Self::Output, &'static str>;
-}
-
-/// A trait for copying a region of interest (ROI) from one image to another.
-pub trait CopyRoi {
-    /// The output type of [`CopyRoi::copy_to`].
-    type Output;
-
-    /// Copy a region of interest from the image to another image.
-    ///
-    /// This function will always zero out the destination image before copying the ROI.
-    fn copy_to(&self, dest: &mut Self::Output, x: usize, y: usize);
 }

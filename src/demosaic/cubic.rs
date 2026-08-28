@@ -28,27 +28,12 @@ use crate::demosaic::{BayerError, BayerRead, BayerResult, ColorFilterArray, Rast
 
 #[cfg(feature = "rayon")]
 use crate::demosaic::border_mirror::BorderMirror;
-use crate::{ImageOwned, ImageProps, ImageRef, PixelStor};
+use crate::{ImageProps, ImageRef, PixelStor};
 
 const PADDING: usize = 3;
 
 pub fn run_imagedata<T>(
     src: &ImageRef<'_, T>,
-    cfa: ColorFilterArray,
-    dst: &mut RasterMut<'_, T>,
-) -> BayerResult<()>
-where
-    T: PixelStor + Enlargeable,
-{
-    if src.width() < 2 || src.height() < 2 {
-        return Err(BayerError::WrongResolution);
-    }
-
-    debayer(src.as_slice(), cfa, dst)
-}
-
-pub fn run_imageowned<T>(
-    src: &ImageOwned<T>,
     cfa: ColorFilterArray,
     dst: &mut RasterMut<'_, T>,
 ) -> BayerResult<()>
@@ -181,6 +166,11 @@ macro_rules! apply_kernel_g {
 /* Rayon                                                        */
 /*--------------------------------------------------------------*/
 
+/// Scratch elements [`debayer_serial`] needs for a `width`-pixel image.
+pub(super) fn serial_scratch_len(width: usize) -> usize {
+    7 * (2 * PADDING + width)
+}
+
 fn debayer<T>(r: &[T], cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
 where
     T: PixelStor + Enlargeable,
@@ -189,18 +179,13 @@ where
         return Err(BayerError::WrongResolution);
     }
 
-    if dst.w < 4 || dst.h < 4 {
-        return debayer_serial(r, cfa, dst);
+    #[cfg(feature = "rayon")]
+    if dst.w >= 4 && dst.h >= 4 {
+        return debayer_parallel(r, cfa, dst);
     }
 
-    #[cfg(feature = "rayon")]
-    {
-        debayer_parallel(r, cfa, dst)
-    }
-    #[cfg(not(feature = "rayon"))]
-    {
-        debayer_serial(r, cfa, dst)
-    }
+    let mut scratch = vec![T::zero(); serial_scratch_len(dst.w)];
+    debayer_serial(r, cfa, dst, &mut scratch)
 }
 
 #[cfg(feature = "rayon")]
@@ -266,33 +251,48 @@ where
 /* Naive                                                        */
 /*--------------------------------------------------------------*/
 
+/// Serial demosaic working entirely inside caller-provided `scratch` (at least
+/// [`serial_scratch_len`] elements). No allocation.
 #[allow(unused_parens)]
 #[inline(never)]
-fn debayer_serial<T>(r: &[T], cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
+pub(super) fn debayer_serial<T>(
+    r: &[T],
+    cfa: ColorFilterArray,
+    dst: &mut RasterMut<'_, T>,
+    scratch: &mut [T],
+) -> BayerResult<()>
 where
     T: PixelStor + Enlargeable,
 {
     use super::border_mirror::BorderMirror;
 
     let (w, h) = (dst.w, dst.h);
-    let mut prv3 = vec![T::zero(); 2 * PADDING + w];
-    let mut prv2 = vec![T::zero(); 2 * PADDING + w];
-    let mut prv1 = vec![T::zero(); 2 * PADDING + w];
-    let mut curr = vec![T::zero(); 2 * PADDING + w];
-    let mut nxt1 = vec![T::zero(); 2 * PADDING + w];
-    let mut nxt2 = vec![T::zero(); 2 * PADDING + w];
-    let mut nxt3 = vec![T::zero(); 2 * PADDING + w];
+    let rl = 2 * PADDING + w;
+    let (prv3, rest) = scratch.split_at_mut(rl);
+    let (prv2, rest) = rest.split_at_mut(rl);
+    let (prv1, rest) = rest.split_at_mut(rl);
+    let (curr, rest) = rest.split_at_mut(rl);
+    let (nxt1, rest) = rest.split_at_mut(rl);
+    let (nxt2, rest) = rest.split_at_mut(rl);
+    let (nxt3, _) = rest.split_at_mut(rl);
+    let mut prv3 = &mut prv3[..rl];
+    let mut prv2 = &mut prv2[..rl];
+    let mut prv1 = &mut prv1[..rl];
+    let mut curr = &mut curr[..rl];
+    let mut nxt1 = &mut nxt1[..rl];
+    let mut nxt2 = &mut nxt2[..rl];
+    let mut nxt3 = &mut nxt3[..rl];
     let mut cfa = cfa;
 
     let rdr = BorderMirror::new(w, PADDING);
-    rdr.read_row(r, &mut curr)?;
-    rdr.read_row(r, &mut nxt1)?;
-    rdr.read_row(r, &mut nxt2)?;
-    rdr.read_row(r, &mut nxt3)?;
+    rdr.read_row(r, curr)?;
+    rdr.read_row(r, nxt1)?;
+    rdr.read_row(r, nxt2)?;
+    rdr.read_row(r, nxt3)?;
 
-    prv1.copy_from_slice(&nxt1);
-    prv2.copy_from_slice(&nxt2);
-    prv3.copy_from_slice(&nxt3);
+    prv1.copy_from_slice(nxt1);
+    prv2.copy_from_slice(nxt2);
+    prv3.copy_from_slice(nxt3);
 
     {
         // y = 0.
@@ -303,7 +303,7 @@ where
 
     for y in 1..(h - 3) {
         rotate!(prv3 <- prv2 <- prv1 <- curr <- nxt1 <- nxt2 <- nxt3);
-        rdr.read_row(r, &mut nxt3)?;
+        rdr.read_row(r, nxt3)?;
 
         let row = dst.borrow_row_mut(y);
         apply_kernel_row!(u8; row, prv3, prv2, prv1, curr, nxt1, nxt2, nxt3, cfa, w);

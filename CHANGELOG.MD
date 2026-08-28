@@ -1,6 +1,37 @@
 # Changelog for `refimage`
 
 ## Changes
+### 1.0.0-pre6 (2026-08-28)
+- Added the `pipeline` module: a declarative, cloneable, serializable `Pipeline`
+  of `Op`s (debayer, luminance, affine pixel scale, pixel-type conversion, crop,
+  ROI, flip, 90°/180°/270° rotation). `Pipeline::compile` validates the chain
+  against an `ImageSpec` and pre-allocates all buffers, yielding a `Runner` that
+  reuses them across frames. The serial-tiled `Strategy` does zero per-frame heap
+  allocation; tiled strategies produce bit-identical output to `Sequential`.
+  `Pipeline::apply` / `apply_meta` run the chain once and return an owned image
+  (the latter carrying a `GenericImageRef`'s metadata); `Runner::run_into`
+  renders into a caller-supplied buffer.
+- **Breaking:** the pipeline is now the *only* API for pixel conversions. The
+  `Debayer`, `ToLuma`, `ConvertPixelType`, `SelectRoi` and `CopyRoi` traits and
+  every per-type impl are removed. `SelectRoi` becomes `Op::Roi`; `CopyRoi`
+  becomes `Runner::run_into` with a leading `Op::Roi`.
+- **Breaking:** fallible operations now return concrete `thiserror` enums instead
+  of `&'static str` / `String`: `ImageError` (construction / byte casts),
+  `MetadataError` (key/comment/value validation, reserved & missing keys),
+  `SerdeError` (wire-format decode), `ExposureError` (`OptimumExposureBuilder` /
+  `CalcOptExp`), and `InteropError` (the `image` feature). `BayerError::InvalidColorSpace`
+  now carries a `ColorSpace`. `GenericImageOwned::operate` is generic over its
+  closure's error type.
+- Added the `grow` feature: lets a compiled `Runner` reallocate its buffers on a
+  frame-shape change (via `Runner::recompile`) instead of erroring.
+- `PixelStor::from_f64` / `from_f32` now clamp into the type's range (NaN maps to
+  the minimum) *before* narrowing, so out-of-range / non-finite inputs saturate
+  instead of panicking. This makes `Op::Scale` with a large gain or negative
+  offset well-defined.
+- `DemosaicMethod` now derives `Serialize` / `Deserialize`.
+- Added the `pipeline` example; `test_debayer` / `test_flow` rewritten to the
+  pipeline API.
+
 ### 1.0.0-pre5 (2025-01-21)
 - Internal changes to `fitsio_interop` function signatures.
 - Fixed a bug in `CopyRoi` function.

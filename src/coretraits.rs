@@ -1,7 +1,5 @@
 use bytemuck::NoUninit;
 use num_traits::{Bounded, Num, NumCast, ToPrimitive, Zero};
-#[cfg(feature = "rayon")]
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::ops::AddAssign;
 
 use crate::PixelType;
@@ -61,17 +59,16 @@ pub trait PixelStor:
     }
 
     /// Convert from f64.
-    /// This function will clamp the value to the range of the type.
+    ///
+    /// The value is clamped into `[DEFAULT_MIN_VALUE, DEFAULT_MAX_VALUE]` (NaN
+    /// maps to the minimum) *before* it is narrowed, so out-of-range and
+    /// non-finite inputs saturate instead of panicking.
     #[inline(always)]
     fn from_f64(v: f64) -> Self {
-        let v = NumCast::from(v).unwrap();
-        if v > Self::DEFAULT_MAX_VALUE {
-            Self::DEFAULT_MAX_VALUE
-        } else if v < Self::DEFAULT_MIN_VALUE {
-            Self::DEFAULT_MIN_VALUE
-        } else {
-            v
-        }
+        let min = Self::DEFAULT_MIN_VALUE.to_f64();
+        let max = Self::DEFAULT_MAX_VALUE.to_f64();
+        let v = if v.is_nan() { min } else { v.clamp(min, max) };
+        NumCast::from(v).unwrap_or(Self::DEFAULT_MIN_VALUE)
     }
 
     /// Convert to f32.
@@ -81,17 +78,16 @@ pub trait PixelStor:
     }
 
     /// Convert from f32.
-    /// This function will clamp the value to the range of the type.
+    ///
+    /// The value is clamped into `[DEFAULT_MIN_VALUE, DEFAULT_MAX_VALUE]` (NaN
+    /// maps to the minimum) *before* it is narrowed, so out-of-range and
+    /// non-finite inputs saturate instead of panicking.
     #[inline(always)]
     fn from_f32(v: f32) -> Self {
-        let v = NumCast::from(v).unwrap();
-        if v > Self::DEFAULT_MAX_VALUE {
-            Self::DEFAULT_MAX_VALUE
-        } else if v < Self::DEFAULT_MIN_VALUE {
-            Self::DEFAULT_MIN_VALUE
-        } else {
-            v
-        }
+        let min = Self::DEFAULT_MIN_VALUE.to_f32();
+        let max = Self::DEFAULT_MAX_VALUE.to_f32();
+        let v = if v.is_nan() { min } else { v.clamp(min, max) };
+        NumCast::from(v).unwrap_or(Self::DEFAULT_MIN_VALUE)
     }
 
     impl_cast_floor!(u8);
@@ -303,29 +299,6 @@ impl Enlargeable for f32 {
 impl Enlargeable for f64 {
     type Larger = f64;
 }
-
-macro_rules! impl_pixelstor_cast {
-    ($to: ty) => {
-        ::paste::paste! {
-            #[doc = "Cast a slice of T to a slice of [`" $to " `], by scaling the value to requisite range."]
-            #[inline(never)]
-            pub(crate) fn [<cast_ $to>]<T: PixelStor>(data: &[T]) -> Vec<$to> {
-                #[cfg(not(feature = "rayon"))]
-                {
-                    data.iter().map(|&x| x.[<cast_ $to>]()).collect()
-                }
-                #[cfg(feature = "rayon")]
-                {
-                    data.par_iter().map(|&x| x.[<cast_ $to>]()).collect()
-                }
-            }
-        }
-    }
-}
-
-impl_pixelstor_cast!(u8);
-impl_pixelstor_cast!(u16);
-impl_pixelstor_cast!(f32);
 
 mod test {
     #[test]

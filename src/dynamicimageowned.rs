@@ -1,12 +1,9 @@
-use std::num::NonZeroUsize;
 use std::time::Duration;
 
-use crate::imagetraits::ConvertPixelType;
+use crate::DynamicImageRef;
 use crate::{
-    BayerError, CalcOptExp, ColorSpace, DemosaicMethod, DynamicImageOwned, ImageOwned, ImageProps,
-    OptimumExposure, PixelType, SelectRoi, ToLuma,
+    CalcOptExp, ColorSpace, DynamicImageOwned, ImageOwned, ImageProps, OptimumExposure, PixelType,
 };
-use crate::{Debayer, DynamicImageRef};
 
 macro_rules! dynamic_map(
     ($dynimage: expr, $image: pat => $action: expr) => ({
@@ -57,96 +54,6 @@ impl ImageProps for DynamicImageOwned {
     }
 }
 
-impl ConvertPixelType for DynamicImageOwned {
-    type OutputU8 = DynamicImageOwned;
-    type OutputU16 = DynamicImageOwned;
-    type OutputF32 = DynamicImageOwned;
-
-    fn convert_u8(&self) -> Self::OutputU8 {
-        match self {
-            DynamicImageOwned::U8(_) => self.clone(),
-            DynamicImageOwned::U16(data) => DynamicImageOwned::U8(data.convert_u8()),
-            DynamicImageOwned::F32(data) => DynamicImageOwned::U8(data.convert_u8()),
-        }
-    }
-
-    fn convert_u16(&self) -> Self::OutputU16 {
-        match self {
-            DynamicImageOwned::U8(data) => DynamicImageOwned::U16(data.convert_u16()),
-            DynamicImageOwned::U16(_) => self.clone(),
-            DynamicImageOwned::F32(data) => DynamicImageOwned::U16(data.convert_u16()),
-        }
-    }
-
-    fn convert_f32(&self) -> Self::OutputF32 {
-        match self {
-            DynamicImageOwned::U8(data) => DynamicImageOwned::F32(data.convert_f32()),
-            DynamicImageOwned::U16(data) => DynamicImageOwned::F32(data.convert_f32()),
-            DynamicImageOwned::F32(_) => self.clone(),
-        }
-    }
-}
-
-impl Debayer for DynamicImageOwned {
-    type Output = DynamicImageOwned;
-    fn debayer(&self, alg: DemosaicMethod) -> Result<Self::Output, BayerError> {
-        use DynamicImageOwned::*;
-        match self {
-            U8(image) => Ok(U8(image.debayer(alg)?)),
-            U16(image) => Ok(U16(image.debayer(alg)?)),
-            F32(image) => Ok(F32(image.debayer(alg)?)),
-        }
-    }
-}
-
-impl ToLuma for DynamicImageOwned {
-    fn to_luma(&mut self) -> Result<(), &'static str> {
-        use DynamicImageOwned::*;
-        match self {
-            U8(image) => image.to_luma(),
-            U16(image) => image.to_luma(),
-            F32(image) => image.to_luma(),
-        }
-    }
-
-    fn to_luma_custom(&mut self, coeffs: &[f64]) -> Result<(), &'static str> {
-        use DynamicImageOwned::*;
-        match self {
-            U8(image) => image.to_luma_custom(coeffs),
-            U16(image) => image.to_luma_custom(coeffs),
-            F32(image) => image.to_luma_custom(coeffs),
-        }
-    }
-}
-
-macro_rules! select_roi {
-    ($dynimage: expr, $x: expr, $y: expr, $w: expr, $h: expr) => {
-        match $dynimage {
-            DynamicImageOwned::U8(data) => DynamicImageOwned::U8(data.select_roi($x, $y, $w, $h)?),
-            DynamicImageOwned::U16(data) => {
-                DynamicImageOwned::U16(data.select_roi($x, $y, $w, $h)?)
-            }
-            DynamicImageOwned::F32(data) => {
-                DynamicImageOwned::F32(data.select_roi($x, $y, $w, $h)?)
-            }
-        }
-    };
-}
-
-impl SelectRoi for DynamicImageOwned {
-    type Output = DynamicImageOwned;
-
-    fn select_roi(
-        &self,
-        x: usize,
-        y: usize,
-        w: NonZeroUsize,
-        h: NonZeroUsize,
-    ) -> Result<Self::Output, &'static str> {
-        Ok(select_roi!(self, x, y, w, h))
-    }
-}
-
 impl From<&DynamicImageOwned> for PixelType {
     fn from(data: &DynamicImageOwned) -> Self {
         match data {
@@ -160,12 +67,12 @@ impl From<&DynamicImageOwned> for PixelType {
 macro_rules! tryfrom_dynimgdata_imgdata {
     ($type:ty, $variant:path) => {
         impl<'a> TryFrom<DynamicImageOwned> for ImageOwned<$type> {
-            type Error = &'static str;
+            type Error = crate::ImageError;
 
             fn try_from(data: DynamicImageOwned) -> Result<Self, Self::Error> {
                 match data {
                     $variant(data) => Ok(data),
-                    _ => Err("Data is not of type u8"),
+                    _ => Err(crate::ImageError::PixelTypeMismatch),
                 }
             }
         }
@@ -199,6 +106,11 @@ impl DynamicImageOwned {
     /// Get the data as a slice of `u8`, regardless of the underlying type.
     pub fn as_raw_u8_checked(&self) -> Option<&[u8]> {
         dynamic_map!(self, ref image, { image.as_u8_slice_checked() })
+    }
+
+    /// Get the data as a mutable slice of `u8`, regardless of the underlying type.
+    pub fn as_mut_raw_u8(&mut self) -> &mut [u8] {
+        dynamic_map!(self, ref mut image, image.as_mut_u8_slice())
     }
 
     /// Get the data as a slice of `u8`.
@@ -266,12 +178,18 @@ impl CalcOptExp for DynamicImageOwned {
         eval: &OptimumExposure,
         exposure: Duration,
         bin: u8,
-    ) -> Result<(Duration, u16), &'static str> {
+    ) -> Result<(Duration, u16), crate::ExposureError> {
         use DynamicImageOwned::*;
         match self {
-            U8(ref mut img) =>{let len = img.len(); eval.calculate(img.as_mut_slice(), len, exposure, bin)},
-            U16(ref mut img) => {let len = img.len(); eval.calculate(img.as_mut_slice(), len, exposure, bin)},
-            F32(_) => Err("Floating point images are not supported for this operation, since Ord is not implemented for floating point types."),
+            U8(ref mut img) => {
+                let len = img.len();
+                eval.calculate(img.as_mut_slice(), len, exposure, bin)
+            }
+            U16(ref mut img) => {
+                let len = img.len();
+                eval.calculate(img.as_mut_slice(), len, exposure, bin)
+            }
+            F32(_) => Err(crate::ExposureError::FloatUnsupported),
         }
     }
 }

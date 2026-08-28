@@ -1,16 +1,12 @@
 use std::collections::HashMap;
-use std::num::NonZeroUsize;
 use std::time::{Duration, SystemTime};
 
 use serde::Serialize;
 
-use crate::imagetraits::{ConvertPixelType, ImageProps};
+use crate::imagetraits::ImageProps;
 use crate::metadata::InsertValue;
 use crate::{genericimageowned::GenericImageOwned, genericimageref::GenericImageRef};
-use crate::{
-    BayerError, CalcOptExp, ColorSpace, Debayer, DemosaicMethod, GenericLineItem, OptimumExposure,
-    PixelType, SelectRoi, ToLuma,
-};
+use crate::{CalcOptExp, ColorSpace, GenericLineItem, OptimumExposure, PixelType};
 
 #[derive(Debug, PartialEq, Serialize)]
 /// A serializable, generic image with metadata, backed by either
@@ -86,7 +82,11 @@ impl GenericImage<'_> {
     /// - Metadata of type [`std::time::Duration`] or [`std::time::SystemTime`] is split
     ///   and stored as two consecutive metadata items, with the same key, split into
     ///   seconds ([`u64`]) and nanoseconds ([`u64`]).
-    pub fn insert_key<T: InsertValue>(&mut self, name: &str, value: T) -> Result<(), &'static str> {
+    pub fn insert_key<T: InsertValue>(
+        &mut self,
+        name: &str,
+        value: T,
+    ) -> Result<(), crate::MetadataError> {
         dynamic_map!(self, ref mut image, { image.insert_key(name, value) })
     }
 
@@ -101,7 +101,7 @@ impl GenericImage<'_> {
     /// - `Err("Key not found")` if the key was not found.
     /// - `Err("Key cannot be empty")` if the key is an empty string.
     /// - `Err("Key cannot be longer than 80 characters")` if the key is longer than 80 characters.
-    pub fn remove_key(&mut self, name: &str) -> Result<GenericLineItem, &'static str> {
+    pub fn remove_key(&mut self, name: &str) -> Result<GenericLineItem, crate::MetadataError> {
         dynamic_map!(self, ref mut image, { image.remove_key(name) })
     }
 
@@ -119,7 +119,7 @@ impl GenericImage<'_> {
         &mut self,
         name: &str,
         value: T,
-    ) -> Result<GenericLineItem, &'static str> {
+    ) -> Result<GenericLineItem, crate::MetadataError> {
         dynamic_map!(self, ref mut image, { image.replace_key(name, value) })
     }
 
@@ -212,102 +212,13 @@ impl<'a> TryInto<GenericImageRef<'a>> for GenericImage<'a> {
     }
 }
 
-impl ToLuma for GenericImage<'_> {
-    fn to_luma(&mut self) -> Result<(), &'static str> {
-        match self {
-            GenericImage::Ref(image) => Ok(image.to_luma()?),
-            GenericImage::Own(image) => Ok(image.to_luma()?),
-        }
-    }
-
-    fn to_luma_custom(&mut self, coeffs: &[f64]) -> Result<(), &'static str> {
-        match self {
-            GenericImage::Ref(image) => Ok(image.to_luma_custom(coeffs)?),
-            GenericImage::Own(image) => Ok(image.to_luma_custom(coeffs)?),
-        }
-    }
-}
-
-macro_rules! impl_toluma {
-    ($inp: ty, $mid: ty) => {
-        impl ToLuma for $inp {
-            fn to_luma(&mut self) -> Result<(), &'static str> {
-                self.get_image_mut().to_luma()
-            }
-
-            fn to_luma_custom(&mut self, coeffs: &[f64]) -> Result<(), &'static str> {
-                self.get_image_mut().to_luma_custom(coeffs)
-            }
-        }
-    };
-}
-
-impl_toluma!(GenericImageRef<'_>, DynamicImageRef<'_>);
-impl_toluma!(GenericImageOwned, DynamicImageOwned);
-
-impl<'a: 'b, 'b> GenericImage<'a> {
-    /// Debayer a [`GenericImage`] using the specified algorithm.
-    pub fn debayer(&'a self, method: DemosaicMethod) -> Result<GenericImage<'b>, BayerError> {
-        match self {
-            GenericImage::Ref(image) => Ok(image.debayer(method)?.into()),
-            GenericImage::Own(image) => Ok(image.debayer(method)?.into()),
-        }
-    }
-}
-
-impl ConvertPixelType for GenericImage<'_> {
-    type OutputU8 = GenericImageOwned;
-
-    type OutputU16 = GenericImageOwned;
-
-    type OutputF32 = GenericImageOwned;
-
-    fn convert_u8(&self) -> Self::OutputU8 {
-        match self {
-            GenericImage::Ref(image) => image.convert_u8(),
-            GenericImage::Own(image) => image.convert_u8(),
-        }
-    }
-
-    fn convert_u16(&self) -> Self::OutputU16 {
-        match self {
-            GenericImage::Ref(image) => image.convert_u16(),
-            GenericImage::Own(image) => image.convert_u16(),
-        }
-    }
-
-    fn convert_f32(&self) -> Self::OutputF32 {
-        match self {
-            GenericImage::Ref(image) => image.convert_f32(),
-            GenericImage::Own(image) => image.convert_f32(),
-        }
-    }
-}
-
-impl SelectRoi for GenericImage<'_> {
-    type Output = GenericImage<'static>;
-
-    fn select_roi(
-        &self,
-        x: usize,
-        y: usize,
-        w: NonZeroUsize,
-        h: NonZeroUsize,
-    ) -> Result<Self::Output, &'static str> {
-        match self {
-            GenericImage::Ref(image) => Ok(image.select_roi(x, y, w, h)?.into()),
-            GenericImage::Own(image) => Ok(image.select_roi(x, y, w, h)?.into()),
-        }
-    }
-}
-
 impl CalcOptExp for GenericImage<'_> {
     fn calc_opt_exp(
         self,
         eval: &OptimumExposure,
         exposure: Duration,
         bin: u8,
-    ) -> Result<(Duration, u16), &'static str> {
+    ) -> Result<(Duration, u16), crate::ExposureError> {
         match self {
             GenericImage::Ref(img) => img.calc_opt_exp(eval, exposure, bin),
             GenericImage::Own(img) => img.calc_opt_exp(eval, exposure, bin),

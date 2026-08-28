@@ -18,27 +18,12 @@ use rayon::prelude::*;
 use crate::coretraits::{get_mean, Enlargeable};
 use crate::demosaic::border_replicate::*;
 use crate::demosaic::{BayerError, BayerRead, BayerResult, ColorFilterArray, RasterMut};
-use crate::{ImageOwned, ImageProps, ImageRef, PixelStor};
+use crate::{ImageProps, ImageRef, PixelStor};
 
 const PADDING: usize = 1;
 
 pub fn run_imagedata<T>(
     src: &ImageRef<'_, T>,
-    cfa: ColorFilterArray,
-    dst: &mut RasterMut<'_, T>,
-) -> BayerResult<()>
-where
-    T: PixelStor + Enlargeable,
-{
-    if src.width() < 2 || src.height() < 2 {
-        return Err(BayerError::WrongResolution);
-    }
-
-    debayer(src.as_slice(), cfa, dst)
-}
-
-pub fn run_imageowned<T>(
-    src: &ImageOwned<T>,
     cfa: ColorFilterArray,
     dst: &mut RasterMut<'_, T>,
 ) -> BayerResult<()>
@@ -110,6 +95,11 @@ macro_rules! apply_kernel_row {
 /* Rayon                                                        */
 /*--------------------------------------------------------------*/
 
+/// Scratch elements [`debayer_serial`] needs for a `width`-pixel image.
+pub(super) fn serial_scratch_len(width: usize) -> usize {
+    3 * (2 * PADDING + width)
+}
+
 fn debayer<T>(r: &[T], cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
 where
     T: PixelStor + Enlargeable,
@@ -120,7 +110,8 @@ where
     }
     #[cfg(not(feature = "rayon"))]
     {
-        debayer_serial(r, cfa, dst)
+        let mut scratch = vec![T::zero(); serial_scratch_len(dst.w)];
+        debayer_serial(r, cfa, dst, &mut scratch)
     }
 }
 
@@ -177,20 +168,30 @@ where
 /* Naive                                                        */
 /*--------------------------------------------------------------*/
 
-#[cfg(not(feature = "rayon"))]
-fn debayer_serial<T>(r: &[T], cfa: ColorFilterArray, dst: &mut RasterMut<'_, T>) -> BayerResult<()>
+/// Serial demosaic working entirely inside caller-provided `scratch` (at least
+/// [`serial_scratch_len`] elements). No allocation.
+pub(super) fn debayer_serial<T>(
+    r: &[T],
+    cfa: ColorFilterArray,
+    dst: &mut RasterMut<'_, T>,
+    scratch: &mut [T],
+) -> BayerResult<()>
 where
     T: PixelStor + Enlargeable,
 {
     let (w, h) = (dst.w, dst.h);
-    let mut prev = vec![T::zero(); 2 * PADDING + w];
-    let mut curr = vec![T::zero(); 2 * PADDING + w];
-    let mut next = vec![T::zero(); 2 * PADDING + w];
+    let rl = 2 * PADDING + w;
+    let (prev, rest) = scratch.split_at_mut(rl);
+    let (curr, rest) = rest.split_at_mut(rl);
+    let (next, _) = rest.split_at_mut(rl);
+    let mut prev = &mut prev[..rl];
+    let mut curr = &mut curr[..rl];
+    let mut next = &mut next[..rl];
     let mut cfa = cfa;
 
     let rdr = BorderReplicate::new(w, PADDING);
-    rdr.read_row(r, &mut curr)?;
-    rdr.read_row(r, &mut next)?;
+    rdr.read_row(r, curr)?;
+    rdr.read_row(r, next)?;
 
     {
         // y = 0.
@@ -201,7 +202,7 @@ where
 
     for y in 1..(h - 1) {
         rotate!(prev <- curr <- next);
-        rdr.read_row(r, &mut next)?;
+        rdr.read_row(r, next)?;
 
         let row = dst.borrow_row_mut(y);
         apply_kernel_row!(T; row, prev, curr, next, cfa, w);
