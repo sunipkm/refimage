@@ -9,12 +9,13 @@
 //! reusing those buffers instead of allocating per frame.
 //!
 //! For a one-off conversion, [`Pipeline::apply`] compiles with
-//! [`Strategy::Sequential`], runs once, and returns an owned image: a
-//! [`DynamicImageOwned`] for a [`DynamicImageRef`] input, or a
-//! [`GenericImageOwned`] — metadata carried through unchanged — for a
-//! [`GenericImageRef`] input. [`Runner::run_into`] renders into a caller-supplied
-//! [`DynamicImageOwned`] (allocation-free when it is already the output shape) —
-//! with a leading [`Op::Roi`] that is a "blit region into a pre-sized buffer".
+//! [`Strategy::Sequential`], runs once, and returns an owned image. It accepts any
+//! image type ([`ApplyInput`]): a [`DynamicImageRef`] or [`DynamicImageOwned`] gives
+//! back a [`DynamicImageOwned`]; a [`GenericImageRef`] or [`GenericImageOwned`] gives
+//! back a [`GenericImageOwned`] with its metadata carried through unchanged.
+//! [`Runner::run_into`] renders into a caller-supplied [`DynamicImageOwned`]
+//! (allocation-free when it is already the output shape) — with a leading
+//! [`Op::Roi`] that is a "blit region into a pre-sized buffer".
 //!
 //! ```
 //! use refimage::{
@@ -136,7 +137,7 @@ impl ImageSpec {
     }
 
     /// Snapshot the shape of a live [`DynamicImageRef`].
-    pub fn from_dynamic(img: &DynamicImageRef<'_>) -> Self {
+    pub fn from_dynamic<I: ImageProps + ?Sized>(img: &I) -> Self {
         Self {
             width: img.width(),
             height: img.height(),
@@ -616,21 +617,44 @@ impl Pipeline {
 
     /// Run the chain once against `img` and return an owned result.
     ///
-    /// The output mirrors the input: a [`DynamicImageRef`] yields a
-    /// [`DynamicImageOwned`], and a metadata-bearing [`GenericImageRef`] yields a
-    /// [`GenericImageOwned`] carrying the same [`Metadata`](crate::Metadata) unchanged.
+    /// The output mirrors the input: a [`DynamicImageRef`] / [`DynamicImageOwned`]
+    /// yields a [`DynamicImageOwned`], and a metadata-bearing [`GenericImageRef`] /
+    /// [`GenericImageOwned`] yields a [`GenericImageOwned`] carrying the same
+    /// [`Metadata`](crate::Metadata) unchanged.
     ///
     /// Compiles with [`Strategy::Sequential`] and discards the [`Runner`] — for a
     /// stream of frames, keep a [`Runner`] from [`compile`](Pipeline::compile)
     /// instead so the buffers are reused.
-    pub fn apply<I: ApplyInput>(&self, img: &I) -> Result<I::Output, PipelineError> {
+    pub fn apply<I: ApplyInput + ?Sized>(&self, img: &I) -> Result<I::Output, PipelineError> {
         img.run_pipeline(self)
     }
 }
 
-/// An image a [`Pipeline`] can be applied to: a bare [`DynamicImageRef`] or a
-/// metadata-bearing [`GenericImageRef`]. [`Output`](ApplyInput::Output) is the
-/// corresponding owned image type.
+/// A frame the pipeline reads from: its shape (via [`ImageProps`]) plus the pixel
+/// data as native-endian bytes. Implemented for [`DynamicImageRef`] and
+/// [`DynamicImageOwned`]; it is the input to [`Runner::run`] / [`Runner::run_into`]
+/// and, through [`ApplyInput`], to [`Pipeline::apply`].
+pub trait Frame: ImageProps {
+    /// The pixel data as a native-endian byte slice.
+    fn as_bytes(&self) -> &[u8];
+}
+
+impl Frame for DynamicImageRef<'_> {
+    fn as_bytes(&self) -> &[u8] {
+        self.as_raw_u8()
+    }
+}
+
+impl Frame for DynamicImageOwned {
+    fn as_bytes(&self) -> &[u8] {
+        self.as_raw_u8()
+    }
+}
+
+/// An image a [`Pipeline`] can be applied to: a [`DynamicImageRef`] /
+/// [`DynamicImageOwned`], or a metadata-bearing [`GenericImageRef`] /
+/// [`GenericImageOwned`]. [`Output`](ApplyInput::Output) is the corresponding owned
+/// image type — a `Generic*` input keeps its metadata.
 pub trait ApplyInput {
     /// The owned image [`Pipeline::apply`] produces for this input.
     type Output;
@@ -639,13 +663,29 @@ pub trait ApplyInput {
     fn run_pipeline(&self, pipeline: &Pipeline) -> Result<Self::Output, PipelineError>;
 }
 
+/// Run `pipeline` once over `frame`, returning a fresh owned image.
+fn apply_dynamic<F: Frame + ?Sized>(
+    pipeline: &Pipeline,
+    frame: &F,
+) -> Result<DynamicImageOwned, PipelineError> {
+    let mut runner = pipeline.compile(ImageSpec::from_dynamic(frame), Strategy::Sequential)?;
+    let out = runner.run(frame)?;
+    Ok(DynamicImageOwned::from(&out))
+}
+
 impl ApplyInput for DynamicImageRef<'_> {
     type Output = DynamicImageOwned;
 
     fn run_pipeline(&self, pipeline: &Pipeline) -> Result<Self::Output, PipelineError> {
-        let mut runner = pipeline.compile(ImageSpec::from_dynamic(self), Strategy::Sequential)?;
-        let out = runner.run(self)?;
-        Ok(DynamicImageOwned::from(&out))
+        apply_dynamic(pipeline, self)
+    }
+}
+
+impl ApplyInput for DynamicImageOwned {
+    type Output = DynamicImageOwned;
+
+    fn run_pipeline(&self, pipeline: &Pipeline) -> Result<Self::Output, PipelineError> {
+        apply_dynamic(pipeline, self)
     }
 }
 
@@ -653,10 +693,20 @@ impl ApplyInput for GenericImageRef<'_> {
     type Output = GenericImageOwned;
 
     fn run_pipeline(&self, pipeline: &Pipeline) -> Result<Self::Output, PipelineError> {
-        let image = self.get_image().run_pipeline(pipeline)?;
         Ok(GenericImageOwned {
             metadata: self.metadata.clone(),
-            image,
+            image: apply_dynamic(pipeline, self.get_image())?,
+        })
+    }
+}
+
+impl ApplyInput for GenericImageOwned {
+    type Output = GenericImageOwned;
+
+    fn run_pipeline(&self, pipeline: &Pipeline) -> Result<Self::Output, PipelineError> {
+        Ok(GenericImageOwned {
+            metadata: self.metadata.clone(),
+            image: apply_dynamic(pipeline, self.get_image())?,
         })
     }
 }
@@ -1085,9 +1135,9 @@ impl Runner {
     /// `grow` feature is enabled, in which case a mismatch triggers an automatic
     /// [`recompile`](Runner::recompile). The result borrows the runner's internal
     /// buffer and stays valid until the next call.
-    pub fn run<'r>(
+    pub fn run<'r, F: Frame + ?Sized>(
         &'r mut self,
-        frame: &DynamicImageRef<'_>,
+        frame: &F,
     ) -> Result<DynamicImageRef<'r>, PipelineError> {
         let got = ImageSpec::from_dynamic(frame);
         if got != self.specs[0] {
@@ -1104,7 +1154,7 @@ impl Runner {
             }
         }
 
-        let raw = frame.as_raw_u8();
+        let raw = frame.as_bytes();
 
         match self.exec {
             Exec::Sequential => {
@@ -1189,9 +1239,9 @@ impl Runner {
     ///
     /// With an [`Op::Roi`] first in the chain this reproduces a "blit region into
     /// a pre-sized buffer" — the old `CopyRoi::copy_to`.
-    pub fn run_into(
+    pub fn run_into<F: Frame + ?Sized>(
         &mut self,
-        frame: &DynamicImageRef<'_>,
+        frame: &F,
         dest: &mut DynamicImageOwned,
     ) -> Result<(), PipelineError> {
         let spec = self.out_spec.clone();

@@ -73,7 +73,6 @@ fn debayer_typed<T: PixelStor + Enlargeable + bytemuck::AnyBitPattern>(
         len: elems,
         width: w as u16,
         height: h as u16,
-        channels: 1,
         cspace: ColorSpace::Bayer(pat),
     };
     let mut raster = RasterMut::new(w, h, &mut dst[..w * h * 3]);

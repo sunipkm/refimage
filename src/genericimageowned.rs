@@ -207,27 +207,6 @@ impl ImageProps for GenericImageOwned {
     }
 }
 
-impl GenericImageOwned {
-    /// Apply a function to the image data.
-    ///
-    /// This function copies the metadata of the current image, and replaces the underlying
-    /// image data with the result of the function.
-    ///
-    /// # Arguments
-    /// - `f`: The function to apply to the image data. It takes a reference to the
-    ///   current [`DynamicImageOwned`] and returns a new one (or any error `E`).
-    pub fn operate<F, E>(&self, f: F) -> Result<Self, E>
-    where
-        F: FnOnce(&DynamicImageOwned) -> Result<DynamicImageOwned, E>,
-    {
-        let img = f(&(self.image))?;
-        Ok(GenericImageOwned {
-            metadata: self.metadata.clone(),
-            image: img,
-        })
-    }
-}
-
 impl<'a> From<GenericImageRef<'a>> for GenericImageOwned {
     fn from(img: GenericImageRef<'a>) -> Self {
         Self {

@@ -29,7 +29,6 @@ pub struct ImageRef<'a, T: PixelStor> {
     pub(crate) len: usize,
     pub(crate) width: u16,
     pub(crate) height: u16,
-    pub(crate) channels: u8,
     pub(crate) cspace: ColorSpace,
 }
 
@@ -52,15 +51,10 @@ impl<'a, T: PixelStor> ImageRef<'a, T> {
         if height == 0 {
             return Err(ImageError::ZeroHeight);
         }
-        let channels = match cspace {
-            ColorSpace::Gray | ColorSpace::Bayer(_) => 1,
-            ColorSpace::Rgb => 3,
-            ColorSpace::Custom(ch, _) => ch as usize,
-        };
         let len = data.len();
         let tot = width
             .checked_mul(height)
-            .and_then(|v| v.checked_mul(channels))
+            .and_then(|v| v.checked_mul(cspace.channels() as usize))
             .ok_or(ImageError::TooLarge)?;
         if tot > len {
             return Err(ImageError::InsufficientData {
@@ -74,7 +68,6 @@ impl<'a, T: PixelStor> ImageRef<'a, T> {
             len: tot,
             width: width as u16,
             height: height as u16,
-            channels: channels as u8,
             cspace,
         })
     }
@@ -176,7 +169,7 @@ impl<T: PixelStor> ImageProps for ImageRef<'_, T> {
 
     #[inline(always)]
     fn channels(&self) -> u8 {
-        self.channels
+        self.cspace.channels()
     }
 
     #[inline(always)]

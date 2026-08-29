@@ -595,12 +595,14 @@ impl GenericValue {
 
 mod test {
 
+    /// `Pipeline::apply` on an owned metadata-bearing image keeps the metadata and
+    /// returns a `GenericImageOwned`.
     #[test]
-    fn test_operate_owned() {
+    fn apply_on_generic_owned_keeps_metadata() {
         use crate::pipeline::Pipeline;
         use crate::{
-            BayerPattern, DemosaicMethod, DynamicImageOwned, DynamicImageRef, GenericImageOwned,
-            ImageOwned, ImageProps, ImageRef,
+            BayerPattern, DemosaicMethod, DynamicImageOwned, GenericImageOwned, ImageOwned,
+            ImageProps,
         };
         use chrono::DateTime;
         use std::time::Duration;
@@ -614,25 +616,17 @@ mod test {
         img.insert_key("CAMERA", "Canon EOS 5D Mark IV").unwrap();
         img.insert_key("TESTING_THIS_LONG_KEY", "This is a long key")
             .unwrap();
-        let img2 = img
-            .operate(|x| {
-                let mut raw = x.as_raw_u8().to_vec();
-                let src = DynamicImageRef::from(
-                    ImageRef::<u8>::from_u8_mut(&mut raw, x.width(), x.height(), x.color_space())
-                        .unwrap(),
-                );
-                Pipeline::new()
-                    .debayer(DemosaicMethod::Linear)
-                    .apply(&src)
-                    .map_err(|_| "debayer failed")
-            })
+
+        let out: GenericImageOwned = Pipeline::new()
+            .debayer(DemosaicMethod::Linear)
+            .apply(&img)
             .unwrap();
-        let img3 = img.operate(|x| Ok::<_, &str>(x.clone())).unwrap();
-        assert_eq!(img, img3);
-        assert_eq!(img.get_metadata(), img2.get_metadata());
-        assert_eq!(img.get_image().width(), img2.get_image().width());
-        assert_eq!(img.get_image().height(), img2.get_image().height());
-        assert_eq!(img.get_image().channels() * 3, img2.get_image().channels());
+
+        assert_eq!(img.get_metadata(), out.get_metadata());
+        assert_eq!(img.get_timestamp(), out.get_timestamp());
+        assert_eq!(img.get_image().width(), out.get_image().width());
+        assert_eq!(img.get_image().height(), out.get_image().height());
+        assert_eq!(img.get_image().channels() * 3, out.get_image().channels());
     }
 
     #[test]

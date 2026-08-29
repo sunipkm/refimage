@@ -212,8 +212,21 @@ pub enum ColorSpace {
     Rgb,
     /// Custom color space.
     ///
-    /// The first byte is the number of channels, and the second byte is the name of the color space.
+    /// The first byte is the number of channels, and the string describes the colorspace.
     Custom(u8, String),
+}
+
+impl ColorSpace {
+    /// Number of interleaved channels per pixel implied by this color space:
+    /// `1` for [`Gray`](Self::Gray) and [`Bayer`](Self::Bayer), `3` for
+    /// [`Rgb`](Self::Rgb), and the stored count for [`Custom`](Self::Custom).
+    pub const fn channels(&self) -> u8 {
+        match self {
+            ColorSpace::Gray | ColorSpace::Bayer(_) => 1,
+            ColorSpace::Rgb => 3,
+            ColorSpace::Custom(ch, _) => *ch,
+        }
+    }
 }
 
 /// Enum to describe the Bayer pattern of the image.

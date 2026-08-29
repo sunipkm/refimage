@@ -46,7 +46,7 @@ metadata carried across unchanged.
 
 ## `GenericImageOwned` and other `ImageOwned` types
 An image can be loaded using the [`image`](https://crates.io/crates/image) crate from disk, by enabling the `image` feature:
-```rust,no_run
+```rust,ignore
 use refimage::DynamicImageOwned;
 use image::open;
 
@@ -81,7 +81,7 @@ let plain: Vec<u8> = img.fits_bytes(FitsCompression::NONE).unwrap();
 
 Debayering, luminance, pixel-type conversion, affine pixel scaling, cropping, ROI
 extraction, flips and 90° rotations are all `Op`s on a [`Pipeline`](#reusable-processing-pipelines).
-Build a `Pipeline` and call `apply` (or `apply_meta` to keep metadata, or compile a `Runner` for a frame stream).
+Build a `Pipeline` and call `apply` (a `GenericImage*` input keeps its metadata on the result), or compile a `Runner` for a frame stream.
 
 ## Reusable processing pipelines
 Every conversion is a step in a `Pipeline`.

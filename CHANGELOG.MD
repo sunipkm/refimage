@@ -10,10 +10,12 @@
   against an `ImageSpec` and pre-allocates all buffers, yielding a `Runner` that
   reuses them across frames. The serial-tiled `Strategy` does zero per-frame heap
   allocation; tiled strategies produce bit-identical output to `Sequential`.
-  `Pipeline::apply` runs the chain once and returns an owned image — a
-  `GenericImageOwned` with the metadata carried across when the input is a
-  `GenericImageRef`, a `DynamicImageOwned` otherwise; `Runner::run_into` renders
-  into a caller-supplied buffer.
+  `Pipeline::apply` runs the chain once and returns an owned image: it accepts any
+  of the four image types (via `pipeline::ApplyInput`), and a `GenericImageRef` /
+  `GenericImageOwned` input yields a `GenericImageOwned` with its metadata carried
+  across unchanged. `Runner::run` / `run_into` accept any `pipeline::Frame`
+  (`DynamicImageRef` or `DynamicImageOwned`); `run_into` renders into a
+  caller-supplied buffer.
 - **Breaking:** the pipeline is now the _only_ API for pixel conversions. The
   `Debayer`, `ToLuma`, `ConvertPixelType`, `SelectRoi` and `CopyRoi` traits and
   every per-type impl are removed. `SelectRoi` becomes `Op::Roi`; `CopyRoi`
@@ -23,8 +25,11 @@
   `MetadataError` (key/comment/value validation, reserved & missing keys),
   `SerdeError` (wire-format decode), `ExposureError` (`OptimumExposureBuilder` /
   `CalcOptExp`), and `InteropError` (the `image` feature). `BayerError::InvalidColorSpace`
-  now carries a `ColorSpace`. `GenericImageOwned::operate` is generic over its
-  closure's error type.
+  now carries a `ColorSpace`.
+- **Breaking:** `GenericImageOwned::operate` is removed — `Pipeline::apply` on a
+  `GenericImageOwned` now covers it (transform the pixels, keep the metadata). For a
+  non-pipeline transform, `GenericImageOwned::with_metadata(img.get_metadata().clone(),
+  f(img.get_image())?)`.
 - Added the `grow` feature: lets a compiled `Runner` reallocate its buffers on a
   frame-shape change (via `Runner::recompile`) instead of erroring.
 - **Breaking:** metadata is now a typed `Metadata` value, not a bare map.
@@ -59,6 +64,9 @@
   instead of panicking. This makes `Op::Scale` with a large gain or negative
   offset well-defined.
 - `DemosaicMethod` now derives `Serialize` / `Deserialize`.
+- Added `ColorSpace::channels()`. `ImageRef` / `ImageOwned` no longer cache a
+  separate channel count — it is derived from the `ColorSpace` — so the two can
+  never disagree.
 - Added the `pipeline` example; `test_debayer` / `test_flow` rewritten to the
   pipeline API.
 - `refimage` now builds and is tested on `wasm32-unknown-unknown`: added
