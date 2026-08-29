@@ -10,9 +10,10 @@
   against an `ImageSpec` and pre-allocates all buffers, yielding a `Runner` that
   reuses them across frames. The serial-tiled `Strategy` does zero per-frame heap
   allocation; tiled strategies produce bit-identical output to `Sequential`.
-  `Pipeline::apply` / `apply_meta` run the chain once and return an owned image
-  (the latter carrying a `GenericImageRef`'s metadata); `Runner::run_into`
-  renders into a caller-supplied buffer.
+  `Pipeline::apply` runs the chain once and returns an owned image — a
+  `GenericImageOwned` with the metadata carried across when the input is a
+  `GenericImageRef`, a `DynamicImageOwned` otherwise; `Runner::run_into` renders
+  into a caller-supplied buffer.
 - **Breaking:** the pipeline is now the _only_ API for pixel conversions. The
   `Debayer`, `ToLuma`, `ConvertPixelType`, `SelectRoi` and `CopyRoi` traits and
   every per-type impl are removed. `SelectRoi` becomes `Op::Roi`; `CopyRoi`
@@ -28,10 +29,8 @@
   frame-shape change (via `Runner::recompile`) instead of erroring.
 - **Breaking:** metadata is now a typed `Metadata` value, not a bare map.
   `GenericImageRef` / `GenericImageOwned` carry
-  `Metadata { timestamp: chrono::DateTime<Utc>, exposure: Duration,
-  extra: IndexMap<String, GenericLineItem> }`: `timestamp` and `exposure` are
-  mandatory typed fields (both `new` constructors take `(timestamp, exposure,
-  image)`; `image` is now `impl Into<DynamicImage…>`), so `get_timestamp()` is
+  `Metadata { timestamp: chrono::DateTime<Utc>, exposure: Duration, extra: IndexMap<String, GenericLineItem> }`: `timestamp` and `exposure` are
+  mandatory typed fields (both `new` constructors take `(timestamp, exposure, image)`; `image` is now `impl Into<DynamicImage…>`), so `get_timestamp()` is
   infallible and returns a UTC `DateTime` (was `SystemTime`), and `get_exposure()`
   returns `Duration` (`Duration::ZERO` = not applicable) instead of
   `Option<Duration>`. `TIMESTAMP` and `EXPOSURE` are reserved keys.
@@ -46,8 +45,7 @@
   The `serde`/bincode wire format for metadata changes.
 - **Breaking:** `CalcOptExp` / `OptimumExposure` reworked.
   `calc_opt_exp` now takes `&mut self` (was `self`) and both it and
-  `OptimumExposure::calculate` return an `OptimumExposureResult { exposure, bin,
-measured, within_target, clamped }` instead of a bare `(Duration, u16)`.
+  `OptimumExposure::calculate` return an `OptimumExposureResult { exposure, bin, measured, within_target, clamped }` instead of a bare `(Duration, u16)`.
   `bin` is `u16` in and out (was `u8` in). `OptimumExposure::calculate` drops its
   redundant `len` argument and its `T: Ord` bound, so **`f32` images are now
   supported** (`ExposureError::FloatUnsupported` removed); it uses an `O(n)`

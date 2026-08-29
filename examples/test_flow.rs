@@ -31,7 +31,7 @@ fn main() {
     // Debayer through the pipeline, carrying the metadata onto the result.
     let debayered = Pipeline::new()
         .debayer(DemosaicMethod::None)
-        .apply_meta(&img)
+        .apply(&img)
         .expect("Failed to debayer");
     assert!(debayered.channels() == 3);
     assert!(debayered.width() == 4);
@@ -56,7 +56,7 @@ fn main() {
     let mut gray = Pipeline::new()
         .debayer(DemosaicMethod::None)
         .to_luma()
-        .apply_meta(&img)
+        .apply(&img)
         .expect("Failed to convert to luma");
     let eval = OptimumExposureBuilder::default()
         .pixel_exclusion(1)

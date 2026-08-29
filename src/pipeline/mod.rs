@@ -9,14 +9,12 @@
 //! reusing those buffers instead of allocating per frame.
 //!
 //! For a one-off conversion, [`Pipeline::apply`] compiles with
-//! [`Strategy::Sequential`], runs once, and returns an owned
-//! [`DynamicImageOwned`](crate::DynamicImageOwned);
-//! [`Pipeline::apply_meta`] does the same for a
-//! [`GenericImageRef`](crate::GenericImageRef), carrying its metadata onto the
-//! result. [`Runner::run_into`] renders into a caller-supplied
-//! [`DynamicImageOwned`](crate::DynamicImageOwned) (allocation-free when it is
-//! already the output shape) — with a leading [`Op::Roi`] that is a "blit region
-//! into a pre-sized buffer".
+//! [`Strategy::Sequential`], runs once, and returns an owned image: a
+//! [`DynamicImageOwned`] for a [`DynamicImageRef`] input, or a
+//! [`GenericImageOwned`] — metadata carried through unchanged — for a
+//! [`GenericImageRef`] input. [`Runner::run_into`] renders into a caller-supplied
+//! [`DynamicImageOwned`] (allocation-free when it is already the output shape) —
+//! with a leading [`Op::Roi`] that is a "blit region into a pre-sized buffer".
 //!
 //! ```
 //! use refimage::{
@@ -618,24 +616,46 @@ impl Pipeline {
 
     /// Run the chain once against `img` and return an owned result.
     ///
+    /// The output mirrors the input: a [`DynamicImageRef`] yields a
+    /// [`DynamicImageOwned`], and a metadata-bearing [`GenericImageRef`] yields a
+    /// [`GenericImageOwned`] carrying the same [`Metadata`](crate::Metadata) unchanged.
+    ///
     /// Compiles with [`Strategy::Sequential`] and discards the [`Runner`] — for a
     /// stream of frames, keep a [`Runner`] from [`compile`](Pipeline::compile)
     /// instead so the buffers are reused.
-    pub fn apply(&self, img: &DynamicImageRef<'_>) -> Result<DynamicImageOwned, PipelineError> {
-        let mut runner = self.compile(ImageSpec::from_dynamic(img), Strategy::Sequential)?;
-        let out = runner.run(img)?;
+    pub fn apply<I: ApplyInput>(&self, img: &I) -> Result<I::Output, PipelineError> {
+        img.run_pipeline(self)
+    }
+}
+
+/// An image a [`Pipeline`] can be applied to: a bare [`DynamicImageRef`] or a
+/// metadata-bearing [`GenericImageRef`]. [`Output`](ApplyInput::Output) is the
+/// corresponding owned image type.
+pub trait ApplyInput {
+    /// The owned image [`Pipeline::apply`] produces for this input.
+    type Output;
+
+    #[doc(hidden)]
+    fn run_pipeline(&self, pipeline: &Pipeline) -> Result<Self::Output, PipelineError>;
+}
+
+impl ApplyInput for DynamicImageRef<'_> {
+    type Output = DynamicImageOwned;
+
+    fn run_pipeline(&self, pipeline: &Pipeline) -> Result<Self::Output, PipelineError> {
+        let mut runner = pipeline.compile(ImageSpec::from_dynamic(self), Strategy::Sequential)?;
+        let out = runner.run(self)?;
         Ok(DynamicImageOwned::from(&out))
     }
+}
 
-    /// Like [`apply`](Pipeline::apply), but for a metadata-bearing image: the
-    /// [`GenericImageRef`]'s metadata is carried, unchanged, onto the result.
-    pub fn apply_meta(
-        &self,
-        img: &GenericImageRef<'_>,
-    ) -> Result<GenericImageOwned, PipelineError> {
-        let image = self.apply(img.get_image())?;
+impl ApplyInput for GenericImageRef<'_> {
+    type Output = GenericImageOwned;
+
+    fn run_pipeline(&self, pipeline: &Pipeline) -> Result<Self::Output, PipelineError> {
+        let image = self.get_image().run_pipeline(pipeline)?;
         Ok(GenericImageOwned {
-            metadata: img.metadata.clone(),
+            metadata: self.metadata.clone(),
             image,
         })
     }

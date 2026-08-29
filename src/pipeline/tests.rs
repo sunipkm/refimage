@@ -251,9 +251,9 @@ fn run_into_reproduces_copy_to() {
     assert_eq!((dest2.width(), dest2.height()), (2, 3));
 }
 
-/// `apply_meta` carries a `GenericImageRef`'s metadata onto the owned result.
+/// `apply` on a `GenericImageRef` carries its metadata onto the owned result.
 #[test]
-fn apply_meta_preserves_metadata() {
+fn apply_preserves_metadata() {
     use std::time::Duration;
     let mut data: Vec<u16> = (0..24).collect();
     let dynref = gray16(4, 6, &mut data);
@@ -261,10 +261,7 @@ fn apply_meta_preserves_metadata() {
     let mut gen = GenericImageRef::new(ts, Duration::from_millis(50), dynref);
     gen.insert_key("CAMERA", "test-cam").unwrap();
 
-    let out = Pipeline::new()
-        .convert(PixelType::U8)
-        .apply_meta(&gen)
-        .unwrap();
+    let out = Pipeline::new().convert(PixelType::U8).apply(&gen).unwrap();
     assert_eq!(out.get_metadata(), gen.get_metadata());
     assert_eq!(out.get_timestamp(), ts);
     assert_eq!(out.get_exposure(), Duration::from_millis(50));

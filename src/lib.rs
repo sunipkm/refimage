@@ -45,9 +45,8 @@
 //! All pixel conversions — debayer, luminance, pixel-type conversion, affine pixel
 //! scaling, crop, ROI, flips, 90° rotations — are [`Op`](pipeline::Op)s on a
 //! declarative, reusable [`Pipeline`](pipeline::Pipeline). [`apply`](pipeline::Pipeline::apply)
-//! runs it once and returns an owned image;
-//! [`apply_meta`](pipeline::Pipeline::apply_meta) does the same while carrying a
-//! [`GenericImageRef`]'s metadata across.
+//! runs it once and returns an owned image; given a [`GenericImageRef`] it returns a
+//! [`GenericImageOwned`] with the metadata carried across unchanged.
 //! [`compile`](pipeline::Pipeline::compile)-ing against a concrete
 //! [`ImageSpec`](pipeline::ImageSpec) pre-allocates every buffer, yielding a
 //! [`Runner`](pipeline::Runner) that processes successive frames with zero

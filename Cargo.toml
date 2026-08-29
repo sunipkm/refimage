@@ -65,7 +65,7 @@ wasm-bindgen-test = "0.3"
 
 [features]
 # `refimage` always links `std`; the features below only add optional integrations.
-default = ["rayon"]
+default = ["rayon", "grow"]
 full = ["default", "image", "grow"]
 
 # Parallel debayer / luminance / pixel-scale kernels in the pipeline.
