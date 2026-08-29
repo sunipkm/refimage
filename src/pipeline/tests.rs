@@ -341,6 +341,238 @@ fn tiled_matches_sequential_row_local_chain() {
     }
 }
 
+fn mk_strat(tile_rows: usize, tile_cols: usize, parallel: bool) -> Strategy {
+    match (tile_cols, parallel) {
+        (0, false) => Strategy::tiled(tile_rows),
+        (0, true) => Strategy::tiled_parallel(tile_rows),
+        (c, false) => Strategy::tiled_2d(tile_rows, c),
+        (c, true) => Strategy::tiled_2d_parallel(tile_rows, c),
+    }
+}
+
+/// Genuinely-tiled execution (asserted with [`Runner::is_tiled`]) must stay
+/// byte-identical to `Sequential` when the tile size divides neither the width nor the
+/// height. Dimensions are primes / a mix of odd and even; every tile size below is
+/// coprime with all of them, so every band and every column tile has a ragged edge.
+#[test]
+fn tiled_matches_sequential_ragged_dims() {
+    let dims = [(53, 71), (53, 64), (64, 53), (47, 47)];
+    // (tile_rows, tile_cols); tile_cols == 0 -> full-width bands. All large enough to
+    // clear the `2*halo + 6` fallback threshold even for `Cubic` (halo 3).
+    let tilings = [(16, 0), (19, 0), (11, 17), (23, 29), (13, 0)];
+
+    let mut tiled = 0usize;
+    let mut check = |strat: Strategy, is_tiled: bool, got: &[u8], want: &[u8], ctx: &str| {
+        assert!(is_tiled, "expected genuine tiling for {ctx} {strat:?}");
+        assert_eq!(got, want, "{ctx} {strat:?}");
+        tiled += 1;
+    };
+
+    for &(w, h) in &dims {
+        // (a) row-local chain on RGB (halo 0).
+        {
+            let build = || Pipeline::new().to_luma().convert(PixelType::U8);
+            let spec = || ImageSpec::new(w, h, ColorSpace::Rgb, PixelType::U16);
+            let mut f0 = sample16(w * h * 3);
+            let want = build()
+                .compile(spec(), Strategy::Sequential)
+                .unwrap()
+                .run(&DynamicImageRef::from(
+                    ImageRef::new(&mut f0, w, h, ColorSpace::Rgb).unwrap(),
+                ))
+                .unwrap()
+                .as_raw_u8()
+                .to_vec();
+
+            for &(tr, tc) in &tilings {
+                for parallel in [false, true] {
+                    let strat = mk_strat(tr, tc, parallel);
+                    let mut r = build().compile(spec(), strat).unwrap();
+                    let is_tiled = r.is_tiled();
+                    let mut f = sample16(w * h * 3);
+                    let got = r
+                        .run(&DynamicImageRef::from(
+                            ImageRef::new(&mut f, w, h, ColorSpace::Rgb).unwrap(),
+                        ))
+                        .unwrap()
+                        .as_raw_u8()
+                        .to_vec();
+                    check(strat, is_tiled, &got, &want, &format!("row-local {w}x{h}"));
+                }
+            }
+        }
+
+        // (b) debayer chain — halo > 0, even-snapped tile edges. `Cubic` (halo 3) is
+        // the widest and stresses the edge padding the most.
+        for pat in [BayerPattern::Rggb, BayerPattern::Gbrg] {
+            for method in [DemosaicMethod::Linear, DemosaicMethod::Cubic] {
+                let build = || {
+                    Pipeline::new()
+                        .debayer(method)
+                        .to_luma()
+                        .convert(PixelType::U8)
+                };
+                let spec = || ImageSpec::new(w, h, ColorSpace::Bayer(pat), PixelType::U16);
+                let mut f0 = sample16(w * h);
+                let want = build()
+                    .compile(spec(), Strategy::Sequential)
+                    .unwrap()
+                    .run(&bayer_frame(w, h, pat, &mut f0))
+                    .unwrap()
+                    .as_raw_u8()
+                    .to_vec();
+
+                for &(tr, tc) in &tilings {
+                    for parallel in [false, true] {
+                        let strat = mk_strat(tr, tc, parallel);
+                        let mut r = build().compile(spec(), strat).unwrap();
+                        let is_tiled = r.is_tiled();
+                        let mut f = sample16(w * h);
+                        let got = r
+                            .run(&bayer_frame(w, h, pat, &mut f))
+                            .unwrap()
+                            .as_raw_u8()
+                            .to_vec();
+                        check(
+                            strat,
+                            is_tiled,
+                            &got,
+                            &want,
+                            &format!("debayer {w}x{h} {pat:?} {method:?}"),
+                        );
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(tiled, dims.len() * (5 * 2 + 2 * 2 * 5 * 2));
+}
+
+/// The documented fall-backs to `Sequential`: a frame shorter than `2*halo + 6`, or a
+/// tile that spans the whole frame. The output must still be correct.
+#[test]
+fn tiling_falls_back_to_sequential_when_it_cannot_help() {
+    let build = || Pipeline::new().debayer(DemosaicMethod::Cubic).to_luma();
+    // 8 rows < 2*3 + 6 for Cubic -> no Y tiling; full-width bands -> no X tiling.
+    let spec = ImageSpec::new(40, 8, ColorSpace::Bayer(BayerPattern::Rggb), PixelType::U16);
+    for strat in [
+        Strategy::tiled(2),
+        Strategy::tiled_parallel(2),
+        Strategy::tiled_2d(2, 4),
+    ] {
+        let mut r = build().compile(spec.clone(), strat).unwrap();
+        assert!(!r.is_tiled(), "{strat:?} should have fallen back");
+        let mut f = sample16(40 * 8);
+        let mut s = build().compile(spec.clone(), Strategy::Sequential).unwrap();
+        let mut f2 = sample16(40 * 8);
+        assert_eq!(
+            r.run(&bayer_frame(40, 8, BayerPattern::Rggb, &mut f))
+                .unwrap()
+                .as_raw_u8(),
+            s.run(&bayer_frame(40, 8, BayerPattern::Rggb, &mut f2))
+                .unwrap()
+                .as_raw_u8(),
+        );
+    }
+
+    // A tall frame but tile_rows >= height -> one band, no column tiling -> fall back.
+    let tall = ImageSpec::new(20, 100, ColorSpace::Rgb, PixelType::U16);
+    let r = Pipeline::new()
+        .to_luma()
+        .compile(tall, Strategy::tiled(200))
+        .unwrap();
+    assert!(!r.is_tiled());
+}
+
+/// A realistic sensor frame (1944x1472): tiled output stays bit-identical to
+/// `Sequential` for tile grids that divide the frame cleanly, leave a ragged edge on
+/// one axis, or on both — including the auto tile height.
+///
+/// `#[ignore]`d because a ~2.9 MP debayer in a debug build is slow; run it with
+/// `cargo test --all-features -- --ignored full_sensor_frame`.
+#[test]
+#[ignore = "multi-megapixel sweep; slow in debug"]
+fn tiled_matches_sequential_full_sensor_frame() {
+    let (w, h) = (1944usize, 1472usize);
+    // 1944 = 2^3 * 3^5, 1472 = 2^6 * 23.
+    let tilings = [
+        (0, 0),     // auto height, full-width bands
+        (256, 0),   // 1472 = 256*5 + 192  -> ragged Y
+        (200, 0),   // 1472 = 200*7 + 72   -> ragged Y
+        (64, 0),    // 1472 = 64*23        -> clean Y
+        (256, 512), // 1472 % 256 != 0, 1944 % 512 != 0 -> ragged both
+        (180, 300), // ragged both
+        (64, 8),    // 64*23, 8*243        -> clean both
+        (64, 64),   // 64*23, 64*30 + 24   -> ragged X
+    ];
+
+    // Row-local: RGB -> luma -> u8 (halo 0). Cheap; also exercises pure banding.
+    {
+        let build = || Pipeline::new().to_luma().convert(PixelType::U8);
+        let spec = || ImageSpec::new(w, h, ColorSpace::Rgb, PixelType::U16);
+        let mut f0 = sample16(w * h * 3);
+        let want = build()
+            .compile(spec(), Strategy::Sequential)
+            .unwrap()
+            .run(&DynamicImageRef::from(
+                ImageRef::new(&mut f0, w, h, ColorSpace::Rgb).unwrap(),
+            ))
+            .unwrap()
+            .as_raw_u8()
+            .to_vec();
+        for &(tr, tc) in &tilings {
+            for parallel in [false, true] {
+                let strat = mk_strat(tr, tc, parallel);
+                let mut r = build().compile(spec(), strat).unwrap();
+                assert!(r.is_tiled(), "row-local {strat:?}");
+                let mut f = sample16(w * h * 3);
+                let got = r
+                    .run(&DynamicImageRef::from(
+                        ImageRef::new(&mut f, w, h, ColorSpace::Rgb).unwrap(),
+                    ))
+                    .unwrap()
+                    .as_raw_u8()
+                    .to_vec();
+                assert_eq!(got, want, "row-local {strat:?}");
+            }
+        }
+    }
+
+    // Full debayer chain: Bayer u16 -> debayer(Linear) -> luma -> u8 (halo 1).
+    {
+        let pat = BayerPattern::Rggb;
+        let build = || {
+            Pipeline::new()
+                .debayer(DemosaicMethod::Linear)
+                .to_luma()
+                .convert(PixelType::U8)
+        };
+        let spec = || ImageSpec::new(w, h, ColorSpace::Bayer(pat), PixelType::U16);
+        let mut f0 = sample16(w * h);
+        let want = build()
+            .compile(spec(), Strategy::Sequential)
+            .unwrap()
+            .run(&bayer_frame(w, h, pat, &mut f0))
+            .unwrap()
+            .as_raw_u8()
+            .to_vec();
+        for &(tr, tc) in &tilings {
+            for parallel in [false, true] {
+                let strat = mk_strat(tr, tc, parallel);
+                let mut r = build().compile(spec(), strat).unwrap();
+                assert!(r.is_tiled(), "debayer {strat:?}");
+                let mut f = sample16(w * h);
+                let got = r
+                    .run(&bayer_frame(w, h, pat, &mut f))
+                    .unwrap()
+                    .as_raw_u8()
+                    .to_vec();
+                assert_eq!(got, want, "debayer {strat:?}");
+            }
+        }
+    }
+}
+
 /// A shrinking chain sizes its two buffers independently.
 #[test]
 fn independent_buffer_sizing() {
