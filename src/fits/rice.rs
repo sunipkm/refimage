@@ -1,13 +1,13 @@
 //! Rice compression for the `RICE_1` tile-compression type.
 //!
-//! A faithful port of the encode/decode paths in cfitsio's public-domain
-//! `ricecomp.c` (R. White, STScI): 8-bit (`fits_rcomp_byte`), 16-bit
-//! (`fits_rcomp_short`) and 32-bit (`fits_rcomp`) — the last used for quantized
-//! floating-point tiles. Block size is fixed at 32 (`ZVAL1 = BLOCKSIZE = 32`).
+//! Ported from the encode and decode paths of cfitsio's public-domain `ricecomp.c`
+//! (R. White, STScI): 8-bit (`fits_rcomp_byte`), 16-bit (`fits_rcomp_short`) and
+//! 32-bit (`fits_rcomp`), the last used for quantized floating-point tiles. The block
+//! size is fixed at 32 (`ZVAL1 = BLOCKSIZE = 32`).
 //!
-//! Keeping a Rust decoder next to the encoder lets us round-trip in unit tests without
-//! shelling out to astropy, and gives a future `FitsRead` its Rice path for free.
-#![allow(dead_code)] // `decode_*` land in `FitsRead`; for now only the tests use them.
+//! The decoder is retained alongside the encoder so unit tests can round-trip a tile
+//! without a reference reader; it is otherwise unused until a `FitsRead` exists.
+#![allow(dead_code)] // `decode_*` are exercised only by the round-trip tests for now.
 #![allow(clippy::int_plus_one)] // kept 1:1 with cfitsio `ricecomp.c`
 
 const NBLOCK: usize = 32;

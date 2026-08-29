@@ -1,35 +1,67 @@
-//! A pure-Rust FITS writer.
+//! Writing images to the Flexible Image Transport System (FITS) format.
 //!
-//! No `cfitsio` linkage: this compiles on every target, `wasm32` included. It writes
-//! plain (uncompressed) image HDUs and the tile-compression convention with `GZIP_1`
-//! (lossless, any pixel type), `RICE_1` and `HCOMPRESS_1` (both lossless for integers;
-//! `f32` is quantized with `SUBTRACTIVE_DITHER_1`). Output is written to be read
-//! cleanly by `astropy.io.fits`.
+//! It produces uncompressed image HDUs and the FITS
+//! tile-compression convention (`GZIP_1`, `RICE_1`, `HCOMPRESS_1`).
+//! Output is checked against `astropy.io.fits` and `cfitsio` in
+//! the test suite.
 //!
-//! Every path can target a file or an in-memory buffer: [`FitsWrite::fits_bytes`] /
-//! [`FitsWrite::write_fits_to`] for a single image, [`create_fits_to`] for a multi-HDU
-//! file (both work on `wasm32`, which has no filesystem).
+//! # Entry points
 //!
-//! # Layout
+//! [`FitsWrite`] is implemented for [`GenericImageRef`](crate::GenericImageRef),
+//! [`GenericImageOwned`](crate::GenericImageOwned) and
+//! [`GenericImage`](crate::GenericImage). It writes one image to a path
+//! ([`write_fits`](FitsWrite::write_fits)), to any [`Write`] sink
+//! ([`write_fits_to`](FitsWrite::write_fits_to)), or to an owned buffer
+//! ([`fits_bytes`](FitsWrite::fits_bytes)). A [`FitsWriter`], created by
+//! [`create_fits`] or [`create_fits_to`], collects several images into one multi-HDU
+//! file with [`append_fits`](FitsWrite::append_fits).
 //!
-//! - A single uncompressed image goes in the primary HDU.
-//! - A single compressed image, and every file built with [`create_fits`] /
-//!   [`create_fits_to`] / [`FitsWrite::append_fits`], gets an empty primary HDU followed
-//!   by image extensions.
-//! - Multi-channel images are stored **planar** (`NAXIS3 = channels`).
-//! - `u16` data carries `BZERO = 32768` so readers see `uint16`.
+//! # Compression
+//!
+//! The `compress` argument of every write method accepts any type that converts into
+//! [`FitsCompression`]: [`FitsCompression::NONE`] for an uncompressed HDU, or one of
+//! the builders [`Gzip`], [`Rice`], [`Hcompress`]. Each builder carries its own
+//! settings:
+//!
+//! | Setting | Applies to | Default |
+//! |---|---|---|
+//! | [`tile_rows`](Rice::tile_rows) / [`tile_dims`](Rice::tile_dims) — the tile grid | all | one image row per tile (`Gzip`, `Rice`); one channel plane (`Hcompress`) |
+//! | [`Quantize`] — `f32` quantization step and dither seed | `Rice`, `Hcompress` | step from an image-noise estimate ([`level`](Quantize::level) 4.0) |
+//! | [`scale`](Hcompress::scale) — H-transform divisor | `Hcompress` | `0`, lossless |
+//! | [`smooth`](Hcompress::smooth) — decompression smoothing flag | `Hcompress` | off |
+//!
+//! [`tile_rows`](Rice::tile_rows) and [`tile_dims`](Rice::tile_dims) are mutually
+//! exclusive. Calling either changes the builder's type so the other is no longer in
+//! scope.
+//!
+//! `Gzip` is lossless for every pixel type. `Rice` and `Hcompress` are lossless for
+//! `u8` and `u16`; `f32` images are quantized (`ZQUANTIZ = 'SUBTRACTIVE_DITHER_1'`),
+//! a lossy step whose error is bounded by [`Quantize::level`].
+//!
+//! # File structure
+//!
+//! - An uncompressed single image is the primary HDU. A compressed single image, and
+//!   every file produced through a [`FitsWriter`], begins with an empty primary HDU
+//!   followed by one image extension per image.
+//! - Multi-channel images are stored one plane after another (`NAXIS3 = channels`).
+//! - `u16` data is offset to signed values and written with `BZERO = 32768`, so a
+//!   reader reports it as unsigned 16-bit.
 //!
 //! # Metadata
 //!
-//! The image timestamp is written as the standard `DATE-OBS`, and a non-zero exposure
-//! as `EXPOSURE_S` / `EXPOSURE_NS` / `EXPOSURE`. Each extra
-//! [`GenericLineItem`](crate::GenericLineItem) then becomes a header card, in insertion
-//! order (`HIERARCH` for long keys, `CONTINUE` for long strings); [`Duration`] and
-//! UTC timestamp values are written as an exact `<KEY>_S` / `<KEY>_NS` integer pair
-//! plus a convenient base card (`f64` seconds, or an ISO-8601 string).
+//! The image timestamp is written as `DATE-OBS`. A non-zero exposure is written as the
+//! `EXPOSURE_S` / `EXPOSURE_NS` integer pair together with `EXPOSURE` in seconds. Each
+//! entry of the image's [`Metadata`](crate::Metadata) then becomes a header card, in
+//! insertion order, using the `HIERARCH` convention for keywords longer than eight
+//! characters and `CONTINUE` for string values longer than one card. A
+//! [`Duration`](std::time::Duration) or timestamp value is written as a `<KEY>_S` /
+//! `<KEY>_NS` integer pair with a convenience card in seconds or ISO-8601. A metadata
+//! keyword that would collide with a structural FITS keyword is rejected with
+//! [`FitsError::ReservedKeyword`].
 
 mod card;
 mod compress;
+mod config;
 mod datetime;
 mod gzip;
 mod hcompress;
@@ -46,25 +78,13 @@ use thiserror::Error;
 use crate::{GenericLineItem, GenericValue, Metadata, EXPOSURE_KEY};
 
 use card::Header;
+use config::Method;
 use hdu::{bayer_pattern, colorspace_str, ImageView};
 
-/// Compression applied to the image data of a FITS HDU.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-pub enum FitsCompression {
-    /// No compression — a plain IMAGE HDU.
-    None,
-    /// `GZIP_1`: each row tile is a gzip stream. Lossless for every pixel type.
-    Gzip,
-    /// `RICE_1`: Rice coding of each row tile. Lossless for `u8` / `u16`; `f32` is
-    /// quantized first (`ZQUANTIZ = 'SUBTRACTIVE_DITHER_1'`, lossy).
-    Rice,
-    /// `HCOMPRESS_1`: the H-transform + quadtree coder, each channel plane compressed
-    /// as one whole tile. Lossless (`scale = 0`) for `u8` / `u16`; `f32` is quantized
-    /// first (`ZQUANTIZ = 'SUBTRACTIVE_DITHER_1'`, lossy). Needs a 2-D image at least
-    /// 4×4.
-    Hcompress,
-}
+pub use config::{
+    AutoTile, DitherSeed, FitsCompression, FitsCompressionKind, FixedTile, Gzip, Hcompress,
+    Quantize, Rice,
+};
 
 /// Errors produced while writing a FITS file.
 #[derive(Debug, Error)]
@@ -82,9 +102,12 @@ pub enum FitsError {
     /// A metadata string value is too long to encode.
     #[error("metadata string value is too long")]
     MetadataValueTooLong,
-    /// `HCOMPRESS` was requested for an image smaller than 4×4 (or 1-D).
-    #[error("HCOMPRESS needs a 2-D image at least 4x4 pixels")]
+    /// `HCOMPRESS` was requested with a tile (or whole image) smaller than 4×4.
+    #[error("HCOMPRESS needs every tile to be at least 4x4 pixels")]
     HcompressTooSmall,
+    /// A tile specification could not be applied to the image.
+    #[error("invalid tile specification: {0}")]
+    InvalidTiling(String),
 }
 
 /// `Result` alias for [`FitsError`].
@@ -117,9 +140,9 @@ impl<W: Write> FitsWriter<W> {
 
 /// Create a FITS file on disk with an empty primary HDU, ready for
 /// [`FitsWrite::append_fits`]. `compress` is the compression each appended image uses.
-pub fn create_fits<P: AsRef<Path>>(
+pub fn create_fits<P: AsRef<Path>, C: Into<FitsCompression>>(
     path: P,
-    compress: FitsCompression,
+    compress: C,
     overwrite: bool,
 ) -> FitsResult<FitsWriter> {
     let out = BufWriter::new(open(path.as_ref(), overwrite)?);
@@ -129,14 +152,14 @@ pub fn create_fits<P: AsRef<Path>>(
 /// Like [`create_fits`], but writes to any [`Write`] sink instead of a path — e.g. a
 /// `Vec<u8>` for an in-memory multi-HDU FITS file. The empty primary HDU is written
 /// immediately.
-pub fn create_fits_to<W: Write>(
+pub fn create_fits_to<W: Write, C: Into<FitsCompression>>(
     mut sink: W,
-    compress: FitsCompression,
+    compress: C,
 ) -> FitsResult<FitsWriter<W>> {
     sink.write_all(&primary_empty())?;
     Ok(FitsWriter {
         out: sink,
-        compress,
+        compress: compress.into(),
         n_hdus: 1,
     })
 }
@@ -157,20 +180,28 @@ fn open(path: &Path, overwrite: bool) -> FitsResult<std::fs::File> {
 }
 
 /// Write an image, with its metadata, to a FITS file.
+///
+/// `compress` accepts anything that converts into [`FitsCompression`]: the bare builders
+/// [`Gzip`] / [`Rice`] / [`Hcompress`], a built [`FitsCompression`] value, or
+/// [`FitsCompression::NONE`] for an uncompressed HDU.
 pub trait FitsWrite {
     /// Write the image to `path` (created, or truncated if `overwrite`). Returns `path`.
-    fn write_fits<P: AsRef<Path>>(
+    fn write_fits<P: AsRef<Path>, C: Into<FitsCompression>>(
         &self,
         path: P,
-        compress: FitsCompression,
+        compress: C,
         overwrite: bool,
     ) -> FitsResult<PathBuf>;
 
     /// Write the image to any [`Write`] sink (no filesystem needed).
-    fn write_fits_to<W: Write>(&self, sink: W, compress: FitsCompression) -> FitsResult<()>;
+    fn write_fits_to<W: Write, C: Into<FitsCompression>>(
+        &self,
+        sink: W,
+        compress: C,
+    ) -> FitsResult<()>;
 
     /// Serialise the image to an in-memory FITS file.
-    fn fits_bytes(&self, compress: FitsCompression) -> FitsResult<Vec<u8>> {
+    fn fits_bytes<C: Into<FitsCompression>>(&self, compress: C) -> FitsResult<Vec<u8>> {
         let mut buf = Vec::new();
         self.write_fits_to(&mut buf, compress)?;
         Ok(buf)
@@ -180,13 +211,34 @@ pub trait FitsWrite {
     fn append_fits<W: Write>(&self, writer: &mut FitsWriter<W>) -> FitsResult<()>;
 }
 
+fn write_one<W: Write>(
+    view: &ImageView<'_>,
+    meta: &Metadata,
+    compress: &FitsCompression,
+    mut sink: W,
+    lead_primary: bool,
+) -> FitsResult<()> {
+    match &compress.0 {
+        Method::None => {
+            sink.write_all(&serialize_image(view, meta, lead_primary)?)?;
+        }
+        method => {
+            if lead_primary {
+                sink.write_all(&primary_empty())?;
+            }
+            sink.write_all(&serialize_compressed(view, meta, method)?)?;
+        }
+    }
+    Ok(())
+}
+
 macro_rules! impl_fitswrite {
     ($t:ty) => {
         impl FitsWrite for $t {
-            fn write_fits<P: AsRef<Path>>(
+            fn write_fits<P: AsRef<Path>, C: Into<FitsCompression>>(
                 &self,
                 path: P,
-                compress: FitsCompression,
+                compress: C,
                 overwrite: bool,
             ) -> FitsResult<PathBuf> {
                 let path = path.as_ref().to_path_buf();
@@ -195,31 +247,25 @@ macro_rules! impl_fitswrite {
                 Ok(path)
             }
 
-            fn write_fits_to<W: Write>(
+            fn write_fits_to<W: Write, C: Into<FitsCompression>>(
                 &self,
-                mut sink: W,
-                compress: FitsCompression,
+                sink: W,
+                compress: C,
             ) -> FitsResult<()> {
+                let compress = compress.into();
                 let view = ImageView::from_ref_like(self.get_image());
-                let meta = self.get_metadata();
-                if compress == FitsCompression::None {
-                    sink.write_all(&serialize_image(&view, meta, true)?)?;
-                } else {
-                    sink.write_all(&primary_empty())?;
-                    sink.write_all(&serialize_compressed(&view, meta, compress)?)?;
-                }
-                Ok(())
+                write_one(&view, self.get_metadata(), &compress, sink, true)
             }
 
             fn append_fits<Sink: Write>(&self, writer: &mut FitsWriter<Sink>) -> FitsResult<()> {
                 let view = ImageView::from_ref_like(self.get_image());
-                let meta = self.get_metadata();
-                let bytes = if writer.compress == FitsCompression::None {
-                    serialize_image(&view, meta, false)?
-                } else {
-                    serialize_compressed(&view, meta, writer.compress)?
-                };
-                writer.out.write_all(&bytes)?;
+                write_one(
+                    &view,
+                    self.get_metadata(),
+                    &writer.compress,
+                    &mut writer.out,
+                    false,
+                )?;
                 writer.n_hdus += 1;
                 Ok(())
             }
@@ -231,19 +277,25 @@ impl_fitswrite!(crate::GenericImageRef<'_>);
 impl_fitswrite!(crate::GenericImageOwned);
 
 impl FitsWrite for crate::GenericImage<'_> {
-    fn write_fits<P: AsRef<Path>>(
+    fn write_fits<P: AsRef<Path>, C: Into<FitsCompression>>(
         &self,
         path: P,
-        compress: FitsCompression,
+        compress: C,
         overwrite: bool,
     ) -> FitsResult<PathBuf> {
+        let compress = compress.into();
         match self {
             crate::GenericImage::Ref(i) => i.write_fits(path, compress, overwrite),
             crate::GenericImage::Own(i) => i.write_fits(path, compress, overwrite),
         }
     }
 
-    fn write_fits_to<W: Write>(&self, sink: W, compress: FitsCompression) -> FitsResult<()> {
+    fn write_fits_to<W: Write, C: Into<FitsCompression>>(
+        &self,
+        sink: W,
+        compress: C,
+    ) -> FitsResult<()> {
+        let compress = compress.into();
         match self {
             crate::GenericImage::Ref(i) => i.write_fits_to(sink, compress),
             crate::GenericImage::Own(i) => i.write_fits_to(sink, compress),
@@ -312,9 +364,9 @@ fn serialize_image(view: &ImageView<'_>, meta: &Metadata, primary: bool) -> Fits
 fn serialize_compressed(
     view: &ImageView<'_>,
     meta: &Metadata,
-    compression: FitsCompression,
+    method: &Method,
 ) -> FitsResult<Vec<u8>> {
-    let c = compress::build(view, compression)?;
+    let c = compress::build(view, method)?;
     let quantized = c.quant.is_some();
     let mut h = Header::new();
 
@@ -359,7 +411,7 @@ fn serialize_compressed(
         h.string("ZNAME1", "SCALE", Some("HCOMPRESS scale factor"))?;
         h.real("ZVAL1", c.hscale as f64, Some("HCOMPRESS scale factor"))?;
         h.string("ZNAME2", "SMOOTH", Some("HCOMPRESS smooth option"))?;
-        h.integer("ZVAL2", 0, Some("HCOMPRESS smooth option"))?;
+        h.integer("ZVAL2", c.hsmooth as i64, Some("HCOMPRESS smooth option"))?;
     }
     if let Some(zdither0) = c.quant {
         h.string(

@@ -48,7 +48,7 @@ fn find_card<'a>(bytes: &'a [u8], key: &str) -> Option<&'a str> {
 #[test]
 fn uncompressed_primary_structure() {
     let g = gray_u16(8, 4);
-    let bytes = g.fits_bytes(FitsCompression::None).unwrap();
+    let bytes = g.fits_bytes(FitsCompression::NONE).unwrap();
     assert!(is_block_aligned(&bytes));
     assert!(bytes.starts_with(b"SIMPLE  =                    T"));
     assert!(find_card(&bytes, "BITPIX").unwrap().contains("16"));
@@ -69,19 +69,18 @@ fn uncompressed_primary_structure() {
 #[test]
 fn compressed_is_bintable_extension() {
     let g = gray_u16(16, 16);
-    for comp in [FitsCompression::Gzip, FitsCompression::Rice] {
-        let bytes = g.fits_bytes(comp).unwrap();
+    for (comp, want) in [
+        (FitsCompression::from(Gzip::new()), "GZIP_1"),
+        (FitsCompression::from(Rice::new()), "RICE_1"),
+    ] {
+        let bytes = g.fits_bytes(&comp).unwrap();
         assert!(is_block_aligned(&bytes), "{comp:?}");
         // primary first
         assert!(bytes.starts_with(b"SIMPLE  =                    T"));
         assert!(find_card(&bytes, "XTENSION").unwrap().contains("BINTABLE"));
         assert!(find_card(&bytes, "ZIMAGE").unwrap().contains('T'));
         let zc = find_card(&bytes, "ZCMPTYPE").unwrap();
-        assert!(zc.contains(if comp == FitsCompression::Rice {
-            "RICE_1"
-        } else {
-            "GZIP_1"
-        }));
+        assert!(zc.contains(want));
         assert!(find_card(&bytes, "ZNAXIS1").unwrap().contains("16"));
     }
 }
@@ -89,7 +88,7 @@ fn compressed_is_bintable_extension() {
 #[test]
 fn hcompress_is_bintable_with_scale_cards() {
     let g = gray_u16(20, 16);
-    let bytes = g.fits_bytes(FitsCompression::Hcompress).unwrap();
+    let bytes = g.fits_bytes(Hcompress::new()).unwrap();
     assert!(is_block_aligned(&bytes));
     assert!(bytes.starts_with(b"SIMPLE  =                    T"));
     assert!(find_card(&bytes, "ZCMPTYPE")
@@ -109,7 +108,7 @@ fn hcompress_rejects_tiny_images() {
         DynamicImageOwned::from(ImageOwned::from_owned(data, 3, 3, ColorSpace::Gray).unwrap());
     let g = GenericImageOwned::new(ts(), Duration::ZERO, img);
     assert!(matches!(
-        g.fits_bytes(FitsCompression::Hcompress),
+        g.fits_bytes(Hcompress::new()),
         Err(FitsError::HcompressTooSmall)
     ));
 }
@@ -122,11 +121,11 @@ fn float_compresses_both_ways() {
     let g = GenericImageOwned::new(ts(), Duration::ZERO, img);
 
     // Gzip: lossless raw float bytes, no quantization keywords.
-    let gz = g.fits_bytes(FitsCompression::Gzip).unwrap();
+    let gz = g.fits_bytes(Gzip::new()).unwrap();
     assert!(find_card(&gz, "ZQUANTIZ").is_none());
 
     // Rice: quantized, so ZQUANTIZ / ZDITHER0 / ZSCALE column appear.
-    let rc = g.fits_bytes(FitsCompression::Rice).unwrap();
+    let rc = g.fits_bytes(Rice::new()).unwrap();
     assert!(find_card(&rc, "ZQUANTIZ")
         .unwrap()
         .contains("SUBTRACTIVE_DITHER_1"));
@@ -140,7 +139,7 @@ fn rgb_is_planar_cube() {
     let data: Vec<u8> = (0..3 * 4 * 5).map(|i| i as u8).collect();
     let img = DynamicImageOwned::from(ImageOwned::from_owned(data, 5, 4, ColorSpace::Rgb).unwrap());
     let g = GenericImageOwned::new(ts(), Duration::ZERO, img);
-    let bytes = g.fits_bytes(FitsCompression::None).unwrap();
+    let bytes = g.fits_bytes(FitsCompression::NONE).unwrap();
     assert!(find_card(&bytes, "NAXIS").unwrap().contains('3'));
     assert!(find_card(&bytes, "NAXIS3").unwrap().contains('3'));
 }
@@ -153,7 +152,7 @@ fn reserved_metadata_key_errors() {
     let mut g = GenericImageOwned::new(ts(), Duration::ZERO, img);
     g.insert_key("NAXIS1", 5u16).unwrap();
     assert!(matches!(
-        g.fits_bytes(FitsCompression::None),
+        g.fits_bytes(FitsCompression::NONE),
         Err(FitsError::ReservedKeyword(_))
     ));
 }
@@ -164,7 +163,7 @@ fn multi_hdu_file() {
     let path = dir.join(format!("refimage_fits_test_{}.fits", std::process::id()));
     let g = gray_u16(8, 8);
     {
-        let mut w = create_fits(&path, FitsCompression::Rice, true).unwrap();
+        let mut w = create_fits(&path, Rice::new(), true).unwrap();
         g.append_fits(&mut w).unwrap();
         g.append_fits(&mut w).unwrap();
         w.finish().unwrap();
@@ -184,7 +183,7 @@ fn in_memory_multi_hdu_file() {
     let g = gray_u16(8, 8);
 
     // Owned Vec sink, recovered from finish().
-    let mut w = create_fits_to(Vec::new(), FitsCompression::Rice).unwrap();
+    let mut w = create_fits_to(Vec::new(), Rice::new()).unwrap();
     g.append_fits(&mut w).unwrap();
     g.append_fits(&mut w).unwrap();
     assert_eq!(w.hdu_count(), 3);
@@ -201,12 +200,96 @@ fn in_memory_multi_hdu_file() {
     // Borrowed Vec sink: caller keeps ownership, same bytes.
     let mut buf = Vec::new();
     {
-        let mut w = create_fits_to(&mut buf, FitsCompression::Rice).unwrap();
+        let mut w = create_fits_to(&mut buf, Rice::new()).unwrap();
         g.append_fits(&mut w).unwrap();
         g.append_fits(&mut w).unwrap();
         w.finish().unwrap();
     }
     assert_eq!(buf, bytes);
+}
+
+#[test]
+fn tile_rows_sets_ztile2_and_tile_count() {
+    let g = gray_u16(16, 12);
+    let bytes = g.fits_bytes(Rice::new().tile_rows(4)).unwrap();
+    assert!(is_block_aligned(&bytes));
+    assert!(find_card(&bytes, "ZTILE1").unwrap().contains("16"));
+    assert!(find_card(&bytes, "ZTILE2").unwrap().contains('4'));
+    // 12 rows / 4 per tile = 3 tiles.
+    assert!(find_card(&bytes, "NAXIS2").unwrap().contains('3'));
+}
+
+#[test]
+fn tile_dims_makes_a_rectangular_grid() {
+    let g = gray_u16(20, 20);
+    let bytes = g.fits_bytes(Gzip::new().tile_dims([8, 8])).unwrap();
+    assert!(is_block_aligned(&bytes));
+    assert!(find_card(&bytes, "ZTILE1").unwrap().contains('8'));
+    assert!(find_card(&bytes, "ZTILE2").unwrap().contains('8'));
+    // ceil(20/8) == 3 in each direction -> 9 tiles.
+    assert!(find_card(&bytes, "NAXIS2").unwrap().contains('9'));
+}
+
+#[test]
+fn quantize_level_is_honoured_for_floats() {
+    // Needs real noise: `global_delta` only scales by the level when it finds any.
+    let mut rng = 0x9e37_79b9u32;
+    let data: Vec<f32> = (0..32 * 32)
+        .map(|i| {
+            rng = rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let noise = (rng >> 27) as f32 - 16.0;
+            (i as f32 * 0.05).sin() * 500.0 + noise
+        })
+        .collect();
+    let img =
+        DynamicImageOwned::from(ImageOwned::from_owned(data, 32, 32, ColorSpace::Gray).unwrap());
+    let g = GenericImageOwned::new(ts(), Duration::ZERO, img);
+
+    let pcount = |q: Quantize| -> i64 {
+        let b = g.fits_bytes(Rice::new().quantize(q)).unwrap();
+        find_card(&b, "PCOUNT")
+            .unwrap()
+            .split('=')
+            .nth(1)
+            .unwrap()
+            .split('/')
+            .next()
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap()
+    };
+    // A finer step keeps more bits, so the compressed heap is larger.
+    let coarse = pcount(Quantize::new().level(0.5));
+    let fine = pcount(Quantize::new().level(256.0));
+    assert!(fine > coarse, "{fine} !> {coarse}");
+}
+
+#[test]
+fn fixed_dither_seed_is_reproducible() {
+    let data: Vec<f32> = (0..16 * 16)
+        .map(|i| (i as f32 * 0.1).cos() * 20.0)
+        .collect();
+    let img =
+        DynamicImageOwned::from(ImageOwned::from_owned(data, 16, 16, ColorSpace::Gray).unwrap());
+    let g = GenericImageOwned::new(ts(), Duration::ZERO, img);
+    let a = g
+        .fits_bytes(Rice::new().quantize(Quantize::new().seed(DitherSeed::Fixed(1234))))
+        .unwrap();
+    let b = g
+        .fits_bytes(Rice::new().quantize(Quantize::new().seed(DitherSeed::Fixed(1234))))
+        .unwrap();
+    assert_eq!(a, b);
+    assert!(find_card(&a, "ZDITHER0").unwrap().contains("1234"));
+}
+
+#[test]
+fn hcompress_rejects_tiny_tiles() {
+    let g = gray_u16(16, 16);
+    assert!(matches!(
+        g.fits_bytes(Hcompress::new().tile_dims([2, 2])),
+        Err(FitsError::HcompressTooSmall)
+    ));
 }
 
 #[test]

@@ -24,7 +24,8 @@ use refimage::chrono::DateTime;
 use refimage::pipeline::{ImageSpec, Pipeline, Strategy};
 use refimage::{
     BayerPattern, ColorSpace, DemosaicMethod, DynamicImageOwned, DynamicImageRef, FitsCompression,
-    FitsWrite, GenericImageOwned, ImageOwned, ImageProps, ImageRef, PixelType,
+    FitsWrite, GenericImageOwned, Gzip, Hcompress, ImageOwned, ImageProps, ImageRef, PixelType,
+    Rice,
 };
 use wasm_bindgen_test::wasm_bindgen_test;
 
@@ -130,12 +131,12 @@ fn fits_bytes_on_wasm() {
     let g = GenericImageOwned::new(stamp, Duration::from_millis(250), img);
 
     for comp in [
-        FitsCompression::None,
-        FitsCompression::Gzip,
-        FitsCompression::Rice,
-        FitsCompression::Hcompress,
+        FitsCompression::NONE,
+        Gzip::new().into(),
+        Rice::new().into(),
+        Hcompress::new().into(),
     ] {
-        let bytes = g.fits_bytes(comp).expect("fits_bytes");
+        let bytes = g.fits_bytes(&comp).expect("fits_bytes");
         assert_eq!(bytes.len() % 2880, 0, "{comp:?} not block-aligned");
         assert!(
             bytes.starts_with(b"SIMPLE  =                    T"),
@@ -150,14 +151,13 @@ fn fits_bytes_on_wasm() {
     let fimg =
         DynamicImageOwned::from(ImageOwned::from_owned(f, 16, 16, ColorSpace::Gray).unwrap());
     let gf = GenericImageOwned::new(stamp, Duration::ZERO, fimg);
-    for comp in [FitsCompression::Rice, FitsCompression::Hcompress] {
-        let bytes = gf.fits_bytes(comp).expect("f32 compress");
+    for comp in [FitsCompression::from(Rice::new()), Hcompress::new().into()] {
+        let bytes = gf.fits_bytes(&comp).expect("f32 compress");
         assert_eq!(bytes.len() % 2880, 0);
     }
 
     // In-memory multi-HDU file — no filesystem on wasm.
-    let mut w =
-        refimage::create_fits_to(Vec::new(), FitsCompression::Rice).expect("create_fits_to");
+    let mut w = refimage::create_fits_to(Vec::new(), Rice::new()).expect("create_fits_to");
     g.append_fits(&mut w).expect("append 1");
     g.append_fits(&mut w).expect("append 2");
     let file = w.finish().expect("finish");

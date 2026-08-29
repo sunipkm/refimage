@@ -100,7 +100,8 @@ pub use dynamicimage_interop::{InteropError, InteropResult};
 pub use dynamicimage_serde::{SerdeError, SerdeResult};
 pub use error::{ImageError, ImageResult};
 pub use fits::{
-    create_fits, create_fits_to, FitsCompression, FitsError, FitsResult, FitsWrite, FitsWriter,
+    create_fits, create_fits_to, AutoTile, DitherSeed, FitsCompression, FitsCompressionKind,
+    FitsError, FitsResult, FitsWrite, FitsWriter, FixedTile, Gzip, Hcompress, Quantize, Rice,
 };
 pub use genericimage::GenericImage;
 pub use genericimageowned::GenericImageOwned;

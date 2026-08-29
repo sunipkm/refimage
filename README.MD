@@ -9,7 +9,7 @@ Image sizes are limited to 65536 &times; 65536 for practical reasons.
 
 `GenericImageRef` and `GenericImageOwned` always carry a `Metadata` block: a mandatory typed core (`timestamp: chrono::DateTime<Utc>`, `exposure: Duration` — `Duration::ZERO` meaning "not applicable") plus an insertion-ordered map of extra (`key`, `value`) pairs with optional comments. Metadata keys are case-insensitive strings up to 80 characters (`TIMESTAMP` / `EXPOSURE` are reserved); values are integers (stored as `i64`), 32-/64-bit floats (stored as `f64`), strings, `ColorSpace`, `std::time::Duration`, or a UTC `chrono::DateTime`. `chrono` is re-exported as `refimage::chrono`.
 
-`GenericImageRef` supports serialization, and can be saved to the open [Flexible Image Transport System (FITS)](https://fits.gsfc.nasa.gov/fits_standard.html) through the `FitsWrite` trait. The FITS writer is pure Rust (no `cfitsio` linkage), always available, and compiles on every target including `wasm32`. It supports uncompressed output and the tile-compression convention: `GZIP_1` (lossless, any pixel type), `RICE_1` and `HCOMPRESS_1` (both lossless for `u8`/`u16`; `f32` is quantized with `SUBTRACTIVE_DITHER_1`). Output is verified against `astropy.io.fits` and `cfitsio`.
+`GenericImageRef` supports serialization, and can be saved to the open [Flexible Image Transport System (FITS)](https://fits.gsfc.nasa.gov/fits_standard.html) through the `FitsWrite` trait. The FITS writer is pure Rust (no `cfitsio` linkage), always available, and compiles on every target including `wasm32`. It supports uncompressed output (`FitsCompression::NONE`) and the tile-compression convention via the builder structs `Gzip` (lossless, any pixel type), `Rice` and `Hcompress` (both lossless for `u8`/`u16`; `f32` is quantized with `SUBTRACTIVE_DITHER_1`). Each builder exposes its settings — tile shape (`tile_rows` / `tile_dims`), quantization level, HCOMPRESS `scale` / `smooth`. Output is verified against `astropy.io.fits` and `cfitsio`.
 
 `GenericImageRef` serializes to an internal representation which allows <i>de</i>serialization to `GenericImageOwned`.
 `GenericImageOwned` contains owned data, and is freely <i>ser</i>ialized-<i>de</i>serialized. 
@@ -56,16 +56,24 @@ let img = DynamicImageOwned::try_from(img).expect("Could not convert image");
 ## Loading and storing a `GenericImageRef`
 A `GenericImageRef` can be stored in a standard format such as [bincode](https://crates.io/crates/bincode) — which follows trivially from its `serde` implementation — or written to a FITS file through the `FitsWrite` trait. The FITS writer is pure Rust and always available.
 ```rust,ignore
-use refimage::{FitsCompression, FitsWrite, GenericImageRef};
+use refimage::{FitsCompression, FitsWrite, GenericImageRef, Gzip, Rice, Quantize};
 use std::path::Path;
 let img: GenericImageRef = { todo!() }; // obtain a GenericImageRef
 
 // RICE_1 tile compression; overwrite if it exists.
-img.write_fits(Path::new("/path/to/image.fits"), FitsCompression::Rice, true)
+img.write_fits(Path::new("/path/to/image.fits"), Rice::new(), true)
     .expect("Could not write FITS file.");
 
+// Each algorithm is a builder: tile shape, quantization level, HCOMPRESS scale, ...
+img.write_fits(
+    Path::new("/path/to/image.fits"),
+    Rice::new().tile_rows(16).quantize(Quantize::new().level(16.0)),
+    true,
+).unwrap();
+
 // Or straight to bytes — handy on wasm, where there is no filesystem.
-let bytes: Vec<u8> = img.fits_bytes(FitsCompression::Gzip).unwrap();
+let bytes: Vec<u8> = img.fits_bytes(Gzip::new()).unwrap();
+let plain: Vec<u8> = img.fits_bytes(FitsCompression::NONE).unwrap();
 ```
 
 ## Conversions
@@ -108,7 +116,7 @@ assert_eq!(luma.color_space(), ColorSpace::Gray);
 `Strategy::Sequential` uses one ping-pong buffer pair; `Strategy::tiled`/`tiled_parallel`/`tiled_2d`/`tiled_2d_parallel` cut the frame into cache-sized tiles (bit-identical output). A serial-tiled `Runner` does **zero** heap allocation per frame once compiled. See the module docs for how geometric ops interact with tiling and for `Runner::recompile` / the `grow` feature.
 
 # FITS
-Writing `GenericImageRef` / `GenericImageOwned` to FITS via the `FitsWrite` trait is a core, always-available feature — a pure-Rust implementation with no `cfitsio` linkage. It writes uncompressed images and the tile-compression convention (`FitsCompression::{None, Gzip, Rice, Hcompress}`). `Gzip` is lossless for any pixel type; `Rice` and `Hcompress` are lossless for `u8`/`u16` and quantize `f32` with `SUBTRACTIVE_DITHER_1`. `Rice` and `Gzip` tile by image row; `Hcompress` (the H-transform + quadtree coder, min. 4×4) compresses each channel plane as one tile. Multi-channel images are stored planar, `u16` carries `BZERO = 32768`, and metadata becomes header cards (`HIERARCH` for long keys, `CONTINUE` for long strings). Output is checked against `astropy.io.fits` and `cfitsio` in the test suite. Everything works without a filesystem: `FitsWrite::fits_bytes` returns a single image as a `Vec<u8>`, and `create_fits_to(sink, compression)` builds a multi-HDU file into any `Write` sink (`create_fits` is the on-disk shortcut).
+Writing `GenericImageRef` / `GenericImageOwned` to FITS via the `FitsWrite` trait is a core, always-available feature — a pure-Rust implementation with no `cfitsio` linkage. It writes uncompressed images (`FitsCompression::NONE`) and the tile-compression convention through the builder structs `Gzip`, `Rice` and `Hcompress` (anything `Into<FitsCompression>`). `Gzip` is lossless for any pixel type; `Rice` and `Hcompress` are lossless for `u8`/`u16` and quantize `f32` with `SUBTRACTIVE_DITHER_1`. Tile shape is set with `tile_rows(n)` or `tile_dims([nx, ny])` (mutually exclusive at compile time), defaulting to one image row per tile for `Rice`/`Gzip` and one whole channel plane for `Hcompress` (the H-transform + quadtree coder, min. tile 4×4); `Rice`/`Hcompress` also take a `Quantize` (level / dither seed) and `Hcompress` a `scale` / `smooth`. Multi-channel images are stored planar, `u16` carries `BZERO = 32768`, and metadata becomes header cards (`HIERARCH` for long keys, `CONTINUE` for long strings). Output is checked against `astropy.io.fits` and `cfitsio` in the test suite. Everything works without a filesystem: `FitsWrite::fits_bytes` returns a single image as a `Vec<u8>`, and `create_fits_to(sink, compression)` builds a multi-HDU file into any `Write` sink (`create_fits` is the on-disk shortcut).
 
 # Optional Features
 Features are available to extend the functionalities of the core `refimage` data types:

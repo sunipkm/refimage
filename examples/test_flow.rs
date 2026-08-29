@@ -40,7 +40,7 @@ fn main() {
     assert_eq!(debayered.as_raw_u8(), &expected);
 
     debayered
-        .write_fits(PathBuf::from("./test.fits"), FitsCompression::None, true)
+        .write_fits(PathBuf::from("./test.fits"), FitsCompression::NONE, true)
         .expect("Failed to write FITS");
     let dimg: DynamicImage = debayered
         .clone()

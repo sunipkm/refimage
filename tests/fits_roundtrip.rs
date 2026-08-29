@@ -10,12 +10,21 @@ use chrono::DateTime;
 use fitsio::hdu::HduInfo;
 use fitsio::FitsFile;
 use refimage::{
-    ColorSpace, DynamicImageOwned, FitsCompression, FitsWrite, GenericImageOwned, ImageOwned,
-    ImageProps,
+    ColorSpace, DynamicImageOwned, FitsCompression, FitsWrite, GenericImageOwned, Gzip, Hcompress,
+    ImageOwned, ImageProps, Rice,
 };
 
 fn tmp(name: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("refimg_xchk_{}_{name}.fits", std::process::id()))
+}
+
+fn all_methods() -> [FitsCompression; 4] {
+    [
+        FitsCompression::NONE,
+        Gzip::new().into(),
+        Rice::new().into(),
+        Hcompress::new().into(),
+    ]
 }
 
 /// First HDU that holds a non-empty image (primary for uncompressed, extension 1 for
@@ -47,14 +56,9 @@ fn cfitsio_reads_gray_u16() {
         ImageOwned::from_owned(src.clone(), 32, 24, ColorSpace::Gray).unwrap(),
     ));
 
-    for comp in [
-        FitsCompression::None,
-        FitsCompression::Gzip,
-        FitsCompression::Rice,
-        FitsCompression::Hcompress,
-    ] {
+    for comp in all_methods() {
         let path = tmp(&format!("u16_{comp:?}"));
-        g.write_fits(&path, comp, true).unwrap();
+        g.write_fits(&path, &comp, true).unwrap();
 
         let mut f = FitsFile::open(&path).unwrap();
         let hdu = image_hdu(&mut f);
@@ -73,9 +77,9 @@ fn cfitsio_reads_rgb_u8_planar() {
         ImageOwned::from_owned(src.clone(), 20, 16, ColorSpace::Rgb).unwrap(),
     ));
 
-    for comp in [FitsCompression::None, FitsCompression::Gzip] {
+    for comp in [FitsCompression::NONE, Gzip::new().into()] {
         let path = tmp(&format!("rgb_{comp:?}"));
-        g.write_fits(&path, comp, true).unwrap();
+        g.write_fits(&path, &comp, true).unwrap();
 
         let mut f = FitsFile::open(&path).unwrap();
         let hdu = image_hdu(&mut f);
@@ -101,7 +105,7 @@ fn cfitsio_sees_headers() {
         ImageOwned::from_owned(vec![1u16; 12], 4, 3, ColorSpace::Gray).unwrap(),
     ));
     let path = tmp("hdr");
-    g.write_fits(&path, FitsCompression::None, true).unwrap();
+    g.write_fits(&path, FitsCompression::NONE, true).unwrap();
 
     let mut f = FitsFile::open(&path).unwrap();
     let hdu = f.primary_hdu().unwrap();
@@ -128,8 +132,7 @@ fn cfitsio_reads_hcompressed_u8_and_noise() {
     ));
 
     let path = tmp("hcomp_u8");
-    g.write_fits(&path, FitsCompression::Hcompress, true)
-        .unwrap();
+    g.write_fits(&path, Hcompress::new(), true).unwrap();
 
     let mut f = FitsFile::open(&path).unwrap();
     let hdu = image_hdu(&mut f);
@@ -154,7 +157,7 @@ fn cfitsio_reads_quantized_float_rice() {
     ));
 
     let path = tmp("f32_rice");
-    g.write_fits(&path, FitsCompression::Rice, true).unwrap();
+    g.write_fits(&path, Rice::new(), true).unwrap();
 
     let mut f = FitsFile::open(&path).unwrap();
     let hdu = image_hdu(&mut f);

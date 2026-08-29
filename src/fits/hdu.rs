@@ -114,72 +114,85 @@ impl<'a> ImageView<'a> {
         }
     }
 
-    /// Number of row tiles: one per row of each plane.
-    pub(super) fn n_tiles(&self) -> usize {
-        self.h * self.ch
-    }
-
     /// The value at interleaved position `(plane, row, col)`.
     fn interleaved_index(&self, plane: usize, row: usize, col: usize) -> usize {
         (row * self.w + col) * self.ch + plane
     }
 
-    /// Tile `t` (row `t % h` of plane `t / h`) in FITS-native form.
-    pub(super) fn tile(&self, t: usize) -> Tile {
-        let plane = t / self.h;
-        let row = t % self.h;
-        let idx = |col| self.interleaved_index(plane, row, col);
+    /// Interleaved indices for a `tw`×`th` rectangle at `(x0, y0)` of `plane`, row-major.
+    fn rect_indices(
+        &self,
+        plane: usize,
+        x0: usize,
+        y0: usize,
+        tw: usize,
+        th: usize,
+    ) -> impl Iterator<Item = usize> + '_ {
+        (0..th).flat_map(move |ry| {
+            (0..tw).map(move |rx| self.interleaved_index(plane, y0 + ry, x0 + rx))
+        })
+    }
+
+    /// A rectangular tile of one plane, row-major, in FITS-native form. `u8` is
+    /// reinterpreted signed, `u16` is offset by `-32768`, `f32` passes through.
+    pub(super) fn rect_tile(
+        &self,
+        plane: usize,
+        x0: usize,
+        y0: usize,
+        tw: usize,
+        th: usize,
+    ) -> Tile {
+        let idx = self.rect_indices(plane, x0, y0, tw, th);
         match self.pixels {
-            Pixels::U8(p) => Tile::I8((0..self.w).map(|c| p[idx(c)] as i8).collect()),
-            Pixels::U16(p) => Tile::I16(
-                (0..self.w)
-                    .map(|c| (p[idx(c)] as i32 - 32768) as i16)
-                    .collect(),
-            ),
-            Pixels::F32(p) => Tile::F32((0..self.w).map(|c| p[idx(c)]).collect()),
+            Pixels::U8(p) => Tile::I8(idx.map(|i| p[i] as i8).collect()),
+            Pixels::U16(p) => Tile::I16(idx.map(|i| (p[i] as i32 - 32768) as i16).collect()),
+            Pixels::F32(p) => Tile::F32(idx.map(|i| p[i]).collect()),
         }
     }
 
-    /// One whole plane, row-major, as FITS-native `i32` — for HCOMPRESS, which is 2-D.
-    /// `u8` stays unsigned `0..=255`; `u16` is offset by `-32768`. `f32` is quantized
-    /// separately, so it is not handled here.
-    pub(super) fn plane_i32(&self, plane: usize) -> Vec<i32> {
-        let mut out = Vec::with_capacity(self.w * self.h);
-        for row in 0..self.h {
-            for col in 0..self.w {
-                let idx = self.interleaved_index(plane, row, col);
-                out.push(match self.pixels {
-                    Pixels::U8(p) => p[idx] as i32,
-                    Pixels::U16(p) => p[idx] as i32 - 32768,
-                    Pixels::F32(_) => unreachable!("f32 planes are quantized before HCOMPRESS"),
-                });
-            }
-        }
-        out
+    /// A rectangular tile as FITS-native `i32` — for HCOMPRESS, which is 2-D. `u8` stays
+    /// unsigned `0..=255`; `u16` is offset by `-32768`. `f32` is quantized separately.
+    pub(super) fn rect_i32(
+        &self,
+        plane: usize,
+        x0: usize,
+        y0: usize,
+        tw: usize,
+        th: usize,
+    ) -> Vec<i32> {
+        self.rect_indices(plane, x0, y0, tw, th)
+            .map(|i| match self.pixels {
+                Pixels::U8(p) => p[i] as i32,
+                Pixels::U16(p) => p[i] as i32 - 32768,
+                Pixels::F32(_) => unreachable!("f32 tiles are quantized before HCOMPRESS"),
+            })
+            .collect()
     }
 
-    /// One whole `f32` plane, row-major (for per-tile HCOMPRESS quantization).
-    pub(super) fn plane_f32(&self, plane: usize) -> Vec<f32> {
-        let mut out = Vec::with_capacity(self.w * self.h);
-        for row in 0..self.h {
-            for col in 0..self.w {
-                let idx = self.interleaved_index(plane, row, col);
-                match self.pixels {
-                    Pixels::F32(p) => out.push(p[idx]),
-                    _ => unreachable!("plane_f32 on a non-float image"),
-                }
-            }
+    /// A rectangular `f32` tile, row-major (for per-tile quantization).
+    pub(super) fn rect_f32(
+        &self,
+        plane: usize,
+        x0: usize,
+        y0: usize,
+        tw: usize,
+        th: usize,
+    ) -> Vec<f32> {
+        match self.pixels {
+            Pixels::F32(p) => self
+                .rect_indices(plane, x0, y0, tw, th)
+                .map(|i| p[i])
+                .collect(),
+            _ => unreachable!("rect_f32 on a non-float image"),
         }
-        out
     }
 
     /// The whole `f32` image, planar order (for the global noise estimate).
     pub(super) fn planar_f32(&self) -> Vec<f32> {
         let mut out = Vec::with_capacity(self.w * self.h * self.ch);
-        for t in 0..self.n_tiles() {
-            if let Tile::F32(v) = self.tile(t) {
-                out.extend_from_slice(&v);
-            }
+        for plane in 0..self.ch {
+            out.extend(self.rect_f32(plane, 0, 0, self.w, self.h));
         }
         out
     }
@@ -188,8 +201,8 @@ impl<'a> ImageView<'a> {
     /// data section, before block padding).
     pub(super) fn native_be(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(self.w * self.h * self.ch * self.bytepix());
-        for t in 0..self.n_tiles() {
-            out.extend_from_slice(&self.tile(t).to_be_bytes());
+        for plane in 0..self.ch {
+            out.extend_from_slice(&self.rect_tile(plane, 0, 0, self.w, self.h).to_be_bytes());
         }
         out
     }

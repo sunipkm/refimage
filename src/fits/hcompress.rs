@@ -1,16 +1,15 @@
 //! `HCOMPRESS_1` tile compression.
 //!
-//! A faithful port of the encoder in cfitsio's public-domain `fits_hcompress.c`
-//! (R. White, STScI): the H-transform (`htrans`), digitization (`digitize`) and the
+//! Ported from the encoder in cfitsio's public-domain `fits_hcompress.c` (R. White,
+//! STScI): the H-transform (`htrans`), digitization (`digitize`) and the
 //! binary-quadtree bit-plane coder (`encode` / `doencode` / `qtree_encode`). Only the
-//! 32-bit integer path is ported — floating-point tiles are quantized to integers
-//! first (see [`quantize`](super::quantize)), exactly as cfitsio does.
+//! 32-bit integer path is implemented; floating-point tiles are quantized to integers
+//! beforehand (see [`quantize`](super::quantize)).
 //!
-//! `scale = 0` (lossless) is the only mode this crate exposes. The whole image (one
-//! plane) is compressed as a single tile.
-//!
-//! The matching decoder lives in `astropy` / `cfitsio`; round-trips are verified in the
-//! integration tests rather than here.
+//! [`compress`] takes one tile (`width` × `height` row-major `i32` values) and a
+//! `scale` divisor — `0` for lossless, larger values for a smaller, lossy result. The
+//! matching decoder is provided by `astropy` / `cfitsio`; round-trips are covered by
+//! the integration tests.
 #![allow(unused_assignments)] // pointer bookkeeping kept 1:1 with cfitsio `fits_hcompress.c`
 #![allow(clippy::manual_div_ceil)] // `(n + 1) / 2` kept verbatim from `fits_hcompress.c`
 

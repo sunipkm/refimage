@@ -70,16 +70,23 @@ measured, within_target, clamped }` instead of a bare `(Duration, u16)`.
 - **Breaking:** the FITS writer is now a pure-Rust implementation with **no
   `cfitsio` linkage**. It is always available (the `fitsio` Cargo feature is
   removed) and compiles on every target, `wasm32` included. `FitsError` is now a
-  concrete `#[non_exhaustive]` enum (was a re-export of `fitsio::errors::Error`);
-  `FitsCompression` is reduced to `None` / `Gzip` (`GZIP_1`) / `Rice` (`RICE_1`) /
-  `Hcompress` (`HCOMPRESS_1`). `Rice` and `Hcompress` are lossless for `u8` / `u16`;
-  `f32` is quantized with `ZQUANTIZ = 'SUBTRACTIVE_DITHER_1'` (the dither RNG is
-  reproduced exactly, so `astropy` / `cfitsio` reconstruct the same values).
-  `Hcompress` is a pure-Rust port of cfitsio's H-transform + binary-quadtree encoder
-  (`scale = 0`, lossless) and compresses each channel plane as a single 2-D tile
-  (minimum 4×4). `BZIP2_1` was dropped from the plan — neither `astropy.io.fits` nor
-  the public `cfitsio` release can read it. New: `FitsWrite::write_fits_to` /
-  `fits_bytes` (serialise a single image without a filesystem), `FitsResult`.
+  concrete `#[non_exhaustive]` enum (was a re-export of `fitsio::errors::Error`).
+  Compression is chosen with **builder structs** — `Gzip` (`GZIP_1`), `Rice`
+  (`RICE_1`), `Hcompress` (`HCOMPRESS_1`), or `FitsCompression::NONE` — passed to the
+  write methods as `impl Into<FitsCompression>` (`FitsCompression` is now an opaque
+  type; the old unit enum is gone). Each builder exposes settings: `tile_rows(n)` /
+  `tile_dims([nx, ny])` for the tile grid (mutually exclusive at compile time via a
+  type-state parameter; default one image row per tile, or one plane for `Hcompress`),
+  `Quantize` (`level` = cfitsio's `q` / "noise bits", and dither `seed`) for `f32` on
+  `Rice` / `Hcompress`, and `scale` / `smooth` for `Hcompress`. `Rice` and `Hcompress`
+  are lossless for `u8` / `u16`; `f32` is quantized with
+  `ZQUANTIZ = 'SUBTRACTIVE_DITHER_1'` (the dither RNG is reproduced exactly, so
+  `astropy` / `cfitsio` reconstruct the same values). `Hcompress` is a pure-Rust port
+  of cfitsio's H-transform + binary-quadtree encoder and requires every tile to be at
+  least 4×4. `BZIP2_1` was dropped from the plan — neither `astropy.io.fits` nor the
+  public `cfitsio` release can read it. New: `FitsWrite::write_fits_to` / `fits_bytes`
+  (serialise a single image without a filesystem), `FitsResult`, `FitsCompressionKind`
+  (the algorithm tag behind a `FitsCompression`).
   `FitsWriter` is now generic over any `Write` sink (`FitsWriter<W = BufWriter<File>>`);
   the new `create_fits_to(sink, compress)` builds a multi-HDU file in memory (e.g. into
   a `Vec<u8>`), and `FitsWriter::finish` now returns the sink. Multi-channel images are

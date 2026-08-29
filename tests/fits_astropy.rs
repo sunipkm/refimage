@@ -10,7 +10,8 @@ use std::time::Duration;
 
 use chrono::DateTime;
 use refimage::{
-    ColorSpace, DynamicImageOwned, FitsCompression, FitsWrite, GenericImageOwned, ImageOwned,
+    ColorSpace, DynamicImageOwned, FitsCompression, FitsCompressionKind, FitsWrite,
+    GenericImageOwned, Gzip, Hcompress, ImageOwned, Rice,
 };
 
 fn astropy_available() -> bool {
@@ -56,7 +57,12 @@ elif not np.array_equal(got, want):
     sys.exit(1)
 "#;
 
-fn roundtrip(g: &GenericImageOwned, dtype: &str, channels: usize, comp: FitsCompression) {
+fn roundtrip(
+    g: &GenericImageOwned,
+    dtype: &str,
+    channels: usize,
+    comp: impl Into<FitsCompression>,
+) {
     roundtrip_atol(g, dtype, channels, comp, 0.0);
 }
 
@@ -64,15 +70,16 @@ fn roundtrip_atol(
     g: &GenericImageOwned,
     dtype: &str,
     channels: usize,
-    comp: FitsCompression,
+    comp: impl Into<FitsCompression>,
     atol: f64,
 ) {
+    let comp = comp.into();
     let tmp = std::env::temp_dir();
     let tag = format!("{}_{:?}_{}", std::process::id(), comp, dtype);
     let fits_path = tmp.join(format!("refimg_{tag}.fits"));
     let raw_path = tmp.join(format!("refimg_{tag}.raw"));
 
-    g.write_fits(&fits_path, comp, true).expect("write_fits");
+    g.write_fits(&fits_path, &comp, true).expect("write_fits");
     std::fs::File::create(&raw_path)
         .unwrap()
         .write_all(g.get_image().as_raw_u8())
@@ -158,20 +165,20 @@ fn astropy_reads_every_combination() {
 
     let (f32img, tol) = gray_f32();
     for comp in [
-        FitsCompression::None,
-        FitsCompression::Gzip,
-        FitsCompression::Rice,
-        FitsCompression::Hcompress,
+        FitsCompression::NONE,
+        Gzip::new().into(),
+        Rice::new().into(),
+        Hcompress::new().into(),
     ] {
-        roundtrip(&gray_u8(), "<u1", 1, comp);
-        roundtrip(&gray_u16(), "<u2", 1, comp);
-        roundtrip(&rgb_u8(), "<u1", 3, comp);
+        roundtrip(&gray_u8(), "<u1", 1, &comp);
+        roundtrip(&gray_u16(), "<u2", 1, &comp);
+        roundtrip(&rgb_u8(), "<u1", 3, &comp);
         // f32: None/Gzip are lossless; Rice/Hcompress quantize (lossy, bounded error).
-        let atol = match comp {
-            FitsCompression::None | FitsCompression::Gzip => 0.0,
+        let atol = match comp.kind() {
+            FitsCompressionKind::None | FitsCompressionKind::Gzip => 0.0,
             _ => tol,
         };
-        roundtrip_atol(&f32img, "<f4", 1, comp, atol);
+        roundtrip_atol(&f32img, "<f4", 1, &comp, atol);
     }
 }
 
@@ -190,7 +197,7 @@ fn astropy_reads_hcompress_odd_dims_and_noise() {
         )),
         "<u2",
         1,
-        FitsCompression::Hcompress,
+        Hcompress::new(),
     );
 
     let u8odd: Vec<u8> = (0..15 * 13).map(|i| (i * 7 % 251) as u8).collect();
@@ -200,7 +207,7 @@ fn astropy_reads_hcompress_odd_dims_and_noise() {
         )),
         "<u1",
         1,
-        FitsCompression::Hcompress,
+        Hcompress::new(),
     );
 
     // Pure-noise f32 forces the quadtree into its direct-bitmap fallback.
@@ -217,7 +224,7 @@ fn astropy_reads_hcompress_odd_dims_and_noise() {
         )),
         "<f4",
         1,
-        FitsCompression::Hcompress,
+        Hcompress::new(),
         20.0,
     );
 }
@@ -231,7 +238,7 @@ fn astropy_reads_metadata_cards() {
     let tmp = std::env::temp_dir();
     let path = tmp.join(format!("refimg_meta_{}.fits", std::process::id()));
     gray_u16()
-        .write_fits(&path, FitsCompression::None, true)
+        .write_fits(&path, FitsCompression::NONE, true)
         .unwrap();
 
     let script = r#"
