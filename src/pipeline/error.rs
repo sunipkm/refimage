@@ -39,6 +39,9 @@ pub enum PipelineError {
     /// [`Op::Rotate90`] / [`Op::Rotate270`] was applied to a Bayer image.
     #[error("90° rotation is not valid on a Bayer image; debayer first")]
     RotateOnBayer,
+    /// [`Op::ResizeToFit`] was applied to a Bayer image.
+    #[error("resize is not valid on a Bayer image; debayer first")]
+    ResizeOnBayer,
     /// [`Op::Debayer`] was applied to a non-Bayer color space.
     #[error("debayer requires a Bayer color space")]
     NotBayer,

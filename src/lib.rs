@@ -43,8 +43,9 @@
 //! ```
 //! # Processing pipelines
 //! All pixel conversions — debayer, luminance, pixel-type conversion, affine pixel
-//! scaling, crop, ROI, flips, 90° rotations — are [`Op`](pipeline::Op)s on a
-//! declarative, reusable [`Pipeline`](pipeline::Pipeline). [`apply`](pipeline::Pipeline::apply)
+//! scaling, crop, ROI, flips, 90° rotations, aspect-preserving resize — are
+//! [`Op`](pipeline::Op)s on a declarative, reusable
+//! [`Pipeline`](pipeline::Pipeline). [`apply`](pipeline::Pipeline::apply)
 //! runs it once and returns an owned image; given a [`GenericImageRef`] it returns a
 //! [`GenericImageOwned`] with the metadata carried across unchanged.
 //! [`compile`](pipeline::Pipeline::compile)-ing against a concrete

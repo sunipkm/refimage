@@ -1,6 +1,6 @@
 //! Reusable, allocation-aware processing pipelines — the one path for every pixel
 //! conversion in this crate (debayer, luminance, pixel-type conversion, affine
-//! pixel scaling, crop, ROI, flips, 90° rotations).
+//! pixel scaling, crop, ROI, flips, 90° rotations, aspect-preserving resize).
 //!
 //! A [`Pipeline`] is a declarative, cloneable, serializable list of [`Op`]s.
 //! [`Pipeline::compile`] pairs it with a concrete [`ImageSpec`], validates the
@@ -57,7 +57,9 @@
 //! A serial-tiled [`Runner`] (`Strategy::tiled`) does **zero** heap allocation per
 //! frame once compiled. Parallel-tiled allocates one scratch set per worker
 //! thread on first use (warm-up only). `Sequential` uses the internally-parallel
-//! demosaic kernel, which allocates a padded frame copy per call. The two
+//! demosaic kernel, which allocates a padded frame copy per call; a trailing
+//! [`Op::ResizeToFit`] likewise allocates one scratch plane and resamples its
+//! rows in parallel. The two
 //! ping-pong buffers are sized independently by a liveness walk over the chain,
 //! so a `raw → debayer → luma → u8` pipeline does not pay for the fat RGB
 //! intermediate twice. Luma, scale, and pixel-type conversion all rewrite their
@@ -70,13 +72,14 @@
 //! automatically on a shape change.
 //!
 //! # Geometric ops and tiling
-//! [`Op::Crop`], [`Op::Roi`], the flips, and the rotations relocate pixels, so a
-//! tile can't carry the context they need. Tiling handles them at the chain's
-//! edges:
+//! [`Op::Crop`], [`Op::Roi`], the flips, the rotations, and [`Op::ResizeToFit`]
+//! relocate (or resample) pixels, so a tile can't carry the context they need.
+//! Tiling handles them at the chain's edges:
 //! - **Leading crops** fold into the frame read — `crop → debayer → …` still
 //!   tiles the pixel run, at the cropped size.
 //! - Everything from the **first non-leading geometric op** onward runs as one
-//!   sequential whole-frame pass after the tiled body (cheap: index copies).
+//!   whole-frame pass after the tiled body — cheap index copies for the flips,
+//!   rotations, crop and ROI; a row-parallel resample for [`Op::ResizeToFit`].
 //!
 //! A geometric op sandwiched between pixel ops (`debayer → crop → luma`) just
 //! means the tiled body stops at the crop and the rest is that sequential tail;
@@ -84,19 +87,23 @@
 //!
 //! # Limitations
 //! - `Op` covers debayer / luminance / affine pixel scale / pixel-type conversion
-//!   / crop / ROI / flip / 90° rotation. No resampling (arbitrary-angle rotate,
-//!   resize).
+//!   / crop / ROI / flip / 90° rotation / aspect-preserving resize. No
+//!   arbitrary-angle rotation and no exact-size (aspect-changing) resampling.
 
 mod error;
 mod geom;
 mod kernels;
+mod resample;
 
 use bytemuck::{cast_slice, cast_slice_mut};
 use serde::{Deserialize, Serialize};
 
 pub use error::PipelineError;
+pub use resample::ResizeFilter;
+
 use geom::{geo_crop, geo_flip, geo_roi, geo_rot90};
 use kernels::{convert_inplace, debayer_into, luma_inplace, scale_inplace, Demosaic};
+use resample::{geo_resize, resize_dims};
 
 use crate::demosaic::demosaic_serial_scratch_len;
 use crate::{
@@ -244,6 +251,22 @@ pub enum Op {
     Rotate180,
     /// Rotate 90° counter-clockwise; width and height swap. Not valid on Bayer.
     Rotate270,
+    /// Resample to the largest size that fits within `max_width` x `max_height`
+    /// at the original aspect ratio, enlarging the image if it is smaller than
+    /// the box. Each side of the result is at least 1 px and never exceeds its
+    /// bound. Not valid on a Bayer image ([`PipelineError::ResizeOnBayer`]) —
+    /// debayer first. Runs as one whole-frame pass (after any tiled pixel-op
+    /// body) that allocates a scratch plane sized to the horizontal-pass
+    /// intermediate (output-width x source-height); with the `rayon` feature the
+    /// pass is fanned out over its rows, independent of thread count.
+    ResizeToFit {
+        /// Width bound in pixels; the result is never wider than this.
+        max_width: usize,
+        /// Height bound in pixels; the result is never taller than this.
+        max_height: usize,
+        /// Resampling filter.
+        filter: ResizeFilter,
+    },
 }
 
 /// Re-phase a Bayer pattern through a geometric transform; leave other color
@@ -350,6 +373,26 @@ impl Op {
                     ..input.clone()
                 })
             }
+            Op::ResizeToFit {
+                max_width,
+                max_height,
+                filter: _,
+            } => {
+                if *max_width == 0 || *max_height == 0 {
+                    return Err(PipelineError::BadDimensions);
+                }
+                if matches!(input.cspace, ColorSpace::Bayer(_)) {
+                    return Err(PipelineError::ResizeOnBayer);
+                }
+                pixel_size(input.pixel_type)?;
+                let (width, height) =
+                    resize_dims(input.width, input.height, *max_width, *max_height);
+                Ok(ImageSpec {
+                    width,
+                    height,
+                    ..input.clone()
+                })
+            }
         }
     }
 
@@ -371,7 +414,8 @@ impl Op {
             | Op::FlipVertical
             | Op::Rotate90
             | Op::Rotate180
-            | Op::Rotate270 => 0,
+            | Op::Rotate270
+            | Op::ResizeToFit { .. } => 0,
         }
     }
 
@@ -507,6 +551,22 @@ impl Pipeline {
     /// Append [`Op::Rotate270`] (90° counter-clockwise).
     pub fn rotate_270(mut self) -> Self {
         self.ops.push(Op::Rotate270);
+        self
+    }
+
+    /// Append [`Op::ResizeToFit`]: resample to the largest size fitting within
+    /// `max_width` x `max_height` at the original aspect ratio.
+    pub fn resize_to_fit(
+        mut self,
+        max_width: usize,
+        max_height: usize,
+        filter: ResizeFilter,
+    ) -> Self {
+        self.ops.push(Op::ResizeToFit {
+            max_width,
+            max_height,
+            filter,
+        });
         self
     }
 
@@ -802,6 +862,13 @@ impl Plan {
                 }
                 Op::Rotate90 => step.kind = StepKind::Rot90 { ccw: false },
                 Op::Rotate270 => step.kind = StepKind::Rot90 { ccw: true },
+                Op::ResizeToFit { filter, .. } => {
+                    step.kind = StepKind::Resize {
+                        w: next.width,
+                        h: next.height,
+                        filter: *filter,
+                    }
+                }
             }
             steps.push(step);
             specs.push(next.clone());
@@ -1026,6 +1093,7 @@ impl Step {
                 | StepKind::Roi { .. }
                 | StepKind::Flip { .. }
                 | StepKind::Rot90 { .. }
+                | StepKind::Resize { .. }
         )
     }
 }
@@ -1061,6 +1129,12 @@ enum StepKind {
     /// Quarter turns clockwise, 1 or 3 (2 is folded to `Flip`).
     Rot90 {
         ccw: bool,
+    },
+    /// Resample the current image to `w` x `h` with `filter`.
+    Resize {
+        w: usize,
+        h: usize,
+        filter: ResizeFilter,
     },
 }
 
@@ -1325,6 +1399,27 @@ fn run_chain(
                 let (src, dst) = pick(&mut *buf_a, &mut *buf_b, cur_a);
                 geo_rot90(src, dst, cw, ch, bpp, ccw);
                 std::mem::swap(&mut cw, &mut ch);
+                cur_a = !cur_a;
+            }
+            StepKind::Resize {
+                w: ow,
+                h: oh,
+                filter,
+            } => {
+                let (src, dst) = pick(&mut *buf_a, &mut *buf_b, cur_a);
+                geo_resize(
+                    src,
+                    dst,
+                    cw,
+                    ch,
+                    step.in_channels as usize,
+                    step.in_pt,
+                    ow,
+                    oh,
+                    filter,
+                )?;
+                cw = ow;
+                ch = oh;
                 cur_a = !cur_a;
             }
         }

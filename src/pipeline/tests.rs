@@ -784,3 +784,251 @@ fn rejects_invalid_chain_at_compile() {
         .unwrap_err();
     assert!(matches!(err, PipelineError::NotBayer));
 }
+
+const FILTERS: [ResizeFilter; 3] = [
+    ResizeFilter::Bilinear,
+    ResizeFilter::Bicubic,
+    ResizeFilter::Lanczos3,
+];
+
+/// `resize_to_fit` keeps the aspect ratio, never exceeds either bound, and
+/// enlarges an image smaller than the box.
+#[test]
+fn resize_to_fit_computes_bounded_aspect_dims() {
+    let cases = [
+        // (src_w, src_h, box_w, box_h, want_w, want_h)
+        (100, 40, 50, 50, 50, 20),      // width-bound shrink
+        (40, 100, 50, 50, 20, 50),      // height-bound shrink
+        (30, 30, 50, 80, 50, 50),       // enlarge to the tighter bound
+        (200, 100, 200, 100, 200, 100), // already exact -> unchanged
+        (7, 3, 4, 4, 4, 2),             // rounding, min side stays >= 1
+    ];
+    for (sw, sh, bw, bh, ww, wh) in cases {
+        let runner = Pipeline::new()
+            .resize_to_fit(bw, bh, ResizeFilter::Bilinear)
+            .compile(
+                ImageSpec::new(sw, sh, ColorSpace::Gray, PixelType::U8),
+                Strategy::Sequential,
+            )
+            .unwrap();
+        let out = runner.output_spec();
+        assert_eq!(
+            (out.width, out.height),
+            (ww, wh),
+            "{sw}x{sh} -> box {bw}x{bh}"
+        );
+        assert!(out.width <= bw && out.height <= bh);
+    }
+}
+
+/// A box equal to the current size resamples at scale 1.0, which every filter
+/// here reduces to the identity — the output is bit-identical to the input.
+#[test]
+fn resize_to_fit_scale_one_is_identity() {
+    let (w, h) = (9, 7);
+    for cs in [ColorSpace::Gray, ColorSpace::Rgb] {
+        let ch = if cs == ColorSpace::Rgb { 3 } else { 1 };
+        for filter in FILTERS {
+            let src = sample16(w * h * ch);
+            let mut frame = src.clone();
+            let img = DynamicImageRef::from(ImageRef::new(&mut frame, w, h, cs.clone()).unwrap());
+            let mut runner = Pipeline::new()
+                .resize_to_fit(w, h, filter)
+                .compile(
+                    ImageSpec::new(w, h, cs.clone(), PixelType::U16),
+                    Strategy::Sequential,
+                )
+                .unwrap();
+            let out = runner.run(&img).unwrap();
+            assert_eq!(
+                bytemuck::cast_slice::<u8, u16>(out.as_raw_u8()),
+                &src[..],
+                "{cs:?} / {filter:?}"
+            );
+        }
+    }
+}
+
+/// A flat image stays flat after any resize — weights sum to 1 everywhere,
+/// including the clamped edges.
+#[test]
+fn resize_to_fit_preserves_constant_image() {
+    let (w, h) = (37, 29);
+    for (bw, bh) in [(20, 16), (80, 62), (37, 29)] {
+        for filter in FILTERS {
+            let mut frame = vec![1234u16; w * h];
+            let img = gray16(w, h, &mut frame);
+            let mut runner = Pipeline::new()
+                .resize_to_fit(bw, bh, filter)
+                .compile(
+                    ImageSpec::new(w, h, ColorSpace::Gray, PixelType::U16),
+                    Strategy::Sequential,
+                )
+                .unwrap();
+            let out = runner.run(&img).unwrap();
+            let px = bytemuck::cast_slice::<u8, u16>(out.as_raw_u8());
+            assert!(
+                px.iter().all(|&v| v == 1234),
+                "box {bw}x{bh} / {filter:?}: {:?}",
+                &px[..px.len().min(8)]
+            );
+        }
+    }
+}
+
+/// Downscaling an antisymmetric horizontal gradient gives a monotonic,
+/// range-safe, antisymmetric result.
+#[test]
+fn resize_to_fit_downscale_gradient() {
+    let src: Vec<f32> = (0..16).map(|i| i as f32 / 15.0).collect();
+    let mut frame = src.clone();
+    let img = DynamicImageRef::from(ImageRef::new(&mut frame, 16, 1, ColorSpace::Gray).unwrap());
+    let mut runner = Pipeline::new()
+        .resize_to_fit(4, 1, ResizeFilter::Bilinear)
+        .compile(
+            ImageSpec::new(16, 1, ColorSpace::Gray, PixelType::F32),
+            Strategy::Sequential,
+        )
+        .unwrap();
+    let out = runner.run(&img).unwrap();
+    let px = bytemuck::cast_slice::<u8, f32>(out.as_raw_u8());
+    assert_eq!(px.len(), 4);
+    assert!(px.windows(2).all(|w| w[0] < w[1]), "monotonic: {px:?}");
+    assert!(px.iter().all(|&v| (0.0..=1.0).contains(&v)));
+    assert!((px[0] + px[3] - 1.0).abs() < 1e-3, "antisymmetric: {px:?}");
+}
+
+/// A parallel resample is deterministic: repeated runs of a large, non-trivial
+/// downscale are byte-identical (each output element is summed by one task in a
+/// fixed order, regardless of the pool).
+#[test]
+fn resize_to_fit_is_deterministic() {
+    let (w, h) = (300usize, 220usize);
+    let src = sample16(w * h * 3);
+    let build = || {
+        Pipeline::new()
+            .resize_to_fit(97, 71, ResizeFilter::Lanczos3)
+            .compile(
+                ImageSpec::new(w, h, ColorSpace::Rgb, PixelType::U16),
+                Strategy::Sequential,
+            )
+            .unwrap()
+    };
+    let mut first = build();
+    let mut f0 = src.clone();
+    let want = first
+        .run(&DynamicImageRef::from(
+            ImageRef::new(&mut f0, w, h, ColorSpace::Rgb).unwrap(),
+        ))
+        .unwrap()
+        .as_raw_u8()
+        .to_vec();
+    for _ in 0..8 {
+        let mut r = build();
+        let mut f = src.clone();
+        let got = r
+            .run(&DynamicImageRef::from(
+                ImageRef::new(&mut f, w, h, ColorSpace::Rgb).unwrap(),
+            ))
+            .unwrap()
+            .as_raw_u8()
+            .to_vec();
+        assert_eq!(got, want);
+    }
+}
+
+/// Resize composes with the other geometric ops in any order: `resize` then
+/// `rotate`/`flip`/`crop` runs as one sequential tail, tracking dims correctly.
+#[test]
+fn resize_to_fit_composes_with_geometry() {
+    let (w, h) = (40usize, 24usize);
+    let src: Vec<u16> = (0..(w * h) as u16).collect();
+    let run = |p: Pipeline| {
+        let mut r = p
+            .compile(
+                ImageSpec::new(w, h, ColorSpace::Gray, PixelType::U16),
+                Strategy::Sequential,
+            )
+            .unwrap();
+        let mut f = src.clone();
+        let out = r.run(&gray16(w, h, &mut f)).unwrap();
+        (out.width(), out.height())
+    };
+
+    // resize (40x24 -> fits 20x20 => 20x12) then a quarter turn swaps the axes.
+    assert_eq!(
+        run(Pipeline::new()
+            .resize_to_fit(20, 20, ResizeFilter::Bicubic)
+            .rotate_90()),
+        (12, 20)
+    );
+    // ...and resize can also come after geometry.
+    assert_eq!(
+        run(Pipeline::new().flip_vertical().rotate_90().resize_to_fit(
+            10,
+            30,
+            ResizeFilter::Bilinear
+        )),
+        (10, 17) // 24x40 -> scale 10/24 -> round(24*.4167)=10, round(40*.4167)=17
+    );
+    // resize between two geometric ops is fine too.
+    assert_eq!(
+        run(Pipeline::new()
+            .crop(4, 0, 32, 24)
+            .resize_to_fit(16, 16, ResizeFilter::Lanczos3)
+            .flip_horizontal()),
+        (16, 12)
+    );
+}
+
+/// Resize is rejected on a Bayer image; debayering first makes it legal.
+#[test]
+fn resize_to_fit_rejects_bayer() {
+    let bayer = ImageSpec::new(
+        16,
+        16,
+        ColorSpace::Bayer(BayerPattern::Rggb),
+        PixelType::U16,
+    );
+    let err = Pipeline::new()
+        .resize_to_fit(8, 8, ResizeFilter::Bicubic)
+        .compile(bayer.clone(), Strategy::Sequential)
+        .unwrap_err();
+    assert!(matches!(err, PipelineError::ResizeOnBayer));
+
+    assert!(Pipeline::new()
+        .debayer(DemosaicMethod::Linear)
+        .resize_to_fit(8, 8, ResizeFilter::Bicubic)
+        .compile(bayer, Strategy::Sequential)
+        .is_ok());
+}
+
+/// Resize runs as the sequential tail after a tiled pixel-op body.
+#[test]
+fn resize_to_fit_runs_after_tiled_body() {
+    let (w, h) = (64, 48);
+    let mut frame = sample16(w * h);
+    let img = bayer_frame(w, h, BayerPattern::Rggb, &mut frame);
+    let mut runner = Pipeline::new()
+        .debayer(DemosaicMethod::Linear)
+        .to_luma()
+        .resize_to_fit(20, 20, ResizeFilter::Lanczos3)
+        .convert(PixelType::U8)
+        .compile(
+            ImageSpec::new(w, h, ColorSpace::Bayer(BayerPattern::Rggb), PixelType::U16),
+            Strategy::tiled_parallel(16),
+        )
+        .unwrap();
+    assert!(runner.is_tiled());
+    let out = runner.run(&img).unwrap();
+    assert_eq!((out.width(), out.height()), (20, 15));
+    assert_eq!(out.color_space(), ColorSpace::Gray);
+    assert_eq!(out.pixel_type(), PixelType::U8);
+}
+
+#[test]
+fn resize_op_round_trips_through_serde() {
+    let p = Pipeline::new().resize_to_fit(320, 240, ResizeFilter::Lanczos3);
+    let json = serde_json::to_string(&p).unwrap();
+    assert_eq!(p, serde_json::from_str::<Pipeline>(&json).unwrap());
+}

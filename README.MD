@@ -80,7 +80,9 @@ let plain: Vec<u8> = img.fits_bytes(FitsCompression::NONE).unwrap();
 ## Conversions
 
 Debayering, luminance, pixel-type conversion, affine pixel scaling, cropping, ROI
-extraction, flips and 90° rotations are all `Op`s on a [`Pipeline`](#reusable-processing-pipelines).
+extraction, flips, 90° rotations and aspect-preserving resize (`resize_to_fit`,
+with a `Bilinear` / `Bicubic` / `Lanczos3` filter) are all `Op`s on a
+[`Pipeline`](#reusable-processing-pipelines).
 Build a `Pipeline` and call `apply` (a `GenericImage*` input keeps its metadata on the result), or compile a `Runner` for a frame stream.
 
 ## Reusable processing pipelines
@@ -89,7 +91,7 @@ For a one-off conversion, `Pipeline::apply(&img)` compiles, runs once, and retur
 For acquisition loops that run the same chain over every frame, compile a `Runner` once and reuse its buffers:
 ```rust
 use refimage::{BayerPattern, ColorSpace, DemosaicMethod, DynamicImageRef, ImageRef, PixelType};
-use refimage::pipeline::{ImageSpec, Pipeline, Strategy};
+use refimage::pipeline::{ImageSpec, Pipeline, ResizeFilter, Strategy};
 
 // A declarative, cloneable, serializable recipe.
 let recipe = Pipeline::new()
@@ -98,6 +100,7 @@ let recipe = Pipeline::new()
     .to_luma()
     .scale(1.2, 4.0)
     .convert(PixelType::U8)
+    .resize_to_fit(48, 48, ResizeFilter::Lanczos3)
     .flip_vertical();
 
 // Compile against a concrete frame format: validates the chain and
@@ -112,6 +115,7 @@ let img = DynamicImageRef::from(
 );
 let luma = runner.run(&img).unwrap();
 assert_eq!(luma.color_space(), ColorSpace::Gray);
+assert_eq!((luma.width(), luma.height()), (48, 48));
 ```
 `Strategy::Sequential` uses one ping-pong buffer pair; `Strategy::tiled`/`tiled_parallel`/`tiled_2d`/`tiled_2d_parallel` cut the frame into cache-sized tiles. A serial-tiled `Runner` does **zero** heap allocation per frame once compiled. See the module docs for how geometric ops interact with tiling and for `Runner::recompile` / the `grow` feature.
 

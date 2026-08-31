@@ -16,6 +16,15 @@
   across unchanged. `Runner::run` / `run_into` accept any `pipeline::Frame`
   (`DynamicImageRef` or `DynamicImageOwned`); `run_into` renders into a
   caller-supplied buffer.
+- Added `Op::ResizeToFit` / `Pipeline::resize_to_fit(max_width, max_height, filter)`:
+  aspect-preserving resampling to the largest size fitting within a bounding box
+  (enlarging when the source is smaller). `pipeline::ResizeFilter` selects
+  `Bilinear`, `Bicubic` (Catmull-Rom), or `Lanczos3`; on downscale the kernel is
+  widened by the ratio so the result is area-averaged (anti-aliased). It is a
+  geometric op — it runs as a whole-frame pass after any tiled pixel-op body,
+  allocating one scratch plane and resampling its rows in parallel (with `rayon`,
+  independent of thread count). Not valid on a Bayer image
+  (`PipelineError::ResizeOnBayer`); debayer first.
 - **Breaking:** the pipeline is now the _only_ API for pixel conversions. The
   `Debayer`, `ToLuma`, `ConvertPixelType`, `SelectRoi` and `CopyRoi` traits and
   every per-type impl are removed. `SelectRoi` becomes `Op::Roi`; `CopyRoi`
