@@ -64,7 +64,7 @@
 //! Features are available to extend the functionalities of the core `refimage` data types:
 //! - `rayon`: Parallelizes the luminance / demosaic / cast kernels inside the [`pipeline`], and enables its parallel [`Strategy`](pipeline::Strategy) variants (<b>enabled</b> by default).
 //! - `image`: Enables [`TryFrom`] conversions between [`DynamicImage`] and [`DynamicImageRef`], [`DynamicImageOwned`] (<b>disabled</b> by default).
-//! - `grow`: Lets a compiled [`Runner`](pipeline::Runner) reallocate its buffers when handed a frame whose shape differs from the one it was compiled for (<b>disabled</b> by default).
+//! - `grow`: Lets a compiled [`Runner`](pipeline::Runner) reallocate its buffers when handed a frame whose shape differs from the one it was compiled for (<b>enabled</b> by default).
 //!
 
 mod coreimpls;
