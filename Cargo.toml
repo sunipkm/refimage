@@ -49,13 +49,16 @@ bincode = "1.3"
 serde-generate = "0.34"
 serde_json = "1.0"
 serde-reflection = "0.6"
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 # Not built for wasm: `rand` (benches only) drags in `getrandom`'s wasm opt-in;
 # `fitsio` (cross-checks the pure-Rust FITS writer against cfitsio) links C;
-# `chrono`'s `clock` (for `Utc::now()` in tests / examples) pulls OS timezone deps.
+# `chrono`'s `clock` (for `Utc::now()` in tests / examples) pulls OS timezone deps;
+# `image`'s `png` codec (for the `resize_filters` example) is only wanted there.
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 chrono = { version = "0.4.31", features = ["clock"] }
 fitsio = "0.21"
+image = { version = "0.25", default-features = false }
 rand = "0.8"
 
 # `tests/wasm.rs`:
@@ -99,3 +102,8 @@ required-features = ["image"]
 [[example]]
 name = "pipeline"
 path = "examples/pipeline.rs"
+
+[[example]]
+name = "resize_filters"
+path = "examples/resize_filters.rs"
+required-features = ["image"]

@@ -4,3 +4,6 @@ serde-interop/**
 **/*.fit*
 **/*.png
 .cl*
+
+# ...but keep the CC0 test photo bundled for the `resize_filters` example.
+!/examples/assets/chelsea.png
