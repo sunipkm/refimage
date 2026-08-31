@@ -1032,3 +1032,125 @@ fn resize_op_round_trips_through_serde() {
     let json = serde_json::to_string(&p).unwrap();
     assert_eq!(p, serde_json::from_str::<Pipeline>(&json).unwrap());
 }
+
+/// A geometric op no longer strands the rest of the chain in a single
+/// whole-frame pass: the pixel run past it retiles against its own dimensions.
+#[test]
+fn geometry_splits_the_chain_into_multiple_tiled_passes() {
+    let (w, h) = (96usize, 72usize);
+    let spec = || ImageSpec::new(w, h, ColorSpace::Rgb, PixelType::U16);
+
+    // No geo op: one tiled pass.
+    let r = Pipeline::new()
+        .to_luma()
+        .convert(PixelType::U8)
+        .compile(spec(), Strategy::tiled(8))
+        .unwrap();
+    assert_eq!(r.tiled_pass_count(), 1);
+
+    // resize in the middle: tiles before *and* after.
+    let r = Pipeline::new()
+        .scale(1.1, 0.0)
+        .resize_to_fit(60, 60, ResizeFilter::Bilinear)
+        .to_luma()
+        .convert(PixelType::U8)
+        .compile(spec(), Strategy::tiled(8))
+        .unwrap();
+    assert_eq!(r.tiled_pass_count(), 2);
+
+    // two geo ops, three pixel runs: three tiled passes.
+    let r = Pipeline::new()
+        .scale(1.0, 1.0)
+        .flip_vertical()
+        .to_luma()
+        .rotate_180()
+        .convert(PixelType::U8)
+        .compile(spec(), Strategy::tiled(8))
+        .unwrap();
+    assert_eq!(r.tiled_pass_count(), 3);
+
+    // Sequential strategy: never tiled.
+    let r = Pipeline::new()
+        .resize_to_fit(60, 60, ResizeFilter::Bilinear)
+        .to_luma()
+        .compile(spec(), Strategy::Sequential)
+        .unwrap();
+    assert_eq!(r.tiled_pass_count(), 0);
+}
+
+/// Every segmented tiled plan stays byte-identical to `Sequential`, across
+/// serial/parallel and 1-D/2-D tilings, with geo ops (including resize) mid-chain.
+#[test]
+fn segmented_tiling_matches_sequential() {
+    let (w, h) = (64usize, 48usize);
+    let pat = BayerPattern::Rggb;
+    let spec = || ImageSpec::new(w, h, ColorSpace::Bayer(pat), PixelType::U16);
+
+    let chains: Vec<(&str, Pipeline)> = vec![
+        (
+            "debayer luma | flip_v | scale convert",
+            Pipeline::new()
+                .debayer(DemosaicMethod::Linear)
+                .to_luma()
+                .flip_vertical()
+                .scale(1.3, 2.0)
+                .convert(PixelType::U8),
+        ),
+        (
+            "debayer luma | resize | scale convert",
+            Pipeline::new()
+                .debayer(DemosaicMethod::Cubic)
+                .to_luma()
+                .resize_to_fit(40, 40, ResizeFilter::Lanczos3)
+                .scale(0.9, 1.0)
+                .convert(PixelType::U8),
+        ),
+        (
+            "debayer | rotate_90 | luma convert | crop",
+            Pipeline::new()
+                .debayer(DemosaicMethod::Nearest)
+                .rotate_90()
+                .to_luma()
+                .convert(PixelType::U8)
+                .crop(2, 3, 30, 40),
+        ),
+        (
+            "crop | debayer luma | resize | convert | rotate_180",
+            Pipeline::new()
+                .crop(4, 2, 52, 40)
+                .debayer(DemosaicMethod::Linear)
+                .to_luma()
+                .resize_to_fit(24, 24, ResizeFilter::Bicubic)
+                .convert(PixelType::U8)
+                .rotate_180(),
+        ),
+    ];
+
+    for (name, p) in chains {
+        let mut seq = p.clone().compile(spec(), Strategy::Sequential).unwrap();
+        let mut f0 = sample16(w * h);
+        let want = seq
+            .run(&bayer_frame(w, h, pat, &mut f0))
+            .unwrap()
+            .as_raw_u8()
+            .to_vec();
+
+        for strat in [
+            Strategy::tiled(6),
+            Strategy::tiled(13),
+            Strategy::tiled_parallel(8),
+            Strategy::tiled_2d(10, 20),
+            Strategy::tiled_2d_parallel(7, 15),
+        ] {
+            let mut r = p.clone().compile(spec(), strat).unwrap();
+            let got = {
+                let mut f = sample16(w * h);
+                r.run(&bayer_frame(w, h, pat, &mut f))
+                    .unwrap()
+                    .as_raw_u8()
+                    .to_vec()
+            };
+            assert_eq!(got, want, "{name} / {strat:?}");
+        }
+    }
+}

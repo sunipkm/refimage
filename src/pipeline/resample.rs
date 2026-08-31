@@ -7,11 +7,13 @@
 //! once per output row/column and applied to every channel. Accumulation is in
 //! `f64`; the final write saturates into the stored type's `[min, max]` range.
 //!
-//! Both passes are row-independent, so with the `rayon` feature each is fanned
-//! out over its rows (source rows for the horizontal pass, output rows for the
-//! vertical one). Every output element is still produced by exactly one task
-//! summing its taps in a fixed order, so the result does not depend on the
-//! thread count and matches the serial path bit for bit.
+//! Work is split into **bands** of output rows. Each band horizontal-resamples
+//! only the source rows it needs into a small local strip, then vertical-
+//! resamples that strip into its slice of the output — one fused pass, cache-
+//! friendly, with no full-size intermediate plane. Bands are independent and
+//! fan out over a rayon pool when the feature is on. Every output element is
+//! still produced by one task summing its taps in a fixed order, so the result
+//! does not depend on the band size or thread count.
 
 use bytemuck::{cast_slice, cast_slice_mut};
 use serde::{Deserialize, Serialize};
@@ -190,6 +192,9 @@ pub(super) fn geo_resize(
     Ok(())
 }
 
+/// Target working-set size for one band's horizontal-pass strip.
+const BAND_TARGET_BYTES: usize = 256 * 1024;
+
 #[allow(clippy::too_many_arguments)]
 fn resize_typed<T: PixelStor>(
     src: &[T],
@@ -204,64 +209,73 @@ fn resize_typed<T: PixelStor>(
     let xt = axis_taps(sw, ow, filter);
     let yt = axis_taps(sh, oh, filter);
     let round = T::PIXEL_TYPE != PixelType::F32;
-    let mut mid = vec![0f32; ow * sh * ch];
+    let out_row = ow * ch;
+    let band_rows = (BAND_TARGET_BYTES / (out_row * 4).max(1)).clamp(1, oh);
 
-    // Horizontal pass: (sw x sh) -> (ow x sh), held as f32. One task per source
-    // row; `y` is the row index, `out` its `ow * ch` slice of `mid`.
-    {
-        let h_row = |y: usize, out: &mut [f32]| {
-            let s_row = y * sw * ch;
+    // One band of output rows: horizontal-resample just the source rows those
+    // outputs read into a local strip, then vertical-resample into `out`.
+    let do_band = |b: usize, out: &mut [T]| {
+        let oy0 = b * band_rows;
+        let oy1 = (oy0 + band_rows).min(oh);
+        if oy0 >= oy1 {
+            return;
+        }
+
+        // Source rows this band touches (taps are clamped and ascending).
+        let mut sy_lo = sh;
+        let mut sy_hi = 0usize;
+        for taps in &yt[oy0..oy1] {
+            sy_lo = sy_lo.min(taps[0].idx);
+            sy_hi = sy_hi.max(taps[taps.len() - 1].idx + 1);
+        }
+
+        // Horizontal pass -> strip; strip row `r` is source row `sy_lo + r`.
+        let mut strip = vec![0f32; (sy_hi - sy_lo) * out_row];
+        for (r, sr) in (sy_lo..sy_hi).enumerate() {
+            let s_base = sr * sw * ch;
+            let m_base = r * out_row;
             for (ox, taps) in xt.iter().enumerate() {
                 for c in 0..ch {
                     let mut acc = 0f64;
                     for tap in taps {
-                        acc += tap.weight * src[s_row + tap.idx * ch + c].to_f64();
+                        acc += tap.weight * src[s_base + tap.idx * ch + c].to_f64();
                     }
-                    out[ox * ch + c] = acc as f32;
+                    strip[m_base + ox * ch + c] = acc as f32;
                 }
             }
-        };
-        for_each_row(&mut mid, ow * ch, h_row);
-    }
+        }
 
-    // Vertical pass: (ow x sh) -> (ow x oh). One task per output row; `oy` is the
-    // row index, `out` its `ow * ch` slice of `dst`. Integer outputs round to
-    // nearest; `f32` keeps the raw weighted sum.
-    {
-        let v_row = |oy: usize, out: &mut [T]| {
-            let taps = &yt[oy];
+        // Vertical pass. Integer outputs round to nearest; `f32` keeps the raw
+        // weighted sum.
+        for (i, taps) in yt[oy0..oy1].iter().enumerate() {
+            let d_base = i * out_row;
             for ox in 0..ow {
                 for c in 0..ch {
                     let mut acc = 0f64;
                     for tap in taps {
-                        acc += tap.weight * mid[(tap.idx * ow + ox) * ch + c] as f64;
+                        acc += tap.weight * strip[(tap.idx - sy_lo) * out_row + ox * ch + c] as f64;
                     }
-                    out[ox * ch + c] = T::from_f64(if round { acc.round() } else { acc });
+                    out[d_base + ox * ch + c] = T::from_f64(if round { acc.round() } else { acc });
                 }
             }
-        };
-        for_each_row(&mut dst[..oh * ow * ch], ow * ch, v_row);
-    }
-}
+        }
+    };
 
-/// Apply `f(row_index, row_slice)` to every `stride`-long chunk of `buf`, fanned
-/// out over a rayon pool when the `rayon` feature is on (chunks are independent).
-fn for_each_row<E, F>(buf: &mut [E], stride: usize, f: F)
-where
-    E: Send,
-    F: Fn(usize, &mut [E]) + Sync,
-{
     #[cfg(feature = "rayon")]
     {
         use rayon::prelude::*;
-        buf.par_chunks_mut(stride)
+        dst[..oh * out_row]
+            .par_chunks_mut(band_rows * out_row)
             .enumerate()
-            .for_each(|(i, row)| f(i, row));
+            .for_each(|(b, out)| do_band(b, out));
     }
     #[cfg(not(feature = "rayon"))]
     {
-        for (i, row) in buf.chunks_mut(stride).enumerate() {
-            f(i, row);
+        for (b, out) in dst[..oh * out_row]
+            .chunks_mut(band_rows * out_row)
+            .enumerate()
+        {
+            do_band(b, out);
         }
     }
 }

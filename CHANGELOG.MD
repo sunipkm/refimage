@@ -21,10 +21,19 @@
   (enlarging when the source is smaller). `pipeline::ResizeFilter` selects
   `Bilinear`, `Bicubic` (Catmull-Rom), or `Lanczos3`; on downscale the kernel is
   widened by the ratio so the result is area-averaged (anti-aliased). It is a
-  geometric op — it runs as a whole-frame pass after any tiled pixel-op body,
-  allocating one scratch plane and resampling its rows in parallel (with `rayon`,
-  independent of thread count). Not valid on a Bayer image
+  geometric op — it runs as a whole-frame pass between tiled segments, fused and
+  cache-blocked into bands of output rows that fan out over the `rayon` pool
+  (each band allocates a small strip, not a full intermediate plane; output is
+  independent of band size and thread count). Not valid on a Bayer image
   (`PipelineError::ResizeOnBayer`); debayer first.
+- Tiled plans are now **segmented** at every geometric op (resize, rotation,
+  mid-chain crop/ROI, flip): the pixel-op run on the far side of one is retiled
+  against its own post-transform dimensions instead of dropping to a single
+  whole-frame pass, so `debayer luma → resize → scale convert` tiles on both
+  sides. The two full-frame buffers this needs were already allocated for the
+  old geo tail, so per-frame allocation is unchanged. `Runner::tiled_pass_count`
+  reports how many independently-tiled passes a plan runs. Output stays
+  bit-identical to `Sequential`.
 - **Breaking:** the pipeline is now the _only_ API for pixel conversions. The
   `Debayer`, `ToLuma`, `ConvertPixelType`, `SelectRoi` and `CopyRoi` traits and
   every per-type impl are removed. `SelectRoi` becomes `Op::Roi`; `CopyRoi`

@@ -117,7 +117,7 @@ let luma = runner.run(&img).unwrap();
 assert_eq!(luma.color_space(), ColorSpace::Gray);
 assert_eq!((luma.width(), luma.height()), (48, 48));
 ```
-`Strategy::Sequential` uses one ping-pong buffer pair; `Strategy::tiled`/`tiled_parallel`/`tiled_2d`/`tiled_2d_parallel` cut the frame into cache-sized tiles. A serial-tiled `Runner` does **zero** heap allocation per frame once compiled. See the module docs for how geometric ops interact with tiling and for `Runner::recompile` / the `grow` feature.
+`Strategy::Sequential` uses one ping-pong buffer pair; `Strategy::tiled`/`tiled_parallel`/`tiled_2d`/`tiled_2d_parallel` cut the frame into cache-sized tiles. A serial-tiled `Runner` does **zero** heap allocation per frame once compiled. A geometric op (rotation, mid-chain crop, `resize_to_fit`) splits the chain into segments that each tile independently — `debayer luma → resize → scale convert` tiles on both sides of the resize (`Runner::tiled_pass_count`). See the module docs for the details and for `Runner::recompile` / the `grow` feature.
 
 # FITS
 `GenericImageRef` / `GenericImageOwned` can be stored to FITS via the `FitsWrite` trait.

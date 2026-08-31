@@ -55,13 +55,14 @@
 //!
 //! # Allocation
 //! A serial-tiled [`Runner`] (`Strategy::tiled`) does **zero** heap allocation per
-//! frame once compiled. Parallel-tiled allocates one scratch set per worker
-//! thread on first use (warm-up only). `Sequential` uses the internally-parallel
-//! demosaic kernel, which allocates a padded frame copy per call; a trailing
-//! [`Op::ResizeToFit`] likewise allocates one scratch plane and resamples its
-//! rows in parallel. The two
-//! ping-pong buffers are sized independently by a liveness walk over the chain,
-//! so a `raw → debayer → luma → u8` pipeline does not pay for the fat RGB
+//! frame once compiled — including a chain with geometric segments, which reuse a
+//! pair of full-frame buffers already sized for the largest intermediate.
+//! Parallel-tiled allocates one scratch set per worker thread on first use
+//! (warm-up only). `Sequential` uses the internally-parallel demosaic kernel,
+//! which allocates a padded frame copy per call; [`Op::ResizeToFit`] allocates a
+//! small strip per output-row band as it resamples. The two
+//! tile-scratch buffers are sized independently by a liveness walk over the
+//! chain, so a `raw → debayer → luma → u8` pipeline does not pay for the fat RGB
 //! intermediate twice. Luma, scale, and pixel-type conversion all rewrite their
 //! buffer in place; only debayer swaps.
 //!
@@ -74,16 +75,20 @@
 //! # Geometric ops and tiling
 //! [`Op::Crop`], [`Op::Roi`], the flips, the rotations, and [`Op::ResizeToFit`]
 //! relocate (or resample) pixels, so a tile can't carry the context they need.
-//! Tiling handles them at the chain's edges:
-//! - **Leading crops** fold into the frame read — `crop → debayer → …` still
-//!   tiles the pixel run, at the cropped size.
-//! - Everything from the **first non-leading geometric op** onward runs as one
-//!   whole-frame pass after the tiled body — cheap index copies for the flips,
-//!   rotations, crop and ROI; a row-parallel resample for [`Op::ResizeToFit`].
+//! The chain is split into **segments** at each such op:
+//! - **Leading crops** fold into the frame read — `crop → debayer → …` tiles the
+//!   pixel run at the cropped size.
+//! - Each geometric op runs as one whole-frame pass between segments — cheap
+//!   index copies for the flips, rotations, crop and ROI; a row-parallel
+//!   resample for [`Op::ResizeToFit`].
+//! - Every pixel-op run between geometric ops is retiled against its own
+//!   (post-transform) dimensions and the compiled [`Strategy`], so `debayer luma
+//!   → resize → scale convert` tiles on *both* sides of the resize.
+//!   [`Runner::tiled_pass_count`] reports how many such passes a plan has.
 //!
-//! A geometric op sandwiched between pixel ops (`debayer → crop → luma`) just
-//! means the tiled body stops at the crop and the rest is that sequential tail;
-//! reorder to `crop → debayer → luma` to keep the whole run tiled.
+//! Op order no longer changes *whether* the chain tiles — only the leading
+//! segment reads straight from the frame (and folds a leading crop), so a
+//! debayer still belongs at the front.
 //!
 //! # Limitations
 //! - `Op` covers debayer / luminance / affine pixel scale / pixel-type conversion
@@ -255,10 +260,10 @@ pub enum Op {
     /// at the original aspect ratio, enlarging the image if it is smaller than
     /// the box. Each side of the result is at least 1 px and never exceeds its
     /// bound. Not valid on a Bayer image ([`PipelineError::ResizeOnBayer`]) —
-    /// debayer first. Runs as one whole-frame pass (after any tiled pixel-op
-    /// body) that allocates a scratch plane sized to the horizontal-pass
-    /// intermediate (output-width x source-height); with the `rayon` feature the
-    /// pass is fanned out over its rows, independent of thread count.
+    /// debayer first. Runs as one whole-frame pass between tiled segments,
+    /// fused and cache-blocked into bands of output rows (each allocates a small
+    /// strip, not a full intermediate plane) that fan out over the `rayon` pool,
+    /// independent of band size and thread count.
     ResizeToFit {
         /// Width bound in pixels; the result is never wider than this.
         max_width: usize,
@@ -620,27 +625,56 @@ impl Pipeline {
             None
         };
 
-        let (cap_a, cap_b, out_cap, demo_cap, tail_cap) = match &tile {
+        let (cap_a, cap_b, out_cap, demo_cap, tail_cap, tail_phases) = match &tile {
             None => {
                 let (a, b) = plan.buf_caps(0, n, |s| s.bytes())?;
-                (f32_cap(a), f32_cap(b), 0, 0, 0)
+                (f32_cap(a), f32_cap(b), 0, 0, 0, Vec::new())
             }
             Some(rt) => {
                 let cols = if rt.tile_cols == 0 { bw } else { rt.tile_cols };
                 let pr = (rt.tile_rows + 2 * halo + 6).min(bh);
                 let pc = (cols + 2 * halo + 6).min(bw);
-                let (a, b) = plan.buf_caps(prefix_lo, prefix_hi, |s| s.tile_bytes(pr, pc))?;
+                let (mut a, mut b) =
+                    plan.buf_caps(prefix_lo, prefix_hi, |s| s.tile_bytes(pr, pc))?;
                 let demo = if body_debayer {
                     demosaic_serial_scratch_len(bw)
                 } else {
                     0
                 };
-                // `out_buf` receives the tiled body's output and is then the
-                // first ping-pong buffer of the sequential geo tail; `tail_buf`
-                // is the second. Both span the largest spec the tail touches.
+                // Split `steps[prefix_hi..]` into whole-frame / retiled passes.
+                // Each retiled pass needs its own padded-tile scratch, folded
+                // into `buf_a`/`buf_b` (halo 0 there — no debayer past the body).
+                let tail_phases = build_tail_phases(&plan.steps, &plan.specs, strategy, prefix_hi);
+                for ph in &tail_phases {
+                    if let TailPhase::Tiled {
+                        lo,
+                        hi,
+                        tile_rows,
+                        tile_cols,
+                        ..
+                    } = *ph
+                    {
+                        let s = &plan.specs[lo];
+                        let c = if tile_cols == 0 { s.width } else { tile_cols };
+                        let ppr = (tile_rows + 6).min(s.height);
+                        let ppc = (c + 6).min(s.width);
+                        let (sa, sb) = plan.buf_caps(lo, hi, |sp| sp.tile_bytes(ppr, ppc))?;
+                        a = a.max(sa);
+                        b = b.max(sb);
+                    }
+                }
+                // `out_buf`/`tail_buf` are the full-frame ping-pong for the
+                // remainder; both span the largest spec from `prefix_hi` on.
                 let tail_max = plan.max_bytes(prefix_hi, n)?;
                 let tail_cap = if prefix_hi < n { f32_cap(tail_max) } else { 0 };
-                (f32_cap(a), f32_cap(b), f32_cap(tail_max), demo, tail_cap)
+                (
+                    f32_cap(a),
+                    f32_cap(b),
+                    f32_cap(tail_max),
+                    demo,
+                    tail_cap,
+                    tail_phases,
+                )
             }
         };
 
@@ -672,6 +706,7 @@ impl Pipeline {
             out_buf: vec![0.0; out_cap],
             tail_buf: vec![0.0; tail_cap],
             demosaic_scratch: vec![0.0; demo_cap],
+            tail_phases,
         })
     }
 
@@ -937,6 +972,72 @@ struct ResolvedTile {
     parallel: bool,
 }
 
+/// One phase of the post-body remainder: a maximal run of steps that either
+/// tiles on its own or runs as a single whole-frame [`run_chain`] pass. Phases
+/// ping-pong between the two full-frame buffers.
+#[derive(Debug, Clone, Copy)]
+enum TailPhase {
+    /// Tile `steps[lo..hi]` — a pixel-op run past a geometric op, retiled
+    /// against its own (post-transform) dimensions. Halo is always 0 here (the
+    /// only haloed pixel op, debayer, can only appear in the leading body).
+    Tiled {
+        lo: usize,
+        hi: usize,
+        tile_rows: usize,
+        tile_cols: usize,
+        parallel: bool,
+    },
+    /// Run `steps[lo..hi]` whole-frame: the connecting geometric ops, and any
+    /// pixel run too small to tile. Adjacent `Whole` phases are merged.
+    Whole { lo: usize, hi: usize },
+}
+
+/// Append `steps[lo..hi]` as a [`TailPhase::Whole`], extending the previous one
+/// when they abut.
+fn push_whole(phases: &mut Vec<TailPhase>, lo: usize, hi: usize) {
+    if let Some(TailPhase::Whole { hi: prev_hi, .. }) = phases.last_mut() {
+        if *prev_hi == lo {
+            *prev_hi = hi;
+            return;
+        }
+    }
+    phases.push(TailPhase::Whole { lo, hi });
+}
+
+/// Split `steps[start..]` into phases at every geometric op: a geometric run is
+/// whole-frame; a pixel run tiles when [`resolve_exec`] says it is worth it
+/// (against that run's own dimensions), else it is whole-frame too.
+fn build_tail_phases(
+    steps: &[Step],
+    specs: &[ImageSpec],
+    strategy: Strategy,
+    start: usize,
+) -> Vec<TailPhase> {
+    let n = steps.len();
+    let mut phases = Vec::new();
+    let mut i = start;
+    while i < n {
+        let geo = steps[i].kind.is_geometric();
+        let mut j = i + 1;
+        while j < n && steps[j].kind.is_geometric() == geo {
+            j += 1;
+        }
+        let s = &specs[i];
+        match (geo, resolve_exec(strategy, s.width, s.height, 0, false)) {
+            (false, Some(rt)) => phases.push(TailPhase::Tiled {
+                lo: i,
+                hi: j,
+                tile_rows: rt.tile_rows,
+                tile_cols: rt.tile_cols,
+                parallel: rt.parallel,
+            }),
+            _ => push_whole(&mut phases, i, j),
+        }
+        i = j;
+    }
+    phases
+}
+
 /// Turn a [`Strategy`] + the *tiled body's* dimensions into concrete tiling
 /// parameters, or `None` when tiling cannot help and the body should run
 /// sequentially.
@@ -1052,10 +1153,10 @@ impl Strategy {
 enum Exec {
     /// Run every step over the whole frame, in order.
     Sequential,
-    /// Tile `steps[prefix_lo..prefix_hi]` (all pixel ops) into `out_buf`, reading
-    /// the frame from `(in_off_x, in_off_y)` (folded leading crops). Any steps
-    /// past `prefix_hi` — geometric ops and whatever follows — then run as a
-    /// sequential pass over `out_buf`/`tail_buf`.
+    /// Tile the leading pixel-op run `steps[prefix_lo..prefix_hi]` into `out_buf`,
+    /// reading the frame from `(in_off_x, in_off_y)` (folded leading crops).
+    /// `steps[prefix_hi..]` is then run as [`Runner::tail_phases`] — whole-frame
+    /// geometric ops and retiled pixel runs, ping-ponging `out_buf`/`tail_buf`.
     Tiled {
         tile_rows: usize,
         tile_cols: usize, // 0 == full width
@@ -1138,6 +1239,22 @@ enum StepKind {
     },
 }
 
+impl StepKind {
+    /// Relocates or resamples pixels (crop, ROI, flip, rotate, resize), as
+    /// opposed to the per-pixel kinds (debayer, luma, scale, convert). A
+    /// geometric step ends one tiled segment and starts the next.
+    fn is_geometric(&self) -> bool {
+        matches!(
+            self,
+            StepKind::Crop { .. }
+                | StepKind::Roi { .. }
+                | StepKind::Flip { .. }
+                | StepKind::Rot90 { .. }
+                | StepKind::Resize { .. }
+        )
+    }
+}
+
 /// A compiled [`Pipeline`]: recipe + locked input spec + owned scratch.
 ///
 /// Build one per input format, keep it alive, and call [`run`](Runner::run) per
@@ -1158,14 +1275,18 @@ pub struct Runner {
     // Tiled (serial): per-tile ping-pong.
     buf_a: Vec<f32>,
     buf_b: Vec<f32>,
-    // Tiled: the assembled tiled-body output, then the first ping-pong buffer of
-    // the sequential geo tail. Empty for Sequential.
+    // Tiled: the assembled tiled-body output, then a full-frame ping-pong buffer
+    // for the segmented remainder. Empty for Sequential.
     out_buf: Vec<f32>,
-    // Tiled with a geometric tail: the tail's second ping-pong buffer.
+    // Tiled with anything past the leading body: the other full-frame ping-pong
+    // buffer.
     tail_buf: Vec<f32>,
     // Tiled + debayer, serial: pooled working buffer for the serial kernel.
     // Empty otherwise (the parallel path allocates one per worker instead).
     demosaic_scratch: Vec<f32>,
+    // Tiled: how `steps[prefix_hi..]` is split into whole-frame / retiled passes
+    // over `out_buf`/`tail_buf`. Empty for `Sequential` or a bare tiled body.
+    tail_phases: Vec<TailPhase>,
 }
 
 impl Runner {
@@ -1182,6 +1303,22 @@ impl Runner {
     /// `true` if this runner tiles the frame.
     pub fn is_tiled(&self) -> bool {
         matches!(self.exec, Exec::Tiled { .. })
+    }
+
+    /// How many independently-tiled passes the plan runs. Zero when the runner
+    /// is not tiled at all; one for a plain tiled chain; more when a geometric
+    /// op (a rotation, a mid-chain crop, a [`resize`](Op::ResizeToFit)) splits
+    /// the chain and the pixel run on its far side retiles — e.g. a resize in
+    /// the middle of a chain tiles on both sides and reports `2`.
+    pub fn tiled_pass_count(&self) -> usize {
+        if !self.is_tiled() {
+            return 0;
+        }
+        1 + self
+            .tail_phases
+            .iter()
+            .filter(|p| matches!(p, TailPhase::Tiled { .. }))
+            .count()
     }
 
     /// Total scratch held, in bytes.
@@ -1257,25 +1394,38 @@ impl Runner {
                 prefix_lo,
                 prefix_hi,
             } => {
-                let body_in = self.specs[prefix_lo].clone();
-                let body_out = self.specs[prefix_hi].clone();
-                let frame_stride = self.specs[0].width * self.specs[0].bpp()?;
-                let frame_off = in_off_y * frame_stride + in_off_x * body_in.bpp()?;
-                let has_tail = prefix_hi < self.steps.len();
-                let (bo_w, bo_h) = (body_out.width, body_out.height);
+                let Runner {
+                    ref steps,
+                    ref coeffs,
+                    ref specs,
+                    ref out_spec,
+                    ref mut out_buf,
+                    ref mut tail_buf,
+                    ref mut buf_a,
+                    ref mut buf_b,
+                    ref mut demosaic_scratch,
+                    ref tail_phases,
+                    ..
+                } = *self;
 
+                let body_in = specs[prefix_lo].clone();
+                let body_out = specs[prefix_hi].clone();
+                let frame_stride = specs[0].width * specs[0].bpp()?;
+                let frame_off = in_off_y * frame_stride + in_off_x * body_in.bpp()?;
+
+                // Leading body: tiled straight from the (crop-folded) raw frame.
                 fill_tiled(
-                    &self.steps[prefix_lo..prefix_hi],
-                    &self.coeffs,
+                    &steps[prefix_lo..prefix_hi],
+                    coeffs,
                     &body_in,
                     &body_out,
                     raw,
                     frame_stride,
                     frame_off,
-                    &mut self.out_buf,
-                    &mut self.buf_a,
-                    &mut self.buf_b,
-                    &mut self.demosaic_scratch,
+                    out_buf,
+                    buf_a,
+                    buf_b,
+                    demosaic_scratch,
                     TileGeom {
                         tile_rows,
                         tile_cols,
@@ -1285,21 +1435,69 @@ impl Runner {
                     parallel,
                 )?;
 
-                if has_tail {
-                    let cur_a = run_chain(
-                        &self.steps[prefix_hi..],
-                        &self.coeffs,
-                        &mut self.out_buf,
-                        &mut self.tail_buf,
-                        bo_w,
-                        bo_h,
-                        Demosaic::Alloc,
-                    )?;
-                    let buf = current(&mut self.out_buf, &mut self.tail_buf, cur_a);
-                    view(buf, &self.out_spec)
-                } else {
-                    view(&mut self.out_buf, &self.out_spec)
+                // The remainder: ping-pong the two full-frame buffers, each
+                // phase either a whole-frame `run_chain` or its own tiled pass.
+                // `out_holds` tracks which buffer has the live image.
+                let mut out_holds = true;
+                for phase in tail_phases {
+                    let (src, dst): (&mut [f32], &mut [f32]) = if out_holds {
+                        (out_buf.as_mut_slice(), tail_buf.as_mut_slice())
+                    } else {
+                        (tail_buf.as_mut_slice(), out_buf.as_mut_slice())
+                    };
+                    match *phase {
+                        TailPhase::Whole { lo, hi } => {
+                            let s = &specs[lo];
+                            let ended_in_src = run_chain(
+                                &steps[lo..hi],
+                                coeffs,
+                                src,
+                                dst,
+                                s.width,
+                                s.height,
+                                Demosaic::Alloc,
+                            )?;
+                            if !ended_in_src {
+                                out_holds = !out_holds;
+                            }
+                        }
+                        TailPhase::Tiled {
+                            lo,
+                            hi,
+                            tile_rows,
+                            tile_cols,
+                            parallel,
+                        } => {
+                            let seg_in = specs[lo].clone();
+                            let seg_out = specs[hi].clone();
+                            let seg_stride = seg_in.width * seg_in.bpp()?;
+                            fill_tiled(
+                                &steps[lo..hi],
+                                coeffs,
+                                &seg_in,
+                                &seg_out,
+                                cast_slice::<f32, u8>(src),
+                                seg_stride,
+                                0,
+                                dst,
+                                buf_a,
+                                buf_b,
+                                demosaic_scratch,
+                                TileGeom {
+                                    tile_rows,
+                                    tile_cols,
+                                    halo: 0,
+                                    even: false,
+                                },
+                                parallel,
+                            )?;
+                            out_holds = !out_holds;
+                        }
+                    }
                 }
+
+                let buf = if out_holds { out_buf } else { tail_buf };
+                view(buf, out_spec)
             }
         }
     }
