@@ -4,6 +4,12 @@
 
 ### 1.0.0-pre6 (2026-08-28)
 
+- Added an optional frame ID to `Metadata`, alongside `timestamp` and
+  `exposure`. `set_frame_id` takes a `u32`; `frame_id` returns `Option<u32>`.
+  `GenericImage`, `GenericImageRef` and `GenericImageOwned` gain matching
+  `get_frame_id` / `set_frame_id`. `FRAMEID` is reserved against the extra-item
+  map, and a set frame ID is written to FITS as a `FRAMEID` card. `Metadata`
+  serialized before this release deserializes with the frame ID unset.
 - Added the `pipeline` module: a declarative, cloneable, serializable `Pipeline`
   of `Op`s (debayer, luminance, affine pixel scale, pixel-type conversion, crop,
   ROI, flip, 90°/180°/270° rotation). `Pipeline::compile` validates the chain

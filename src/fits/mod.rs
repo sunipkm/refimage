@@ -50,7 +50,8 @@
 //! # Metadata
 //!
 //! The image timestamp is written as `DATE-OBS`. A non-zero exposure is written as the
-//! `EXPOSURE_S` / `EXPOSURE_NS` integer pair together with `EXPOSURE` in seconds. Each
+//! `EXPOSURE_S` / `EXPOSURE_NS` integer pair together with `EXPOSURE` in seconds. A
+//! frame ID, when set, is written as `FRAMEID`. Each
 //! entry of the image's [`Metadata`](crate::Metadata) then becomes a header card, in
 //! insertion order, using the `HIERARCH` convention for keywords longer than eight
 //! characters and `CONTINUE` for string values longer than one card. A
@@ -75,7 +76,7 @@ use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-use crate::{GenericLineItem, GenericValue, Metadata, EXPOSURE_KEY};
+use crate::{GenericLineItem, GenericValue, Metadata, EXPOSURE_KEY, FRAMEID_KEY};
 
 use card::Header;
 use config::Method;
@@ -471,6 +472,13 @@ fn write_metadata(h: &mut Header, meta: &Metadata) -> FitsResult<()> {
             Some("[ns]"),
         )?;
         h.real(EXPOSURE_KEY, exp.as_secs_f64(), Some("[s] exposure time"))?;
+    }
+    if let Some(frame_id) = meta.frame_id() {
+        h.integer(
+            FRAMEID_KEY,
+            i64::from(frame_id),
+            Some("acquisition frame id"),
+        )?;
     }
     for (key, item) in meta.iter() {
         if card::is_reserved(key) {

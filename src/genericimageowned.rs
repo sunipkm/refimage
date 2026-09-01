@@ -94,6 +94,16 @@ impl GenericImageOwned {
         self.metadata.set_exposure(exposure);
     }
 
+    /// Get the acquisition frame ID of the image, or `None` if unset.
+    pub fn get_frame_id(&self) -> Option<u32> {
+        self.metadata.frame_id()
+    }
+
+    /// Set the acquisition frame ID of the image.
+    pub fn set_frame_id(&mut self, frame_id: u32) {
+        self.metadata.set_frame_id(frame_id);
+    }
+
     /// Insert a metadata value into the [`GenericImageOwned`].
     ///
     /// # Arguments
@@ -110,7 +120,7 @@ impl GenericImageOwned {
     ///
     /// # Note
     /// - The metadata key is case-insensitive and is stored as an uppercase string.
-    /// - The `TIMESTAMP` and `EXPOSURE` keys are reserved (they are typed fields);
+    /// - The `TIMESTAMP`, `EXPOSURE` and `FRAMEID` keys are reserved (they are typed fields);
     ///   use [`set_exposure`](Self::set_exposure) / [`Metadata::set_timestamp`].
     /// - When saving to a FITS file, the metadata comment may be truncated.
     /// - Metadata of type [`std::time::Duration`] or a UTC `chrono::DateTime` is
@@ -128,7 +138,7 @@ impl GenericImageOwned {
     ///
     /// # Errors
     /// [`MetadataError::ReservedKey`](crate::MetadataError::ReservedKey) for
-    /// `TIMESTAMP` / `EXPOSURE`,
+    /// `TIMESTAMP` / `EXPOSURE` / `FRAMEID`,
     /// [`MetadataError::KeyNotFound`](crate::MetadataError::KeyNotFound) if the
     /// key is absent, otherwise a key-validation error.
     pub fn remove_key(&mut self, name: &str) -> Result<GenericLineItem, crate::MetadataError> {

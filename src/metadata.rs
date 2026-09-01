@@ -57,6 +57,16 @@ pub const PROGRAMNAME_KEY: &str = "PROGNAME";
 /// Name of the exposure field, reserved because [`Metadata`] stores it as a
 /// typed field rather than a map entry.
 pub const EXPOSURE_KEY: &str = "EXPOSURE";
+/// Name of the frame-ID field, reserved because [`Metadata`] stores it as a
+/// typed field rather than a map entry.
+pub const FRAMEID_KEY: &str = "FRAMEID";
+
+/// Stored `frame_id` value for "unset".
+const FRAMEID_UNSET: i64 = i64::MIN;
+
+fn frameid_default() -> i64 {
+    FRAMEID_UNSET
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 /// A metadata item.
@@ -96,27 +106,30 @@ pub struct GenericLineItem {
 /// insertion order.
 pub type MetaCollection = IndexMap<String, GenericLineItem>;
 
-/// Image metadata: a mandatory typed core plus an ordered map of extra items.
+/// Image metadata: a mandatory typed core with an ordered map of extra items.
 ///
 /// Every [`GenericImageRef`](crate::GenericImageRef) /
-/// [`GenericImageOwned`](crate::GenericImageOwned) carries one of these. The
-/// `timestamp` (a UTC [`DateTime`], unambiguous and timezone-free) and `exposure`
-/// are stored as typed fields — always present, never map lookups — so
-/// [`Metadata::timestamp`] is infallible. Everything else lives in an
-/// insertion-ordered [`MetaCollection`].
+/// [`GenericImageOwned`](crate::GenericImageOwned) carries metadata. The
+/// `timestamp` (a UTC [`DateTime`]) and `exposure`
+/// are stored as typed fields.
 ///
-/// A zero [`exposure`](Metadata::exposure) (`Duration::ZERO`) means "unknown / not
+/// A zero [`exposure`](Metadata::exposure) (`Duration::ZERO`) implies "unknown / not
 /// applicable" (e.g. a synthetic or stacked frame).
+///
+/// `frame_id` is a `u32` acquisition counter, unset by default. 
+/// Use [`set_frame_id`](Metadata::set_frame_id) to set the value, and [`frame_id`](Metadata::frame_id) to retrieve it as an `Option<u32>`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Metadata {
     timestamp: DateTime<Utc>,
     exposure: Duration,
+    #[serde(default = "frameid_default")]
+    frame_id: i64,
     extra: MetaCollection,
 }
 
 impl Metadata {
-    /// Create a metadata block with an empty extra-item map.
+    /// Create a metadata block with an empty extra-metadata map.
     ///
     /// Pass `Duration::ZERO` for `exposure` when the image has no meaningful
     /// single exposure.
@@ -124,6 +137,7 @@ impl Metadata {
         Self {
             timestamp,
             exposure,
+            frame_id: frameid_default(),
             extra: MetaCollection::new(),
         }
     }
@@ -138,6 +152,11 @@ impl Metadata {
         self.exposure
     }
 
+    /// The acquisition frame ID, or `None` if unset.
+    pub fn frame_id(&self) -> Option<u32> {
+        u32::try_from(self.frame_id).ok()
+    }
+
     /// Set the timestamp.
     pub fn set_timestamp(&mut self, timestamp: DateTime<Utc>) {
         self.timestamp = timestamp;
@@ -146,6 +165,11 @@ impl Metadata {
     /// Set the exposure duration.
     pub fn set_exposure(&mut self, exposure: Duration) {
         self.exposure = exposure;
+    }
+
+    /// Set the acquisition frame ID.
+    pub fn set_frame_id(&mut self, frame_id: u32) {
+        self.frame_id = i64::from(frame_id);
     }
 
     /// Borrow the ordered map of extra metadata items.
@@ -176,8 +200,9 @@ impl Metadata {
     /// Insert an extra metadata item.
     ///
     /// # Errors
-    /// [`MetadataError::ReservedKey`] for `TIMESTAMP` / `EXPOSURE` (use
-    /// [`set_timestamp`](Self::set_timestamp) / [`set_exposure`](Self::set_exposure)),
+    /// [`MetadataError::ReservedKey`] for `TIMESTAMP` / `EXPOSURE` / `FRAMEID` (use
+    /// [`set_timestamp`](Self::set_timestamp) / [`set_exposure`](Self::set_exposure) /
+    /// [`set_frame_id`](Self::set_frame_id)),
     /// otherwise a key/comment/value validation error.
     pub fn insert<T: InsertValue>(&mut self, name: &str, value: T) -> Result<(), MetadataError> {
         reserved_check(name)?;
@@ -187,7 +212,7 @@ impl Metadata {
     /// Replace an existing extra metadata item.
     ///
     /// # Errors
-    /// [`MetadataError::ReservedKey`] for `TIMESTAMP` / `EXPOSURE`,
+    /// [`MetadataError::ReservedKey`] for `TIMESTAMP` / `EXPOSURE` / `FRAMEID`,
     /// [`MetadataError::KeyNotFound`] if the key is absent, otherwise a
     /// validation error.
     pub fn replace<T: InsertValue>(
@@ -202,7 +227,7 @@ impl Metadata {
     /// Remove an extra metadata item, returning it.
     ///
     /// # Errors
-    /// [`MetadataError::ReservedKey`] for `TIMESTAMP` / `EXPOSURE`,
+    /// [`MetadataError::ReservedKey`] for `TIMESTAMP` / `EXPOSURE` / `FRAMEID`,
     /// [`MetadataError::KeyNotFound`] if the key is absent, otherwise a
     /// key-validation error.
     pub fn remove(&mut self, name: &str) -> Result<GenericLineItem, MetadataError> {
@@ -218,16 +243,12 @@ fn reserved_check(name: &str) -> Result<(), MetadataError> {
     match name.to_uppercase().as_str() {
         TIMESTAMP_KEY => Err(MetadataError::ReservedKey(TIMESTAMP_KEY)),
         EXPOSURE_KEY => Err(MetadataError::ReservedKey(EXPOSURE_KEY)),
+        FRAMEID_KEY => Err(MetadataError::ReservedKey(FRAMEID_KEY)),
         _ => Ok(()),
     }
 }
 
 /// A type-erased enum to hold a metadata value.
-///
-/// The set of variants mirrors what a FITS header card can carry. Integer metadata of
-/// any width is promoted losslessly to [`GenericValue::Integer`] (`i64`); `u64` is not a
-/// supported metadata type because it cannot be promoted without loss. `f32` and `f64`
-/// both land in [`GenericValue::Real`]. Timestamps are UTC [`DateTime`]s.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum GenericValue {
@@ -639,6 +660,9 @@ mod test {
         let mut m = Metadata::new(ts, Duration::from_millis(250));
         assert_eq!(m.timestamp(), ts);
         assert_eq!(m.exposure(), Duration::from_millis(250));
+        assert_eq!(m.frame_id(), None);
+        m.set_frame_id(42);
+        assert_eq!(m.frame_id(), Some(42));
         assert!(m.is_empty());
 
         assert_eq!(
@@ -648,6 +672,10 @@ mod test {
         assert_eq!(
             m.insert("exposure", 1u8),
             Err(MetadataError::ReservedKey("EXPOSURE"))
+        );
+        assert_eq!(
+            m.insert("frameid", 1u8),
+            Err(MetadataError::ReservedKey("FRAMEID"))
         );
 
         m.insert("Camera", "cam").unwrap();
@@ -682,9 +710,11 @@ mod test {
         );
         m.insert("A", 1i32).unwrap();
         m.insert("B", "two").unwrap();
+        m.set_frame_id(7);
         let bytes = bincode::serialize(&m).unwrap();
         let back: Metadata = bincode::deserialize(&bytes).unwrap();
         assert_eq!(m, back);
+        assert_eq!(back.frame_id(), Some(7));
 
         // pre-epoch timestamps round-trip too (they did not with `SystemTime`).
         let pre = Metadata::new(

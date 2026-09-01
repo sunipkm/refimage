@@ -114,7 +114,7 @@ pub use imageref::ImageRef;
 pub use imagetraits::{BayerShift, ImageProps};
 pub use metadata::{
     GenericLineItem, GenericValue, InsertValue, MetaCollection, Metadata, MetadataError,
-    MetadataResult, CAMERANAME_KEY, EXPOSURE_KEY, PROGRAMNAME_KEY, TIMESTAMP_KEY,
+    MetadataResult, CAMERANAME_KEY, EXPOSURE_KEY, FRAMEID_KEY, PROGRAMNAME_KEY, TIMESTAMP_KEY,
 };
 pub use optimumexposure::{
     CalcOptExp, ExposureError, ExposureResult, OptimumExposure, OptimumExposureBuilder,

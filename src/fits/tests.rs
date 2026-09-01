@@ -67,6 +67,21 @@ fn uncompressed_primary_structure() {
 }
 
 #[test]
+fn frame_id_card() {
+    // An unset frame ID is not written.
+    let g = gray_u16(8, 4);
+    assert_eq!(g.get_frame_id(), None);
+    let bytes = g.fits_bytes(FitsCompression::NONE).unwrap();
+    assert!(find_card(&bytes, "FRAMEID").is_none());
+
+    // A set frame ID is written as an integer card.
+    let mut g = gray_u16(8, 4);
+    g.set_frame_id(12345);
+    let bytes = g.fits_bytes(FitsCompression::NONE).unwrap();
+    assert!(find_card(&bytes, "FRAMEID").unwrap().contains("12345"));
+}
+
+#[test]
 fn compressed_is_bintable_extension() {
     let g = gray_u16(16, 16);
     for (comp, want) in [

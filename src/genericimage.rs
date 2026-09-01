@@ -69,6 +69,16 @@ impl GenericImage<'_> {
         dynamic_map!(self, ref mut image, { image.set_exposure(exposure) })
     }
 
+    /// Get the acquisition frame ID of the image, or `None` if unset.
+    pub fn get_frame_id(&self) -> Option<u32> {
+        dynamic_map!(self, ref image, { image.get_frame_id() })
+    }
+
+    /// Set the acquisition frame ID of the image.
+    pub fn set_frame_id(&mut self, frame_id: u32) {
+        dynamic_map!(self, ref mut image, { image.set_frame_id(frame_id) })
+    }
+
     /// Insert a metadata value into the [`GenericImage`].
     ///
     /// # Arguments

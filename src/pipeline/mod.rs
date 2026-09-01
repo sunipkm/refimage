@@ -1,10 +1,10 @@
-//! Reusable, allocation-aware processing pipelines — the one path for every pixel
+//! Reusable, allocation-aware processing pipelines for pixel
 //! conversion in this crate (debayer, luminance, pixel-type conversion, affine
 //! pixel scaling, crop, ROI, flips, 90° rotations, aspect-preserving resize).
 //!
 //! A [`Pipeline`] is a declarative, cloneable, serializable list of [`Op`]s.
 //! [`Pipeline::compile`] pairs it with a concrete [`ImageSpec`], validates the
-//! whole chain, and allocates every buffer it will ever need, producing a
+//! whole chain, and allocates every buffer it needs, producing a
 //! [`Runner`]. [`Runner::run`] then executes the chain against successive frames,
 //! reusing those buffers instead of allocating per frame.
 //!
@@ -49,9 +49,8 @@
 //!   the working-set width). Each tile pulls a slightly larger, even-snapped input
 //!   region — an automatic *halo* sized from the demosaic kernels — and runs the
 //!   whole chain fused with a **serial** demosaic kernel, so a tile stays hot in
-//!   cache and there is no nested parallelism. The result is **bit-identical** to
-//!   `Sequential`. Tiling silently falls back to `Sequential` when the frame is
-//!   too small to benefit.
+//!   cache and there is no nested parallelism. Tiling silently falls back to
+//!   `Sequential` when the frame is too small to be tiled.
 //!
 //! # Allocation
 //! A serial-tiled [`Runner`] (`Strategy::tiled`) does **zero** heap allocation per
@@ -86,14 +85,10 @@
 //!   → resize → scale convert` tiles on *both* sides of the resize.
 //!   [`Runner::tiled_pass_count`] reports how many such passes a plan has.
 //!
-//! Op order no longer changes *whether* the chain tiles — only the leading
-//! segment reads straight from the frame (and folds a leading crop), so a
-//! debayer still belongs at the front.
-//!
 //! # Limitations
-//! - `Op` covers debayer / luminance / affine pixel scale / pixel-type conversion
-//!   / crop / ROI / flip / 90° rotation / aspect-preserving resize. No
-//!   arbitrary-angle rotation and no exact-size (aspect-changing) resampling.
+//! `Op` covers debayer / luminance / affine pixel scale / pixel-type conversion
+//! / crop / ROI / flip / 90° rotation / aspect-preserving resize. It does not allow
+//! arbitrary-angle rotation and does not support exact-size (aspect-changing) resampling.
 
 mod error;
 mod geom;
@@ -123,8 +118,6 @@ pub struct ImageSpec {
     pub width: usize,
     /// Height in pixels.
     pub height: usize,
-    /// Number of interleaved channels per pixel.
-    pub channels: u8,
     /// Color space.
     pub cspace: ColorSpace,
     /// Primitive element type.
@@ -134,15 +127,9 @@ pub struct ImageSpec {
 impl ImageSpec {
     /// Build a spec, deriving `channels` from `cspace`.
     pub fn new(width: usize, height: usize, cspace: ColorSpace, pixel_type: PixelType) -> Self {
-        let channels = match &cspace {
-            ColorSpace::Gray | ColorSpace::Bayer(_) => 1,
-            ColorSpace::Rgb => 3,
-            ColorSpace::Custom(c, _) => *c,
-        };
         Self {
             width,
             height,
-            channels,
             cspace,
             pixel_type,
         }
@@ -153,7 +140,6 @@ impl ImageSpec {
         Self {
             width: img.width(),
             height: img.height(),
-            channels: img.channels(),
             cspace: img.color_space(),
             pixel_type: img.pixel_type(),
         }
@@ -161,7 +147,7 @@ impl ImageSpec {
 
     /// Element count (`width * height * channels`).
     pub fn elems(&self) -> usize {
-        self.width * self.height * self.channels as usize
+        self.width * self.height * self.cspace.channels() as usize
     }
 
     /// Byte count of a tightly-packed buffer for this spec.
@@ -171,7 +157,7 @@ impl ImageSpec {
 
     /// Bytes per pixel (`channels * pixel_size`).
     fn bpp(&self) -> Result<usize, PipelineError> {
-        Ok(self.channels as usize * pixel_size(self.pixel_type)?)
+        Ok(self.cspace.channels() as usize * pixel_size(self.pixel_type)?)
     }
 
     /// Bytes for a `rows * cols` tile in this spec's channels / element type.
@@ -290,11 +276,10 @@ impl Op {
                 if !matches!(input.cspace, ColorSpace::Bayer(_)) {
                     return Err(PipelineError::NotBayer);
                 }
-                if input.channels != 1 {
-                    return Err(PipelineError::DebayerChannels(input.channels));
+                if input.cspace.channels() != 1 {
+                    return Err(PipelineError::DebayerChannels(input.cspace.channels()));
                 }
                 Ok(ImageSpec {
-                    channels: 3,
                     cspace: ColorSpace::Rgb,
                     ..input.clone()
                 })
@@ -448,14 +433,13 @@ fn luma_output(input: &ImageSpec, ncoeffs: usize) -> Result<ImageSpec, PipelineE
         // Matches `ImageRef::to_luma`: already-gray is a no-op passthrough.
         ColorSpace::Gray => Ok(input.clone()),
         ColorSpace::Rgb | ColorSpace::Custom(..) => {
-            if input.channels as usize != ncoeffs {
+            if input.cspace.channels() as usize != ncoeffs {
                 return Err(PipelineError::LumaCoeffMismatch {
-                    channels: input.channels,
+                    channels: input.cspace.channels(),
                     coeffs: ncoeffs,
                 });
             }
             Ok(ImageSpec {
-                channels: 1,
                 cspace: ColorSpace::Gray,
                 ..input.clone()
             })
@@ -828,7 +812,7 @@ impl Plan {
                 kind: StepKind::Convert,
                 in_pt: cur.pixel_type,
                 out_pt: next.pixel_type,
-                in_channels: cur.channels,
+                in_channels: cur.cspace.channels(),
                 bayer: None,
                 coeff_idx: 0,
                 luma_identity: false,
@@ -1519,7 +1503,7 @@ impl Runner {
         let spec = self.out_spec.clone();
         let fits = dest.width() == spec.width
             && dest.height() == spec.height
-            && dest.channels() == spec.channels
+            && dest.channels() == spec.cspace.channels()
             && dest.color_space() == spec.cspace
             && dest.pixel_type() == spec.pixel_type;
         let out = self.run(frame)?;
