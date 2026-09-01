@@ -5,6 +5,8 @@
 //! de-interleaves. Unsigned 16-bit data is offset to signed (`BZERO = 32768`), which is
 //! how `astropy.io.fits` recognises it as `uint16`.
 
+use std::io::{self, Write};
+
 use crate::{ColorSpace, DynamicImageOwned, DynamicImageRef, ImageProps};
 
 /// A borrowed view of image pixels, independent of ref/owned.
@@ -197,14 +199,35 @@ impl<'a> ImageView<'a> {
         out
     }
 
-    /// The whole image as one planar, big-endian, FITS-native byte blob (uncompressed
-    /// data section, before block padding).
-    pub(super) fn native_be(&self) -> Vec<u8> {
-        let mut out = Vec::with_capacity(self.w * self.h * self.ch * self.bytepix());
+    /// Number of bytes [`write_native_be`](Self::write_native_be) emits (the
+    /// uncompressed data section, before block padding).
+    pub(super) fn native_be_len(&self) -> usize {
+        self.w * self.h * self.ch * self.bytepix()
+    }
+
+    /// Stream the image to `w` as planar, big-endian, FITS-native bytes (one
+    /// image row at a time, so the whole blob is never materialised).
+    pub(super) fn write_native_be<W: Write>(&self, w: &mut W) -> io::Result<()> {
+        let mut row = Vec::with_capacity(self.w * self.bytepix());
         for plane in 0..self.ch {
-            out.extend_from_slice(&self.rect_tile(plane, 0, 0, self.w, self.h).to_be_bytes());
+            for y in 0..self.h {
+                row.clear();
+                for x in 0..self.w {
+                    let i = self.interleaved_index(plane, y, x);
+                    match self.pixels {
+                        // `u8` reinterpreted signed is a byte-for-byte identity.
+                        Pixels::U8(p) => row.push(p[i]),
+                        Pixels::U16(p) => {
+                            let v = (p[i] as i32 - 32768) as i16;
+                            row.extend_from_slice(&v.to_be_bytes());
+                        }
+                        Pixels::F32(p) => row.extend_from_slice(&p[i].to_be_bytes()),
+                    }
+                }
+                w.write_all(&row)?;
+            }
         }
-        out
+        Ok(())
     }
 }
 

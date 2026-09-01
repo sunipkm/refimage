@@ -1,9 +1,9 @@
 //! Separable resampling for [`Op::ResizeToFit`](super::Op::ResizeToFit).
 //!
-//! A two-pass filter — horizontal, then vertical — with edge samples taken by
-//! clamp extension. On downscale the kernel support is widened by the downscale
-//! ratio, so the output is an area-weighted average of the source rather than a
-//! set of point samples; this is what suppresses aliasing. Weights are computed
+//! It is a two-pass filter (horizontal, vertical) with edge samples taken by
+//! clamp extension. On downscale, the kernel support is widened by the downscale
+//! ratio, so the output is an area-weighted average of the source, rather than a
+//! set of point samples; suppressing aliasing. Weights are computed
 //! once per output row/column and applied to every channel. Accumulation is in
 //! `f64`; the final write saturates into the stored type's `[min, max]` range.
 //!
@@ -20,7 +20,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{PixelStor, PixelType};
 
-use super::{pixel_size, PipelineError};
+use super::spec::pixel_size;
+use super::PipelineError;
 
 /// Resampling filter for [`Op::ResizeToFit`](super::Op::ResizeToFit).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -116,7 +116,7 @@ pub type MetaCollection = IndexMap<String, GenericLineItem>;
 /// A zero [`exposure`](Metadata::exposure) (`Duration::ZERO`) implies "unknown / not
 /// applicable" (e.g. a synthetic or stacked frame).
 ///
-/// `frame_id` is a `u32` acquisition counter, unset by default. 
+/// `frame_id` is a `u32` acquisition counter, unset by default.
 /// Use [`set_frame_id`](Metadata::set_frame_id) to set the value, and [`frame_id`](Metadata::frame_id) to retrieve it as an `Option<u32>`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]

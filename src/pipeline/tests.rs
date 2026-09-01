@@ -1,5 +1,8 @@
 use super::*;
-use crate::PixelStor;
+use crate::{
+    BayerPattern, ColorSpace, DemosaicMethod, DynamicImageOwned, DynamicImageRef, GenericImageRef,
+    ImageProps, ImageRef, PixelStor, PixelType,
+};
 
 fn sample16(n: usize) -> Vec<u16> {
     (0..n).map(|i| ((i * 7 + 3) % 251) as u16).collect()

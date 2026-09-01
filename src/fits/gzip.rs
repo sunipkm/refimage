@@ -6,10 +6,9 @@
 
 use miniz_oxide::deflate::compress_to_vec;
 
-/// gzip-compress `data` into one gzip member.
-pub(super) fn gzip(data: &[u8]) -> Vec<u8> {
-    // level 6 — cfitsio's default effort.
-    let deflated = compress_to_vec(data, 6);
+/// gzip-compress `data` into one gzip member at DEFLATE effort `level` (0..=9).
+pub(super) fn gzip(data: &[u8], level: u8) -> Vec<u8> {
+    let deflated = compress_to_vec(data, level);
 
     let mut out = Vec::with_capacity(deflated.len() + 18);
     out.extend_from_slice(&[
@@ -34,7 +33,7 @@ mod tests {
     #[test]
     fn roundtrips_through_raw_inflate() {
         let src: Vec<u8> = (0..4096u32).map(|i| (i * 31) as u8).collect();
-        let comp = gzip(&src);
+        let comp = gzip(&src, 6);
         assert_eq!(&comp[..2], &[0x1f, 0x8b]);
         // Body between the 10-byte header and the 8-byte trailer is raw DEFLATE.
         let body = &comp[10..comp.len() - 8];
@@ -44,5 +43,16 @@ mod tests {
             u32::from_le_bytes(isize_le.try_into().unwrap()),
             src.len() as u32
         );
+    }
+
+    #[test]
+    fn level_zero_stores_and_still_roundtrips() {
+        let src: Vec<u8> = (0..2048u32).map(|i| (i * 7) as u8).collect();
+        let stored = gzip(&src, 0);
+        let best = gzip(&src, 9);
+        // Level 0 does no compression; level 9 must not be larger.
+        assert!(best.len() <= stored.len());
+        let body = &stored[10..stored.len() - 8];
+        assert_eq!(decompress_to_vec(body).unwrap(), src);
     }
 }

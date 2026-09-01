@@ -43,7 +43,9 @@ pub(super) struct Compressed {
 
 /// The chosen algorithm plus its resolved settings.
 enum Algo {
-    Gzip,
+    Gzip {
+        level: u8,
+    },
     Rice(Quantize),
     Hcompress {
         scale: i32,
@@ -64,7 +66,7 @@ impl Algo {
     }
     fn quantize(&self) -> Option<Quantize> {
         match self {
-            Algo::Gzip => None,
+            Algo::Gzip { .. } => None,
             Algo::Rice(q) => Some(*q),
             Algo::Hcompress { quantize, .. } => Some(*quantize),
         }
@@ -74,7 +76,7 @@ impl Algo {
 pub(super) fn build(view: &ImageView<'_>, method: &Method) -> FitsResult<Compressed> {
     let (tiling, algo) = match method {
         Method::None => unreachable!("caller handles None"),
-        Method::Gzip { tiling } => (tiling, Algo::Gzip),
+        Method::Gzip { tiling, level } => (tiling, Algo::Gzip { level: *level }),
         Method::Rice { tiling, quantize } => (tiling, Algo::Rice(*quantize)),
         Method::Hcompress {
             tiling,
@@ -204,8 +206,8 @@ fn build_tiled(view: &ImageView<'_>, tiling: &Tiling, algo: &Algo) -> FitsResult
                     (bytes, Some(q.zzero))
                 } else {
                     let bytes = match algo {
-                        Algo::Gzip => {
-                            gzip::gzip(&view.rect_tile(plane, x0, y0, tw, th).to_be_bytes())
+                        Algo::Gzip { level } => {
+                            gzip::gzip(&view.rect_tile(plane, x0, y0, tw, th).to_be_bytes(), *level)
                         }
                         Algo::Rice(_) => match view.rect_tile(plane, x0, y0, tw, th) {
                             Tile::I16(v) => rice::encode_short(&v),
@@ -239,7 +241,7 @@ fn build_tiled(view: &ImageView<'_>, tiling: &Tiling, algo: &Algo) -> FitsResult
     data.extend_from_slice(&heap);
 
     let (zcmptype, is_rice, is_hcompress, hscale, hsmooth) = match algo {
-        Algo::Gzip => ("GZIP_1", false, false, 0i64, false),
+        Algo::Gzip { .. } => ("GZIP_1", false, false, 0i64, false),
         Algo::Rice(_) => ("RICE_1", true, false, 0, false),
         Algo::Hcompress { scale, smooth, .. } => {
             ("HCOMPRESS_1", false, true, *scale as i64, *smooth)

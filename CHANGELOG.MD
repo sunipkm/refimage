@@ -4,6 +4,11 @@
 
 ### 1.0.0-pre6 (2026-08-28)
 
+- `Gzip` gained a `level` setter (DEFLATE effort `0`..=`9`, default `6`), matching
+  the builder style of the other compression types. The FITS writer now streams
+  each HDU straight to the `Write` sink — header, then the pixel data one row at
+  a time, then padding — instead of building the whole file in a `Vec<u8>` first,
+  so writing a large uncompressed image no longer needs a second full-size buffer.
 - Added an optional frame ID to `Metadata`, alongside `timestamp` and
   `exposure`. `set_frame_id` takes a `u32`; `frame_id` returns `Option<u32>`.
   `GenericImage`, `GenericImageRef` and `GenericImageOwned` gain matching

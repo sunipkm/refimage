@@ -101,6 +101,25 @@ fn compressed_is_bintable_extension() {
 }
 
 #[test]
+fn gzip_level_is_wired_through() {
+    // A low-entropy plane so DEFLATE effort visibly matters.
+    let data = vec![4321u16; 64 * 64];
+    let img =
+        DynamicImageOwned::from(ImageOwned::from_owned(data, 64, 64, ColorSpace::Gray).unwrap());
+    let g = GenericImageOwned::new(ts(), Duration::from_millis(1), img);
+
+    // One tile, so the effort has the whole plane to work with.
+    let stored = g
+        .fits_bytes(Gzip::new().level(0).tile_dims([64, 64]))
+        .unwrap();
+    let deflated = g.fits_bytes(Gzip::new().tile_dims([64, 64])).unwrap();
+    // Effort 0 stores the bytes verbatim; the default effort (6) must beat it.
+    assert!(deflated.len() < stored.len());
+    // `level` is still callable after the tile shape is fixed (type-state).
+    let _ = g.fits_bytes(Gzip::new().tile_rows(16).level(9)).unwrap();
+}
+
+#[test]
 fn hcompress_is_bintable_with_scale_cards() {
     let g = gray_u16(20, 16);
     let bytes = g.fits_bytes(Hcompress::new()).unwrap();

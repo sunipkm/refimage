@@ -2,8 +2,8 @@
 //!
 //! It produces uncompressed image HDUs and the FITS
 //! tile-compression convention (`GZIP_1`, `RICE_1`, `HCOMPRESS_1`).
-//! Output is checked against `astropy.io.fits` and `cfitsio` in
-//! the test suite.
+//! Output is verified to be compatible with `astropy.io.fits`
+//! and `cfitsio` in the test suite.
 //!
 //! # Entry points
 //!
@@ -26,6 +26,7 @@
 //! | Setting | Applies to | Default |
 //! |---|---|---|
 //! | [`tile_rows`](Rice::tile_rows) / [`tile_dims`](Rice::tile_dims) — the tile grid | all | one image row per tile (`Gzip`, `Rice`); one channel plane (`Hcompress`) |
+//! | [`level`](Gzip::level) — DEFLATE effort, `0`..=`9` | `Gzip` | `6` (zlib / cfitsio default) |
 //! | [`Quantize`] — `f32` quantization step and dither seed | `Rice`, `Hcompress` | step from an image-noise estimate ([`level`](Quantize::level) 4.0) |
 //! | [`scale`](Hcompress::scale) — H-transform divisor | `Hcompress` | `0`, lossless |
 //! | [`smooth`](Hcompress::smooth) — decompression smoothing flag | `Hcompress` | off |
@@ -220,14 +221,12 @@ fn write_one<W: Write>(
     lead_primary: bool,
 ) -> FitsResult<()> {
     match &compress.0 {
-        Method::None => {
-            sink.write_all(&serialize_image(view, meta, lead_primary)?)?;
-        }
+        Method::None => write_uncompressed(view, meta, &mut sink, lead_primary)?,
         method => {
             if lead_primary {
                 sink.write_all(&primary_empty())?;
             }
-            sink.write_all(&serialize_compressed(view, meta, method)?)?;
+            write_compressed(view, meta, method, &mut sink)?;
         }
     }
     Ok(())
@@ -322,8 +321,15 @@ fn primary_empty() -> Vec<u8> {
     h.finish()
 }
 
-/// A plain (uncompressed) image HDU.
-fn serialize_image(view: &ImageView<'_>, meta: &Metadata, primary: bool) -> FitsResult<Vec<u8>> {
+/// A plain (uncompressed) image HDU, streamed to `sink` (header, then the pixel
+/// data one row at a time, then block padding — the image is never buffered
+/// whole).
+fn write_uncompressed<W: Write>(
+    view: &ImageView<'_>,
+    meta: &Metadata,
+    sink: &mut W,
+    primary: bool,
+) -> FitsResult<()> {
     let axes = view.axes();
     let mut h = Header::new();
 
@@ -354,19 +360,19 @@ fn serialize_image(view: &ImageView<'_>, meta: &Metadata, primary: bool) -> Fits
     write_common_cards(&mut h, view, meta.timestamp())?;
     write_metadata(&mut h, meta)?;
 
-    let mut out = h.finish();
-    let mut data = view.native_be();
-    card::pad_data(&mut data);
-    out.extend_from_slice(&data);
-    Ok(out)
+    sink.write_all(&h.finish())?;
+    view.write_native_be(sink)?;
+    card::pad_writer(sink, view.native_be_len())?;
+    Ok(())
 }
 
-/// A tile-compressed image HDU (`BINTABLE` with `ZIMAGE = T`).
-fn serialize_compressed(
+/// A tile-compressed image HDU (`BINTABLE` with `ZIMAGE = T`), streamed to `sink`.
+fn write_compressed<W: Write>(
     view: &ImageView<'_>,
     meta: &Metadata,
     method: &Method,
-) -> FitsResult<Vec<u8>> {
+    sink: &mut W,
+) -> FitsResult<()> {
     let c = compress::build(view, method)?;
     let quantized = c.quant.is_some();
     let mut h = Header::new();
@@ -431,11 +437,10 @@ fn serialize_compressed(
     write_common_cards(&mut h, view, meta.timestamp())?;
     write_metadata(&mut h, meta)?;
 
-    let mut out = h.finish();
-    let mut data = c.data;
-    card::pad_data(&mut data);
-    out.extend_from_slice(&data);
-    Ok(out)
+    sink.write_all(&h.finish())?;
+    sink.write_all(&c.data)?;
+    card::pad_writer(sink, c.data.len())?;
+    Ok(())
 }
 
 /// `DATE-OBS`, `COLORSPC`, `BAYERPAT` — the image's own descriptive cards.

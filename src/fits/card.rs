@@ -209,12 +209,14 @@ fn pad8(s: &str) -> String {
     }
 }
 
-/// Zero-pad `data` to a 2880-byte boundary.
-pub(super) fn pad_data(data: &mut Vec<u8>) {
-    let rem = data.len() % BLOCK;
+/// Write zero bytes to `w` to pad a data section of `data_len` bytes out to a
+/// 2880-byte boundary.
+pub(super) fn pad_writer<W: std::io::Write>(w: &mut W, data_len: usize) -> std::io::Result<()> {
+    let rem = data_len % BLOCK;
     if rem != 0 {
-        data.resize(data.len() + (BLOCK - rem), 0);
+        w.write_all(&vec![0u8; BLOCK - rem])?;
     }
+    Ok(())
 }
 
 /// True if `key` (upper-cased) shadows a structural keyword.

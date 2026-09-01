@@ -11,7 +11,8 @@ use crate::{
     BayerPattern, ColorSpace, DemosaicMethod, Enlargeable, ImageRef, PixelStor, PixelType,
 };
 
-use super::{pixel_size, PipelineError};
+use super::spec::pixel_size;
+use super::PipelineError;
 
 /// How the debayer step gets its working memory.
 pub(super) enum Demosaic<'s> {

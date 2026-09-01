@@ -9,6 +9,7 @@
 //! # fn f(img: GenericImageRef<'_>) -> std::io::Result<()> {
 //! # let path = std::path::Path::new("x.fits");
 //! img.write_fits(path, Gzip::new(), true).ok();
+//! img.write_fits(path, Gzip::new().level(9), true).ok();
 //! img.write_fits(path, Rice::new().tile_rows(16), true).ok();
 //! img.write_fits(
 //!     path,
@@ -130,10 +131,14 @@ macro_rules! tile_selectors {
     };
 }
 
+/// cfitsio (and zlib) compress at effort 6 by default.
+const GZIP_DEFAULT_LEVEL: u8 = 6;
+
 /// `GZIP_1` tile compression — lossless for every pixel type.
 #[derive(Debug, Clone)]
 pub struct Gzip<Tile = AutoTile> {
     tiling: Tiling,
+    level: u8,
     _tile: PhantomData<Tile>,
 }
 
@@ -141,23 +146,39 @@ impl Default for Gzip<AutoTile> {
     fn default() -> Self {
         Self {
             tiling: Tiling::Default,
+            level: GZIP_DEFAULT_LEVEL,
             _tile: PhantomData,
         }
     }
 }
 
 impl Gzip<AutoTile> {
-    /// `GZIP_1` with the default tiling (one image row per tile).
+    /// `GZIP_1` with the default tiling (one image row per tile) and DEFLATE
+    /// effort 6.
     pub fn new() -> Self {
         Self::default()
     }
 }
 
-tile_selectors!(Gzip);
+tile_selectors!(Gzip, level: u8);
+
+impl<Tile> Gzip<Tile> {
+    /// DEFLATE effort, `0` (store, no compression) to `9` (best); `6` is the
+    /// default, matching zlib and cfitsio. Higher values shrink the file at the
+    /// cost of CPU and never change what a reader gets back. Values above `9` are
+    /// clamped.
+    pub fn level(mut self, level: u8) -> Self {
+        self.level = level.min(9);
+        self
+    }
+}
 
 impl<Tile> From<Gzip<Tile>> for FitsCompression {
     fn from(g: Gzip<Tile>) -> Self {
-        FitsCompression(Method::Gzip { tiling: g.tiling })
+        FitsCompression(Method::Gzip {
+            tiling: g.tiling,
+            level: g.level,
+        })
     }
 }
 
@@ -279,6 +300,8 @@ pub(crate) enum Method {
     None,
     Gzip {
         tiling: Tiling,
+        /// DEFLATE effort, 0..=9.
+        level: u8,
     },
     Rice {
         tiling: Tiling,
