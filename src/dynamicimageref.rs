@@ -27,52 +27,52 @@ macro_rules! dynamic_map(
 impl DynamicImageRef<'_> {
     /// Get the width of the image.
     pub fn width(&self) -> usize {
-        dynamic_map!(self, ref image, { image.width() })
+        dynamic_map!(self, image, { image.width() })
     }
 
     /// Get the height of the image.
     pub fn height(&self) -> usize {
-        dynamic_map!(self, ref image, { image.height() })
+        dynamic_map!(self, image, { image.height() })
     }
 
     /// Get the number of channels in the image.
     pub fn channels(&self) -> u8 {
-        dynamic_map!(self, ref image, { image.channels() })
+        dynamic_map!(self, image, { image.channels() })
     }
 
     /// Get the color space of the image.
     pub fn color_space(&self) -> ColorSpace {
-        dynamic_map!(self, ref image, { image.color_space() })
+        dynamic_map!(self, image, { image.color_space() })
     }
 }
 
 impl ImageProps for DynamicImageRef<'_> {
     fn width(&self) -> usize {
-        dynamic_map!(self, ref image, { image.width() })
+        dynamic_map!(self, image, { image.width() })
     }
 
     fn height(&self) -> usize {
-        dynamic_map!(self, ref image, { image.height() })
+        dynamic_map!(self, image, { image.height() })
     }
 
     fn channels(&self) -> u8 {
-        dynamic_map!(self, ref image, { image.channels() })
+        dynamic_map!(self, image, { image.channels() })
     }
 
     fn color_space(&self) -> ColorSpace {
-        dynamic_map!(self, ref image, { image.color_space() })
+        dynamic_map!(self, image, { image.color_space() })
     }
 
     fn pixel_type(&self) -> PixelType {
-        dynamic_map!(self, ref image, { image.pixel_type() })
+        dynamic_map!(self, image, { image.pixel_type() })
     }
 
     fn len(&self) -> usize {
-        dynamic_map!(self, ref image, { image.len() })
+        dynamic_map!(self, image, { image.len() })
     }
 
     fn is_empty(&self) -> bool {
-        dynamic_map!(self, ref image, { image.is_empty() })
+        dynamic_map!(self, image, { image.is_empty() })
     }
 }
 
@@ -122,12 +122,12 @@ from_imgdata_dynimg!(f32, DynamicImageRef::F32);
 impl DynamicImageRef<'_> {
     /// Get the data as a slice of [`u8`], regardless of the underlying type.
     pub fn as_raw_u8(&self) -> &[u8] {
-        dynamic_map!(self, ref image, { image.as_u8_slice() })
+        dynamic_map!(self, image, { image.as_u8_slice() })
     }
 
     /// Get the data as a slice of [`u8`], regardless of the underlying type.
     pub fn as_raw_u8_checked(&self) -> Option<&[u8]> {
-        dynamic_map!(self, ref image, { image.as_u8_slice_checked() })
+        dynamic_map!(self, image, { image.as_u8_slice_checked() })
     }
 
     /// Get the data as a slice of [`u8`].

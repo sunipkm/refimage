@@ -56,27 +56,27 @@ macro_rules! dynamic_map(
 impl GenericImage<'_> {
     /// Get the UTC timestamp of the image.
     pub fn get_timestamp(&self) -> DateTime<Utc> {
-        dynamic_map!(self, ref image, { image.get_timestamp() })
+        dynamic_map!(self, image, { image.get_timestamp() })
     }
 
     /// Get the exposure time of the image (`Duration::ZERO` if not applicable).
     pub fn get_exposure(&self) -> Duration {
-        dynamic_map!(self, ref image, { image.get_exposure() })
+        dynamic_map!(self, image, { image.get_exposure() })
     }
 
     /// Set the exposure time of the image.
     pub fn set_exposure(&mut self, exposure: Duration) {
-        dynamic_map!(self, ref mut image, { image.set_exposure(exposure) })
+        dynamic_map!(self, image, { image.set_exposure(exposure) })
     }
 
     /// Get the acquisition frame ID of the image, or `None` if unset.
     pub fn get_frame_id(&self) -> Option<u32> {
-        dynamic_map!(self, ref image, { image.get_frame_id() })
+        dynamic_map!(self, image, { image.get_frame_id() })
     }
 
     /// Set the acquisition frame ID of the image.
     pub fn set_frame_id(&mut self, frame_id: u32) {
-        dynamic_map!(self, ref mut image, { image.set_frame_id(frame_id) })
+        dynamic_map!(self, image, { image.set_frame_id(frame_id) })
     }
 
     /// Insert a metadata value into the [`GenericImage`].
@@ -105,7 +105,7 @@ impl GenericImage<'_> {
         name: &str,
         value: T,
     ) -> Result<(), crate::MetadataError> {
-        dynamic_map!(self, ref mut image, { image.insert_key(name, value) })
+        dynamic_map!(self, image, { image.insert_key(name, value) })
     }
 
     /// Remove a metadata value from the [`GenericImageOwned`].
@@ -120,7 +120,7 @@ impl GenericImage<'_> {
     /// - `Err("Key cannot be empty")` if the key is an empty string.
     /// - `Err("Key cannot be longer than 80 characters")` if the key is longer than 80 characters.
     pub fn remove_key(&mut self, name: &str) -> Result<GenericLineItem, crate::MetadataError> {
-        dynamic_map!(self, ref mut image, { image.remove_key(name) })
+        dynamic_map!(self, image, { image.remove_key(name) })
     }
 
     /// Replace a metadata value in the [`GenericImageOwned`].
@@ -138,7 +138,7 @@ impl GenericImage<'_> {
         name: &str,
         value: T,
     ) -> Result<GenericLineItem, crate::MetadataError> {
-        dynamic_map!(self, ref mut image, { image.replace_key(name, value) })
+        dynamic_map!(self, image, { image.replace_key(name, value) })
     }
 
     // /// Get the underlying [`DynamicImageOwned`].
@@ -151,42 +151,42 @@ impl GenericImage<'_> {
 
     /// Borrow the image's [`Metadata`].
     pub fn get_metadata(&self) -> &Metadata {
-        dynamic_map!(self, ref image, { image.get_metadata() })
+        dynamic_map!(self, image, { image.get_metadata() })
     }
 
     /// Get a specific extra metadata item by name (case-insensitive).
     pub fn get_key(&self, name: &str) -> Option<&GenericLineItem> {
-        dynamic_map!(self, ref image, { image.get_key(name) })
+        dynamic_map!(self, image, { image.get_key(name) })
     }
 }
 
 impl ImageProps for GenericImage<'_> {
     fn width(&self) -> usize {
-        dynamic_map!(self, ref image, { image.image.width() })
+        dynamic_map!(self, image, { image.image.width() })
     }
 
     fn height(&self) -> usize {
-        dynamic_map!(self, ref image, { image.image.height() })
+        dynamic_map!(self, image, { image.image.height() })
     }
 
     fn channels(&self) -> u8 {
-        dynamic_map!(self, ref image, { image.image.channels() })
+        dynamic_map!(self, image, { image.image.channels() })
     }
 
     fn color_space(&self) -> ColorSpace {
-        dynamic_map!(self, ref image, { image.image.color_space() })
+        dynamic_map!(self, image, { image.image.color_space() })
     }
 
     fn pixel_type(&self) -> PixelType {
-        dynamic_map!(self, ref image, { image.image.pixel_type() })
+        dynamic_map!(self, image, { image.image.pixel_type() })
     }
 
     fn len(&self) -> usize {
-        dynamic_map!(self, ref image, { image.image.len() })
+        dynamic_map!(self, image, { image.image.len() })
     }
 
     fn is_empty(&self) -> bool {
-        dynamic_map!(self, ref image, { image.image.is_empty() })
+        dynamic_map!(self, image, { image.image.is_empty() })
     }
 }
 
@@ -257,12 +257,12 @@ impl GenericImage<'_> {
 impl GenericImage<'_> {
     /// Get the data as a slice of [`u8`], regardless of the underlying type.
     pub fn as_raw_u8(&self) -> &[u8] {
-        dynamic_map!(self, ref image, { image.image.as_raw_u8() })
+        dynamic_map!(self, image, { image.image.as_raw_u8() })
     }
 
     /// Get the data as a slice of [`u8`], regardless of the underlying type.
     pub fn as_raw_u8_checked(&self) -> Option<&[u8]> {
-        dynamic_map!(self, ref image, { image.image.as_raw_u8_checked() })
+        dynamic_map!(self, image, { image.image.as_raw_u8_checked() })
     }
 
     /// Get the data as a slice of [`u8`].
@@ -271,7 +271,7 @@ impl GenericImage<'_> {
     /// The returned slice may not be the same length as the image.
     /// Use [`len`](GenericImage::len) to get the length of the image.
     pub fn as_slice_u8(&self) -> Option<&[u8]> {
-        dynamic_map!(self, ref image, { image.image.as_slice_u8() })
+        dynamic_map!(self, image, { image.image.as_slice_u8() })
     }
 
     /// Get the data as a mutable slice of [`u8`].
@@ -280,7 +280,7 @@ impl GenericImage<'_> {
     /// The returned slice may not be the same length as the image.
     /// Use [`len`](GenericImage::len) to get the length of the image.
     pub fn as_mut_slice_u8(&mut self) -> Option<&mut [u8]> {
-        dynamic_map!(self, ref mut image, { image.image.as_mut_slice_u8() })
+        dynamic_map!(self, image, { image.image.as_mut_slice_u8() })
     }
 
     /// Get the data as a slice of [`u16`].
@@ -289,7 +289,7 @@ impl GenericImage<'_> {
     /// The returned slice may not be the same length as the image.
     /// Use [`len`](GenericImage::len) to get the length of the image.
     pub fn as_slice_u16(&self) -> Option<&[u16]> {
-        dynamic_map!(self, ref image, { image.image.as_slice_u16() })
+        dynamic_map!(self, image, { image.image.as_slice_u16() })
     }
 
     /// Get the data as a mutable slice of [`u16`].
@@ -298,7 +298,7 @@ impl GenericImage<'_> {
     /// The returned slice may not be the same length as the image.
     /// Use [`len`](GenericImage::len) to get the length of the image.
     pub fn as_mut_slice_u16(&mut self) -> Option<&mut [u16]> {
-        dynamic_map!(self, ref mut image, { image.image.as_mut_slice_u16() })
+        dynamic_map!(self, image, { image.image.as_mut_slice_u16() })
     }
 
     /// Get the data as a slice of [`f32`].
@@ -307,7 +307,7 @@ impl GenericImage<'_> {
     /// The returned slice may not be the same length as the image.
     /// Use [`len`](GenericImage::len) to get the length of the image.
     pub fn as_slice_f32(&self) -> Option<&[f32]> {
-        dynamic_map!(self, ref image, { image.image.as_slice_f32() })
+        dynamic_map!(self, image, { image.image.as_slice_f32() })
     }
 
     /// Get the data as a mutable slice of [`f32`].
@@ -316,7 +316,7 @@ impl GenericImage<'_> {
     /// The returned slice may not be the same length as the image.
     /// Use [`len`](GenericImage::len) to get the length of the image.
     pub fn as_mut_slice_f32(&mut self) -> Option<&mut [f32]> {
-        dynamic_map!(self, ref mut image, { image.image.as_mut_slice_f32() })
+        dynamic_map!(self, image, { image.image.as_mut_slice_f32() })
     }
 }
 

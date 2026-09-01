@@ -321,7 +321,7 @@ macro_rules! insert_as_doc {
     { $content:expr } => {
         #[allow(unused_doc_comments)]
         #[allow(missing_abi)]
-        #[doc = $content] extern { }
+        #[doc = $content] unsafe extern { }
     }
 }
 

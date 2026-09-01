@@ -261,11 +261,11 @@ fn apply_preserves_metadata() {
     let mut data: Vec<u16> = (0..24).collect();
     let dynref = gray16(4, 6, &mut data);
     let ts = chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap();
-    let mut gen = GenericImageRef::new(ts, Duration::from_millis(50), dynref);
-    gen.insert_key("CAMERA", "test-cam").unwrap();
+    let mut rgen = GenericImageRef::new(ts, Duration::from_millis(50), dynref);
+    rgen.insert_key("CAMERA", "test-cam").unwrap();
 
-    let out = Pipeline::new().convert(PixelType::U8).apply(&gen).unwrap();
-    assert_eq!(out.get_metadata(), gen.get_metadata());
+    let out = Pipeline::new().convert(PixelType::U8).apply(&rgen).unwrap();
+    assert_eq!(out.get_metadata(), rgen.get_metadata());
     assert_eq!(out.get_timestamp(), ts);
     assert_eq!(out.get_exposure(), Duration::from_millis(50));
     assert_eq!(out.pixel_type(), PixelType::U8);

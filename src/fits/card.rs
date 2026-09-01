@@ -100,13 +100,12 @@ impl Header {
             }
             c
         };
-        if let Some(cmt) = comment {
-            if card.len() + 3 < CARD {
+        if let Some(cmt) = comment
+            && card.len() + 3 < CARD {
                 let room = CARD - card.len() - 3;
                 card.push_str(" / ");
                 card.push_str(&cmt[..cmt.len().min(room)]);
             }
-        }
         self.raw(&card);
         Ok(())
     }
@@ -139,13 +138,12 @@ impl Header {
         if escaped.len() <= first_room {
             let body = pad8(&escaped);
             let mut card = format!("{prefix}'{body}'");
-            if let Some(cmt) = comment {
-                if card.len() + 3 < CARD {
+            if let Some(cmt) = comment
+                && card.len() + 3 < CARD {
                     let room = CARD - card.len() - 3;
                     card.push_str(" / ");
                     card.push_str(&cmt[..cmt.len().min(room)]);
                 }
-            }
             self.raw(&card);
             return Ok(());
         }
@@ -174,15 +172,13 @@ impl Header {
             pos += n;
             let tail = if last { "'" } else { "&'" };
             let mut card = format!("CONTINUE  '{seg}{tail}");
-            if last {
-                if let Some(cmt) = comment {
-                    if card.len() + 3 < CARD {
+            if last
+                && let Some(cmt) = comment
+                    && card.len() + 3 < CARD {
                         let room = CARD - card.len() - 3;
                         card.push_str(" / ");
                         card.push_str(&cmt[..cmt.len().min(room)]);
                     }
-                }
-            }
             self.raw(&card);
         }
         Ok(())

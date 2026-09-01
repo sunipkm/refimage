@@ -270,8 +270,8 @@ mod test {
                 serde_generate::CodeGeneratorConfig::new("refimage::DynamicImageRef".to_string())
                     .with_encodings(vec![serde_generate::Encoding::Bincode]);
 
-            let gen = serde_generate::python3::CodeGenerator::new(&cfg);
-            if let Err(v) = gen.output(&mut src, &registry) {
+            let rgen = serde_generate::python3::CodeGenerator::new(&cfg);
+            if let Err(v) = rgen.output(&mut src, &registry) {
                 eprintln!("Output Error: {:?}", v);
                 return;
             }
@@ -306,8 +306,8 @@ mod test {
                 serde_generate::CodeGeneratorConfig::new("refimage::DynamicImageOwned".to_string())
                     .with_encodings(vec![serde_generate::Encoding::Bincode]);
 
-            let gen = serde_generate::python3::CodeGenerator::new(&cfg);
-            if let Err(v) = gen.output(&mut src, &registry) {
+            let rgen = serde_generate::python3::CodeGenerator::new(&cfg);
+            if let Err(v) = rgen.output(&mut src, &registry) {
                 eprintln!("Output Error: {:?}", v);
                 return;
             }

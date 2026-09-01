@@ -2,8 +2,9 @@
 
 ## Changes
 
-### 1.0.0-pre6 (2026-08-28)
+### 1.0.0-pre5 (2026-08-28)
 
+- Updated Rust edition to 2024.
 - `Gzip` gained a `level` setter (DEFLATE effort `0`..=`9`, default `6`), matching
   the builder style of the other compression types. The FITS writer now streams
   each HDU straight to the `Write` sink — header, then the pixel data one row at
@@ -142,9 +143,6 @@
   `["alloc", "serde"]` only — no `clock`, so the caller supplies the timestamp;
   re-exported as `refimage::chrono`).
   Bumped `thiserror` to 2.0 and refreshed the remaining version requirements.
-
-### 1.0.0-pre5 (2025-01-21)
-
 - Internal changes to `fitsio_interop` function signatures.
 - Fixed a bug in `CopyRoi` function.
 

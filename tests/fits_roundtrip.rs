@@ -32,11 +32,10 @@ fn all_methods() -> [FitsCompression; 4] {
 fn image_hdu(f: &mut FitsFile) -> fitsio::hdu::FitsHdu {
     for i in 0.. {
         let Ok(hdu) = f.hdu(i) else { break };
-        if let HduInfo::ImageInfo { ref shape, .. } = hdu.info {
-            if !shape.is_empty() {
+        if let HduInfo::ImageInfo { ref shape, .. } = hdu.info
+            && !shape.is_empty() {
                 return hdu;
             }
-        }
     }
     panic!("no image HDU");
 }

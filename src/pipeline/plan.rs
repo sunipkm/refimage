@@ -195,12 +195,11 @@ pub(super) enum TailPhase {
 /// Append `steps[lo..hi]` as a [`TailPhase::Whole`], extending the previous one
 /// when they abut.
 fn push_whole(phases: &mut Vec<TailPhase>, lo: usize, hi: usize) {
-    if let Some(TailPhase::Whole { hi: prev_hi, .. }) = phases.last_mut() {
-        if *prev_hi == lo {
+    if let Some(TailPhase::Whole { hi: prev_hi, .. }) = phases.last_mut()
+        && *prev_hi == lo {
             *prev_hi = hi;
             return;
         }
-    }
     phases.push(TailPhase::Whole { lo, hi });
 }
 
