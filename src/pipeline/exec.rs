@@ -6,7 +6,7 @@ use bytemuck::{cast_slice, cast_slice_mut};
 use crate::{DynamicImageRef, ImageRef, PixelType};
 
 use super::geom::{geo_crop, geo_flip, geo_roi, geo_rot90};
-use super::kernels::{convert_inplace, debayer_into, luma_inplace, scale_inplace, Demosaic};
+use super::kernels::{Demosaic, convert_inplace, debayer_into, luma_inplace, scale_inplace};
 use super::plan::{Step, StepKind};
 use super::resample::geo_resize;
 use super::spec::pixel_size;
@@ -99,6 +99,9 @@ pub(super) fn run_chain(
                 cw = ow;
                 ch = oh;
                 cur_a = !cur_a;
+            }
+            StepKind::Nop => {
+                // Do nothing.
             }
         }
     }
@@ -284,19 +287,11 @@ pub(super) fn fill_tiled(
 }
 
 fn pick<'x>(a: &'x mut [f32], b: &'x mut [f32], cur_a: bool) -> (&'x mut [f32], &'x mut [f32]) {
-    if cur_a {
-        (a, b)
-    } else {
-        (b, a)
-    }
+    if cur_a { (a, b) } else { (b, a) }
 }
 
 pub(super) fn current<'x>(a: &'x mut [f32], b: &'x mut [f32], cur_a: bool) -> &'x mut [f32] {
-    if cur_a {
-        a
-    } else {
-        b
-    }
+    if cur_a { a } else { b }
 }
 
 pub(super) fn view<'a>(

@@ -103,6 +103,9 @@ impl Plan {
                         filter: *filter,
                     }
                 }
+                Op::Nop => {
+                    step.kind = StepKind::Nop;
+                }
             }
             steps.push(step);
             specs.push(next.clone());
@@ -381,6 +384,8 @@ pub(super) enum StepKind {
         h: usize,
         filter: ResizeFilter,
     },
+    /// Not an operation
+    Nop,
 }
 
 impl StepKind {

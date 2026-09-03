@@ -54,17 +54,16 @@
 //! per-frame allocation (serial-tiled strategy).
 //!
 //! # FITS
-//! Writing [`GenericImageRef`] / [`GenericImageOwned`] to the [Flexible Image Transport
-//! System](https://fits.gsfc.nasa.gov/fits_standard.html) via the [`FitsWrite`] trait is
-//! always available — it is a pure-Rust implementation (no `cfitsio` linkage) and
-//! compiles on every target, `wasm32` included. It supports uncompressed output and the
+//! [`GenericImageRef`] / [`GenericImageOwned`] can be written to the [Flexible Image Transport
+//! System](https://fits.gsfc.nasa.gov/fits_standard.html) via the [`FitsWrite`] trait. 
+//! It supports uncompressed output and the
 //! tile-compression convention with `GZIP_1` and `RICE_1`.
 //!
 //! # Optional Features
 //! Features are available to extend the functionalities of the core `refimage` data types:
 //! - `rayon`: Parallelizes the luminance / demosaic / cast kernels inside the [`pipeline`], and enables its parallel [`Strategy`](pipeline::Strategy) variants (<b>enabled</b> by default).
-//! - `image`: Enables [`TryFrom`] conversions between [`DynamicImage`] and [`DynamicImageRef`], [`DynamicImageOwned`] (<b>disabled</b> by default).
 //! - `grow`: Lets a compiled [`Runner`](pipeline::Runner) reallocate its buffers when handed a frame whose shape differs from the one it was compiled for (<b>enabled</b> by default).
+//! - `image`: Enables [`TryFrom`] conversions between [`DynamicImage`] and [`DynamicImageRef`], [`DynamicImageOwned`] (<b>disabled</b> by default).
 //!
 
 mod coreimpls;

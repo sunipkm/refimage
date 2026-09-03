@@ -62,11 +62,11 @@ pub enum Op {
     FlipHorizontal,
     /// Mirror top-to-bottom. Bayer patterns are re-phased.
     FlipVertical,
-    /// Rotate 90° clockwise; width and height swap. Not valid on a Bayer image.
+    /// Rotate 90° clockwise; width and height swap. Not applicable on a Bayer image.
     Rotate90,
     /// Rotate 180°. Bayer patterns are re-phased.
     Rotate180,
-    /// Rotate 90° counter-clockwise; width and height swap. Not valid on Bayer.
+    /// Rotate 90° counter-clockwise; width and height swap. Not applicable on Bayer.
     Rotate270,
     /// Resample to the largest size that fits within `max_width` x `max_height`
     /// at the original aspect ratio, enlarging the image if it is smaller than
@@ -84,6 +84,8 @@ pub enum Op {
         /// Resampling filter.
         filter: ResizeFilter,
     },
+    /// Not an operation
+    Nop,
 }
 
 /// Re-phase a Bayer pattern through a geometric transform; leave other color
@@ -209,6 +211,7 @@ impl Op {
                     ..input.clone()
                 })
             }
+            Op::Nop => Ok(input.clone()),
         }
     }
 
@@ -231,7 +234,8 @@ impl Op {
             | Op::Rotate90
             | Op::Rotate180
             | Op::Rotate270
-            | Op::ResizeToFit { .. } => 0,
+            | Op::ResizeToFit { .. }
+            | Op::Nop => 0,
         }
     }
 
