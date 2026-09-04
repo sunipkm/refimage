@@ -253,6 +253,16 @@ pub enum BayerPattern {
 pub enum PixelType {
     /// 8-bit unsigned integer.
     U8 = 8,
+    /// 10-bit unsigned integer, stored right-aligned in a `u16` (values
+    /// `0..=1023`). A machine-vision sensor depth; carries the same storage
+    /// as [`U16`](Self::U16) but only the low 10 bits are meaningful.
+    U10 = 10,
+    /// 12-bit unsigned integer, stored right-aligned in a `u16` (values
+    /// `0..=4095`).
+    U12 = 12,
+    /// 14-bit unsigned integer, stored right-aligned in a `u16` (values
+    /// `0..=16383`).
+    U14 = 14,
     /// 16-bit unsigned integer.
     U16 = 16,
     /// 32-bit unsigned integer.
@@ -271,6 +281,33 @@ pub enum PixelType {
     F32 = -32,
     /// 64-bit floating point.
     F64 = -64,
+}
+
+impl PixelType {
+    /// Number of meaningful bits per sample — `10` / `12` / `14` for the
+    /// sub-container machine-vision depths, otherwise the storage width.
+    pub const fn bit_depth(self) -> u8 {
+        match self {
+            PixelType::U8 | PixelType::I8 => 8,
+            PixelType::U10 => 10,
+            PixelType::U12 => 12,
+            PixelType::U14 => 14,
+            PixelType::U16 | PixelType::I16 => 16,
+            PixelType::U32 | PixelType::I32 | PixelType::F32 => 32,
+            PixelType::U64 | PixelType::I64 | PixelType::F64 => 64,
+        }
+    }
+
+    /// The storage `PixelType` — [`U10`](Self::U10) / [`U12`](Self::U12) /
+    /// [`U14`](Self::U14) all live in a `u16` and collapse to
+    /// [`U16`](Self::U16); every other variant maps to itself. This is what
+    /// determines the on-disk / on-wire byte layout (and FITS `BITPIX`).
+    pub const fn storage(self) -> PixelType {
+        match self {
+            PixelType::U10 | PixelType::U12 | PixelType::U14 => PixelType::U16,
+            other => other,
+        }
+    }
 }
 
 mod test {

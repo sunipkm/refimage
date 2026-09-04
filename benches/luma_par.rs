@@ -4,7 +4,7 @@
 mod tests {
     extern crate paste;
     extern crate test;
-    use rand::{thread_rng, Rng};
+    use rand::{RngExt as _, rng};
     use rayon::{iter::ParallelIterator, slice::ParallelSliceMut};
     use refimage::PixelStor;
     use test::Bencher;
@@ -19,7 +19,7 @@ mod tests {
                     let channels = 3;
                     let tot = wid * hei * channels;
                     let mut data = vec![0u16; tot];
-                    thread_rng().fill(&mut data[..]);
+                    rng().fill(&mut data[..]);
                     let wts = [0.2126, 0.7152, 0.0722];
                     b.iter(|| {
                         [<luma_ $name>](wid, hei, channels, &mut data, &wts);

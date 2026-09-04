@@ -6,7 +6,9 @@ use bytemuck::{cast_slice, cast_slice_mut};
 use crate::{DynamicImageRef, ImageRef, PixelType};
 
 use super::geom::{geo_crop, geo_flip, geo_roi, geo_rot90};
-use super::kernels::{Demosaic, convert_inplace, debayer_into, luma_inplace, scale_inplace};
+use super::kernels::{
+    Demosaic, convert_inplace, debayer_into, luma_inplace, scale_inplace, scale_pixels_inplace,
+};
 use super::plan::{Step, StepKind};
 use super::resample::geo_resize;
 use super::spec::pixel_size;
@@ -43,6 +45,10 @@ pub(super) fn run_chain(
             StepKind::Scale { gain, offset } => {
                 let buf = current(&mut *buf_a, &mut *buf_b, cur_a);
                 scale_inplace(buf, step.in_pt, n, gain, offset)?;
+            }
+            StepKind::ScalePixels(factor) => {
+                let buf = current(&mut *buf_a, &mut *buf_b, cur_a);
+                scale_pixels_inplace(buf, step.in_pt, n, factor)?;
             }
             StepKind::Luma => {
                 if !step.luma_identity {

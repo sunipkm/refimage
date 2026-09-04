@@ -12,7 +12,7 @@ use crate::{
 };
 
 use super::spec::pixel_size;
-use super::PipelineError;
+use super::{PipelineError, ScaleFactor};
 
 /// How the debayer step gets its working memory.
 pub(super) enum Demosaic<'s> {
@@ -75,6 +75,7 @@ fn debayer_typed<T: PixelStor + Enlargeable + bytemuck::AnyBitPattern>(
         width: w as u16,
         height: h as u16,
         cspace: ColorSpace::Bayer(pat),
+        bit_depth: None,
     };
     let mut raster = RasterMut::new(w, h, &mut dst[..w * h * 3]);
     match demosaic {
@@ -171,6 +172,61 @@ pub(super) fn scale_inplace(
         other => return Err(PipelineError::UnsupportedPixelType(other)),
     }
     Ok(())
+}
+
+/// Multiply `n` raw elements of `buf` in place by `factor`, saturating back into
+/// `pt` (`[0.0, 1.0]` for `f32`). [`ScaleFactor::Rational`] runs in widened
+/// integer arithmetic on integer types (no float round-trip); [`ScaleFactor::Float`]
+/// reuses the affine-scale rounding with a zero offset.
+pub(super) fn scale_pixels_inplace(
+    buf: &mut [f32],
+    pt: PixelType,
+    n: usize,
+    factor: ScaleFactor,
+) -> Result<(), PipelineError> {
+    let ScaleFactor::Rational { num, den } = factor else {
+        let ScaleFactor::Float(f) = factor else { unreachable!() };
+        return scale_inplace(buf, pt, n, f, 0.0);
+    };
+    if den == 0 {
+        return Err(PipelineError::BadScaleFactor);
+    }
+    let (num, den) = (num as i128, den as i128);
+    match pt {
+        PixelType::U8 => {
+            for x in &mut cast_slice_mut::<f32, u8>(buf)[..n] {
+                *x = rational_round(*x as i128, num, den).clamp(0, u8::MAX as i128) as u8;
+            }
+        }
+        PixelType::U16 => {
+            for x in &mut cast_slice_mut::<f32, u16>(buf)[..n] {
+                *x = rational_round(*x as i128, num, den).clamp(0, u16::MAX as i128) as u16;
+            }
+        }
+        PixelType::F32 => {
+            let r = num as f64 / den as f64;
+            for x in &mut buf[..n] {
+                *x = f32::from_f64((*x).to_f64() * r);
+            }
+        }
+        other => return Err(PipelineError::UnsupportedPixelType(other)),
+    }
+    Ok(())
+}
+
+/// `round(x * num / den)` (round half away from zero), sign-correct for a
+/// negative `num` or `den`.
+fn rational_round(x: i128, num: i128, den: i128) -> i128 {
+    let (mut p, mut q) = (x * num, den);
+    if q < 0 {
+        p = -p;
+        q = -q;
+    }
+    if p >= 0 {
+        (p + q / 2) / q
+    } else {
+        -((-p + q / 2) / q)
+    }
 }
 
 pub(super) fn luma_inplace(

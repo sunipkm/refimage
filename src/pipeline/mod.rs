@@ -118,7 +118,7 @@ mod strategy;
 pub use apply::{ApplyInput, Frame};
 pub use builder::Pipeline;
 pub use error::PipelineError;
-pub use op::Op;
+pub use op::{Op, ScaleFactor};
 pub use resample::ResizeFilter;
 pub use runner::Runner;
 pub use spec::ImageSpec;

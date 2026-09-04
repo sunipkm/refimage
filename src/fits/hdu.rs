@@ -7,7 +7,13 @@
 
 use std::io::{self, Write};
 
-use crate::{ColorSpace, DynamicImageOwned, DynamicImageRef, ImageProps};
+use crate::{ColorSpace, DynamicImageOwned, DynamicImageRef, ImageProps, PixelType};
+
+/// `Some(bits)` when the sensor digitised at fewer bits than its 16-bit
+/// storage container (`U10`/`U12`/`U14`); `None` otherwise.
+fn sub_container_bits(pt: PixelType) -> Option<u8> {
+    matches!(pt, PixelType::U10 | PixelType::U12 | PixelType::U14).then_some(pt.bit_depth())
+}
 
 /// A borrowed view of image pixels, independent of ref/owned.
 pub(super) struct ImageView<'a> {
@@ -15,6 +21,10 @@ pub(super) struct ImageView<'a> {
     pub h: usize,
     pub ch: usize,
     pub cspace: ColorSpace,
+    /// Meaningful ADC bits when the sensor digitised at fewer than the
+    /// 16-bit container width (`PixelType::U10` / `U12` / `U14`) — written
+    /// as the `BITADC` card so a reader knows the true precision.
+    pub adc_bits: Option<u8>,
     pixels: Pixels<'a>,
 }
 
@@ -49,6 +59,7 @@ impl<'a> ImageView<'a> {
     pub(super) fn from_ref(img: &'a DynamicImageRef<'_>) -> Self {
         let (w, h, ch) = (img.width(), img.height(), img.channels() as usize);
         let cspace = img.color_space();
+        let adc_bits = sub_container_bits(img.pixel_type());
         let pixels = match img {
             DynamicImageRef::U8(r) => Pixels::U8(r.as_slice()),
             DynamicImageRef::U16(r) => Pixels::U16(r.as_slice()),
@@ -59,6 +70,7 @@ impl<'a> ImageView<'a> {
             h,
             ch,
             cspace,
+            adc_bits,
             pixels,
         }
     }
@@ -66,6 +78,7 @@ impl<'a> ImageView<'a> {
     pub(super) fn from_owned(img: &'a DynamicImageOwned) -> Self {
         let (w, h, ch) = (img.width(), img.height(), img.channels() as usize);
         let cspace = img.color_space();
+        let adc_bits = sub_container_bits(img.pixel_type());
         let pixels = match img {
             DynamicImageOwned::U8(r) => Pixels::U8(r.as_slice()),
             DynamicImageOwned::U16(r) => Pixels::U16(r.as_slice()),
@@ -76,6 +89,7 @@ impl<'a> ImageView<'a> {
             h,
             ch,
             cspace,
+            adc_bits,
             pixels,
         }
     }

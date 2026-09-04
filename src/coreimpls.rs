@@ -12,6 +12,9 @@ impl TryFrom<i8> for PixelType {
     fn try_from(value: i8) -> Result<Self, Self::Error> {
         match value {
             8 => Ok(Self::U8),
+            10 => Ok(Self::U10),
+            12 => Ok(Self::U12),
+            14 => Ok(Self::U14),
             16 => Ok(Self::U16),
             -32 => Ok(Self::F32),
             other => Err(ImageError::InvalidPixelType(other)),

@@ -3,7 +3,7 @@
 
 use crate::{BayerPattern, ColorSpace, DemosaicMethod, PixelType};
 
-use super::{ImageSpec, Op, PipelineError, ResizeFilter, Strategy};
+use super::{ImageSpec, Op, PipelineError, ResizeFilter, ScaleFactor, Strategy};
 
 /// The per-step execution plan plus every intermediate shape.
 pub(super) struct Plan {
@@ -59,6 +59,7 @@ impl Plan {
                         offset: *offset,
                     }
                 }
+                Op::ScalePixels(factor) => step.kind = StepKind::ScalePixels(*factor),
                 Op::Convert(_) => step.kind = StepKind::Convert,
                 Op::Crop { x, y, .. } => {
                     step.kind = StepKind::Crop {
@@ -354,6 +355,8 @@ pub(super) enum StepKind {
         gain: f64,
         offset: f64,
     },
+    /// Plain per-pixel multiply by a [`ScaleFactor`].
+    ScalePixels(ScaleFactor),
     Convert,
     /// Origin `(x, y)` into the current image; output size `(w, h)`.
     Crop {

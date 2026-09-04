@@ -687,6 +687,104 @@ fn scale_saturates_out_of_range() {
     assert_eq!(*got.last().unwrap(), u16::MAX);
 }
 
+/// `ScalePixels(Rational)` expands 12-bit data to the full 16-bit range with
+/// exact integer arithmetic — no float rounding drift.
+#[test]
+fn scale_pixels_rational_is_exact() {
+    let (w, h) = (8, 4);
+    let mut data: Vec<u16> = (0..(w * h) as u16).map(|v| v * 137).collect();
+    let src = data.clone();
+
+    let mut r = Pipeline::new()
+        .scale_rational(65535, 4095)
+        .compile(
+            ImageSpec::new(w, h, ColorSpace::Gray, PixelType::U16),
+            Strategy::Sequential,
+        )
+        .unwrap();
+    let got: Vec<u16> = {
+        let out = r.run(&gray16(w, h, &mut data)).unwrap();
+        bytemuck::cast_slice::<u8, u16>(out.as_raw_u8()).to_vec()
+    };
+    for (&s, &g) in src.iter().zip(&got) {
+        let want = ((s as i128 * 65535 + 2047) / 4095).min(u16::MAX as i128) as u16;
+        assert_eq!(g, want);
+    }
+}
+
+/// The rational and float paths agree where the float ratio is exact, and both
+/// saturate at the type ceiling.
+#[test]
+fn scale_pixels_float_matches_and_saturates() {
+    let (w, h) = (8, 4);
+    let mut a: Vec<u16> = (0..(w * h) as u16).map(|v| v.saturating_mul(3000)).collect();
+    let mut b = a.clone();
+
+    let run = |p: Pipeline, buf: &mut [u16]| -> Vec<u16> {
+        let mut r = p
+            .compile(
+                ImageSpec::new(w, h, ColorSpace::Gray, PixelType::U16),
+                Strategy::Sequential,
+            )
+            .unwrap();
+        let out = r.run(&gray16(w, h, buf)).unwrap();
+        bytemuck::cast_slice::<u8, u16>(out.as_raw_u8()).to_vec()
+    };
+    let rat = run(Pipeline::new().scale_rational(2, 1), &mut a);
+    let flt = run(Pipeline::new().scale_by(2.0), &mut b);
+    assert_eq!(rat, flt);
+    assert_eq!(*rat.last().unwrap(), u16::MAX); // 27 * 900 * 2 overflows u16
+}
+
+/// A zero denominator is rejected at compile time.
+#[test]
+fn scale_pixels_zero_denominator_errors() {
+    let err = Pipeline::new().scale_rational(1, 0).compile(
+        ImageSpec::new(4, 4, ColorSpace::Gray, PixelType::U16),
+        Strategy::Sequential,
+    );
+    assert!(matches!(err, Err(PipelineError::BadScaleFactor)));
+}
+
+/// `ScalePixels` is a pixel op, so every tiling strategy produces the same bytes.
+#[test]
+fn scale_pixels_tiles_identically() {
+    let (w, h) = (16, 12);
+    let pat = BayerPattern::Rggb;
+    let build = || {
+        Pipeline::new()
+            .debayer(DemosaicMethod::Linear)
+            .scale_rational(3, 2)
+            .scale_by(1.1)
+            .to_luma()
+            .convert(PixelType::U8)
+    };
+    let spec = || ImageSpec::new(w, h, ColorSpace::Bayer(pat), PixelType::U16);
+
+    let mut seq = build().compile(spec(), Strategy::Sequential).unwrap();
+    let mut f0 = sample16(w * h);
+    let want = seq
+        .run(&bayer_frame(w, h, pat, &mut f0))
+        .unwrap()
+        .as_raw_u8()
+        .to_vec();
+
+    for strat in [
+        Strategy::tiled(3),
+        Strategy::tiled_parallel(4),
+        Strategy::tiled_2d(4, 6),
+    ] {
+        let mut r = build().compile(spec(), strat).unwrap();
+        let mut f = sample16(w * h);
+        let got = r
+            .run(&bayer_frame(w, h, pat, &mut f))
+            .unwrap()
+            .as_raw_u8()
+            .to_vec();
+        assert_eq!(got, want, "strat={strat:?}");
+    }
+}
+
 #[test]
 fn recompile_adapts_to_new_shape() {
     let pat = BayerPattern::Rggb;

@@ -144,14 +144,20 @@ impl TryFrom<SerialImage> for DynamicImageOwned {
                 check(&img, channels)?;
                 Ok(DynamicImageOwned::U8(img))
             }
-            PixelType::U16 => {
+            PixelType::U16 | PixelType::U10 | PixelType::U12 | PixelType::U14 => {
                 let data = u8_slice_as_u16(&out).map_err(SerdeError::Cast)?;
                 let img = ImageOwned::new(
                     data.as_slice().to_vec(),
                     width.into(),
                     height.into(),
                     cspace,
-                )?;
+                )?
+                .with_bit_depth(match pixeltype {
+                    PixelType::U10 => Some(10u8),
+                    PixelType::U12 => Some(12),
+                    PixelType::U14 => Some(14),
+                    _ => None,
+                });
                 check(&img, channels)?;
                 Ok(DynamicImageOwned::U16(img))
             }
@@ -253,6 +259,45 @@ fn u8_slice_as_u16(buf: &[u8]) -> ByteResult<DtypeContainer<'_, u16>> {
 }
 
 mod test {
+
+    #[test]
+    fn bit_depth_survives_serde_roundtrip() {
+        use crate::{ColorSpace, DynamicImageOwned, ImageOwned, ImageProps, PixelType};
+
+        let img = ImageOwned::new(vec![0u16, 1000, 4095, 2048], 2, 2, ColorSpace::Gray)
+            .unwrap()
+            .with_bit_depth(12u8);
+        let dynimg = DynamicImageOwned::U16(img);
+        assert_eq!(dynimg.pixel_type(), PixelType::U12);
+
+        let bytes = bincode::serialize(&dynimg).unwrap();
+        let back: DynamicImageOwned = bincode::deserialize(&bytes).unwrap();
+        assert_eq!(back.pixel_type(), PixelType::U12);
+        assert_eq!(back, dynimg);
+    }
+
+    #[test]
+    fn fits_records_bitadc_for_sub_container_depth() {
+        use crate::{
+            ColorSpace, DynamicImageOwned, FitsCompression, FitsWrite, GenericImageOwned,
+            ImageOwned,
+        };
+        use chrono::DateTime;
+        use std::time::Duration;
+
+        let img = ImageOwned::new(vec![0u16; 4], 2, 2, ColorSpace::Gray)
+            .unwrap()
+            .with_bit_depth(10u8);
+        let g = GenericImageOwned::new(
+            DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
+            Duration::from_millis(5),
+            DynamicImageOwned::U16(img),
+        );
+        let bytes = g.fits_bytes(FitsCompression::NONE).unwrap();
+        let text = String::from_utf8_lossy(&bytes);
+        assert!(text.contains("BITADC"), "BITADC card missing");
+        assert!(text.contains("BITADC  =                   10"), "BITADC value wrong");
+    }
 
     #[test]
     fn generate_pycode_dynamicimagedata() {

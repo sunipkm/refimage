@@ -78,11 +78,9 @@ impl ImageProps for DynamicImageRef<'_> {
 
 impl From<&DynamicImageRef<'_>> for PixelType {
     fn from(data: &DynamicImageRef<'_>) -> Self {
-        match data {
-            DynamicImageRef::U8(_) => PixelType::U8,
-            DynamicImageRef::U16(_) => PixelType::U16,
-            DynamicImageRef::F32(_) => PixelType::F32,
-        }
+        // Delegates to the inner image so a `u16` buffer tagged 10-/12-bit
+        // reports `U10` / `U12` rather than `U16`.
+        ImageProps::pixel_type(data)
     }
 }
 

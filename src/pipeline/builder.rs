@@ -7,7 +7,7 @@ use crate::demosaic::demosaic_serial_scratch_len;
 use crate::{DemosaicMethod, PixelType};
 
 use super::plan::{build_tail_phases, f32_cap, resolve_exec, Exec, Plan, TailPhase};
-use super::{ApplyInput, ImageSpec, Op, PipelineError, ResizeFilter, Runner, Strategy};
+use super::{ApplyInput, ImageSpec, Op, PipelineError, ResizeFilter, Runner, ScaleFactor, Strategy};
 
 /// A declarative, reusable list of [`Op`]s. Cheap to clone; serializable, so a
 /// processing recipe can live in a config file or image header.
@@ -43,6 +43,20 @@ impl Pipeline {
     /// Append [`Op::Scale`] (`y = x * gain + offset`).
     pub fn scale(mut self, gain: f64, offset: f64) -> Self {
         self.ops.push(Op::Scale { gain, offset });
+        self
+    }
+
+    /// Append [`Op::ScalePixels`] with an exact integer-rational factor
+    /// (`y = round(x * num / den)`, no floating-point rounding on integer images).
+    pub fn scale_rational(mut self, num: i64, den: i64) -> Self {
+        self.ops
+            .push(Op::ScalePixels(ScaleFactor::Rational { num, den }));
+        self
+    }
+
+    /// Append [`Op::ScalePixels`] with a floating-point factor (`y = x * factor`).
+    pub fn scale_by(mut self, factor: f64) -> Self {
+        self.ops.push(Op::ScalePixels(ScaleFactor::Float(factor)));
         self
     }
 

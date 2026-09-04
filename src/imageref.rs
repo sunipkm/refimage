@@ -30,6 +30,11 @@ pub struct ImageRef<'a, T: PixelStor> {
     pub(crate) width: u16,
     pub(crate) height: u16,
     pub(crate) cspace: ColorSpace,
+    /// Meaningful bits per sample when fewer than the storage width — a
+    /// `u16` image carrying 10- or 12-bit machine-vision data. `None` means
+    /// "the full storage width" (the common case); see
+    /// [`ImageRef::with_bit_depth`].
+    pub(crate) bit_depth: Option<core::num::NonZeroU8>,
 }
 
 impl<'a, T: PixelStor> ImageRef<'a, T> {
@@ -69,7 +74,22 @@ impl<'a, T: PixelStor> ImageRef<'a, T> {
             width: width as u16,
             height: height as u16,
             cspace,
+            bit_depth: None,
         })
+    }
+
+    /// Tag the image with its meaningful bit depth (`10` / `12` / `14`),
+    /// making [`pixel_type`](ImageProps::pixel_type) report
+    /// [`PixelType::U10`](crate::PixelType::U10) etc. Only valid on a
+    /// `u16`-backed image (`8` / `16` / `0` / `None` clear the tag).
+    pub fn with_bit_depth(mut self, bits: impl Into<Option<u8>>) -> Self {
+        self.bit_depth = match bits.into() {
+            Some(b @ (10 | 12 | 14)) if T::PIXEL_TYPE == PixelType::U16 => {
+                core::num::NonZeroU8::new(b)
+            }
+            _ => None,
+        };
+        self
     }
 
     /// Create a new [`ImageRef`] from a mutable slice of data.
@@ -179,7 +199,12 @@ impl<T: PixelStor> ImageProps for ImageRef<'_, T> {
 
     #[inline(always)]
     fn pixel_type(&self) -> PixelType {
-        T::PIXEL_TYPE
+        match self.bit_depth.map(|b| b.get()) {
+            Some(10) => PixelType::U10,
+            Some(12) => PixelType::U12,
+            Some(14) => PixelType::U14,
+            _ => T::PIXEL_TYPE,
+        }
     }
 
     #[inline(always)]

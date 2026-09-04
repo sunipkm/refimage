@@ -30,6 +30,9 @@ pub struct ImageOwned<T: PixelStor> {
     pub(crate) width: u16,
     pub(crate) height: u16,
     pub(crate) cspace: ColorSpace,
+    /// Meaningful bits per sample when fewer than the storage width — see
+    /// [`ImageOwned::with_bit_depth`] and [`crate::ImageRef`]'s field.
+    pub(crate) bit_depth: Option<core::num::NonZeroU8>,
 }
 
 impl<T: PixelStor> ImageOwned<T> {
@@ -67,9 +70,22 @@ impl<T: PixelStor> ImageOwned<T> {
             width: width as u16,
             height: height as u16,
             cspace,
+            bit_depth: None,
         };
         img.data.truncate(tot);
         Ok(img)
+    }
+
+    /// Tag the image with its meaningful bit depth (`10` / `12` / `14`).
+    /// See [`crate::ImageRef::with_bit_depth`].
+    pub fn with_bit_depth(mut self, bits: impl Into<Option<u8>>) -> Self {
+        self.bit_depth = match bits.into() {
+            Some(b @ (10 | 12 | 14)) if T::PIXEL_TYPE == PixelType::U16 => {
+                core::num::NonZeroU8::new(b)
+            }
+            _ => None,
+        };
+        self
     }
 
     /// Create a new [`ImageOwned`] from a slice of data.
@@ -200,7 +216,12 @@ impl<T: PixelStor> ImageProps for ImageOwned<T> {
 
     #[inline(always)]
     fn pixel_type(&self) -> PixelType {
-        T::PIXEL_TYPE
+        match self.bit_depth.map(|b| b.get()) {
+            Some(10) => PixelType::U10,
+            Some(12) => PixelType::U12,
+            Some(14) => PixelType::U14,
+            _ => T::PIXEL_TYPE,
+        }
     }
 
     #[inline(always)]
@@ -256,6 +277,7 @@ impl<'a, T: PixelStor> From<&ImageRef<'a, T>> for ImageOwned<T> {
             width: data.width,
             height: data.height,
             cspace: data.cspace.clone(),
+            bit_depth: data.bit_depth,
         }
     }
 }

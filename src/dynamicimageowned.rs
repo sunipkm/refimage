@@ -57,11 +57,7 @@ impl ImageProps for DynamicImageOwned {
 
 impl From<&DynamicImageOwned> for PixelType {
     fn from(data: &DynamicImageOwned) -> Self {
-        match data {
-            DynamicImageOwned::U8(_) => PixelType::U8,
-            DynamicImageOwned::U16(_) => PixelType::U16,
-            DynamicImageOwned::F32(_) => PixelType::F32,
-        }
+        crate::ImageProps::pixel_type(data)
     }
 }
 

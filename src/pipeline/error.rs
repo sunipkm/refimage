@@ -68,6 +68,10 @@ pub enum PipelineError {
         /// Spec of the frame actually passed.
         got: Box<ImageSpec>,
     },
+    /// [`Op::ScalePixels`] was given a [`ScaleFactor::Rational`](super::ScaleFactor)
+    /// with a zero denominator.
+    #[error("scale denominator must be non-zero")]
+    BadScaleFactor,
     /// A demosaic kernel failed.
     #[error("demosaic error: {0}")]
     Bayer(#[from] BayerError),

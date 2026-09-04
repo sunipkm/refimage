@@ -356,6 +356,9 @@ fn write_uncompressed<W: Write>(
         h.integer("BZERO", bz, Some("offset for unsigned integers"))?;
         h.integer("BSCALE", 1, None)?;
     }
+    if let Some(bits) = view.adc_bits {
+        h.integer("BITADC", bits as i64, Some("meaningful ADC bits per sample"))?;
+    }
 
     write_common_cards(&mut h, view, meta.timestamp())?;
     write_metadata(&mut h, meta)?;
@@ -432,6 +435,9 @@ fn write_compressed<W: Write>(
     if let Some(bz) = view.bzero() {
         h.integer("BZERO", bz, Some("offset for unsigned integers"))?;
         h.integer("BSCALE", 1, None)?;
+    }
+    if let Some(bits) = view.adc_bits {
+        h.integer("BITADC", bits as i64, Some("meaningful ADC bits per sample"))?;
     }
 
     write_common_cards(&mut h, view, meta.timestamp())?;

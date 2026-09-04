@@ -9,6 +9,24 @@ use super::resample::resize_dims;
 use super::spec::pixel_size;
 use super::{ImageSpec, PipelineError, ResizeFilter};
 
+/// The factor for [`Op::ScalePixels`] — a plain per-pixel multiply, no offset.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum ScaleFactor {
+    /// Exact rational scale `y = round(x * num / den)`. On an integer image this
+    /// is evaluated in widened integer arithmetic with no floating-point
+    /// rounding — e.g. `Rational { num: 65535, den: 4095 }` expands 12-bit data
+    /// to the full 16-bit range exactly. On an `f32` image it is applied as the
+    /// ratio `num / den`. `den` must be non-zero ([`PipelineError::BadScaleFactor`]).
+    Rational {
+        /// Numerator.
+        num: i64,
+        /// Denominator; must be non-zero.
+        den: i64,
+    },
+    /// Floating-point scale `y = x * factor`.
+    Float(f64),
+}
+
 /// A single processing stage.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -28,6 +46,11 @@ pub enum Op {
         /// Additive term, in raw stored units.
         offset: f64,
     },
+    /// Multiply every pixel by a constant [`ScaleFactor`] (integer-rational or
+    /// float), saturating back into the current type (for `f32`, into
+    /// `[0.0, 1.0]`). Shape, channels, and type are unchanged. Purely
+    /// per-pixel: tiles and parallelises with zero halo.
+    ScalePixels(ScaleFactor),
     /// Rescale every pixel into a different primitive type.
     Convert(PixelType),
     /// Extract the sub-rectangle with top-left `(x, y)` and size `width * height`.
@@ -115,6 +138,13 @@ impl Op {
             Op::ToLuma => luma_output(input, 3),
             Op::ToLumaCustom(w) => luma_output(input, w.len()),
             Op::Scale { .. } => {
+                pixel_size(input.pixel_type)?;
+                Ok(input.clone())
+            }
+            Op::ScalePixels(factor) => {
+                if let ScaleFactor::Rational { den: 0, .. } = factor {
+                    return Err(PipelineError::BadScaleFactor);
+                }
                 pixel_size(input.pixel_type)?;
                 Ok(input.clone())
             }
@@ -226,6 +256,7 @@ impl Op {
             Op::ToLuma
             | Op::ToLumaCustom(_)
             | Op::Scale { .. }
+            | Op::ScalePixels(_)
             | Op::Convert(_)
             | Op::Crop { .. }
             | Op::Roi { .. }
@@ -244,7 +275,12 @@ impl Op {
     pub(super) fn is_pixel(&self) -> bool {
         matches!(
             self,
-            Op::Debayer(_) | Op::ToLuma | Op::ToLumaCustom(_) | Op::Scale { .. } | Op::Convert(_)
+            Op::Debayer(_)
+                | Op::ToLuma
+                | Op::ToLumaCustom(_)
+                | Op::Scale { .. }
+                | Op::ScalePixels(_)
+                | Op::Convert(_)
         )
     }
 
