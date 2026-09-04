@@ -38,6 +38,15 @@
   (each band allocates a small strip, not a full intermediate plane; output is
   independent of band size and thread count). Not valid on a Bayer image
   (`PipelineError::ResizeOnBayer`); debayer first.
+- Added `Pipeline::optimize`: an output-preserving peephole cleanup of the op
+  list, to run before `compile`. It drops `Op::Nop` stages, folds any run of
+  flips and 90°/180°/270° rotations into the shortest equivalent sequence (at
+  most two ops — `rotate_90().rotate_90()` becomes `rotate_180()`,
+  `flip_horizontal().flip_horizontal()` vanishes), merges nested `Op::Crop`
+  stages into one, and drops a redundant second luminance stage or a repeated
+  `Op::Convert` to the same type. Arithmetic stages (`Scale`, `ScalePixels`,
+  distinct `Convert`s) are left unfused — the rounding and saturation between
+  them is observable.
 - Tiled plans are now **segmented** at every geometric op (resize, rotation,
   mid-chain crop/ROI, flip): the pixel-op run on the far side of one is retiled
   against its own post-transform dimensions instead of dropping to a single

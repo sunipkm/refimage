@@ -26,11 +26,8 @@ include = [
 ]
 
 [dependencies]
-# Always required.
+# Required.
 bytemuck = "1.23"
-# Only `alloc` (for `DateTime::format`) + `serde` are needed. `clock` (and its OS
-# timezone deps / wasm-bindgen) is deliberately off — the crate never calls
-# `Utc::now()`; the caller supplies the timestamp.
 chrono = { version = "0.4.31", default-features = false, features = ["alloc", "serde"] }
 crc32fast = "1.5"
 indexmap = { version = "2", features = ["serde"] }
@@ -40,7 +37,7 @@ paste = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
 
-# Optional: pulled in by the feature named after each crate (see [features]).
+# Optional
 image = { version = "0.25", optional = true, default-features = false }
 rayon = { version = "1.10", optional = true }
 
@@ -51,15 +48,12 @@ serde_json = "1.0"
 serde-reflection = "0.6"
 image = { version = "0.25", default-features = false, features = ["png"] }
 
-# Not built for wasm: `rand` (benches only) drags in `getrandom`'s wasm opt-in;
-# `fitsio` (cross-checks the pure-Rust FITS writer against cfitsio) links C;
-# `chrono`'s `clock` (for `Utc::now()` in tests / examples) pulls OS timezone deps;
-# `image`'s `png` codec (for the `resize_filters` example) is only wanted there.
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-chrono = { version = "0.4.31", features = ["clock"] }
-fitsio = "0.21"
-image = { version = "0.25", default-features = false }
-rand = "0.10"
+# Unusable in WASM32 environment
+chrono = { version = "0.4.31", features = ["clock"] } # OS timezone deps
+fitsio = "0.21" # C library link
+image = { version = "0.25", default-features = false } # PNG codec for examples/tests
+rand = "0.10" # getrandom
 
 # `tests/wasm.rs`:
 #   cargo test --target wasm32-unknown-unknown --no-default-features --tests
@@ -67,7 +61,6 @@ rand = "0.10"
 wasm-bindgen-test = "0.3"
 
 [features]
-# `refimage` always links `std`; the features below only add optional integrations.
 default = ["rayon", "grow"]
 full = ["default", "image", "grow"]
 

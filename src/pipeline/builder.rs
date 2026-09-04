@@ -145,6 +145,58 @@ impl Pipeline {
         &self.ops
     }
 
+    /// Simplify the op list without changing what the pipeline produces.
+    ///
+    /// Every rewrite is output-preserving for any input the original chain
+    /// accepts:
+    /// - [`Op::Nop`] stages are removed.
+    /// - A run of flips and 90°/180°/270° rotations
+    ///   ([`FlipHorizontal`](Op::FlipHorizontal),
+    ///   [`FlipVertical`](Op::FlipVertical), [`Rotate90`](Op::Rotate90),
+    ///   [`Rotate180`](Op::Rotate180), [`Rotate270`](Op::Rotate270)) is folded
+    ///   into the shortest equivalent sequence — at most two ops, and often
+    ///   zero (e.g. `flip_horizontal().flip_horizontal()` disappears;
+    ///   `rotate_90().rotate_90()` becomes a single `rotate_180()`).
+    /// - Nested [`Op::Crop`] stages are merged into one.
+    /// - A second luminance stage right after another
+    ///   ([`ToLuma`](Op::ToLuma) / [`ToLumaCustom`](Op::ToLumaCustom)) is
+    ///   dropped — it only sees already-gray data — as is an [`Op::Convert`]
+    ///   to the type the previous [`Op::Convert`] just produced.
+    ///
+    /// Arithmetic stages ([`Op::Scale`], [`Op::ScalePixels`], and non-duplicate
+    /// [`Op::Convert`]) are deliberately **not** fused across one another: the
+    /// rounding and saturation between them is observable.
+    ///
+    /// For a Bayer input, a chain that compiles keeps compiling with identical
+    /// output; folding can only change which op an *already-invalid* rotation
+    /// chain first fails on.
+    ///
+    /// ```
+    /// use refimage::pipeline::{Op, Pipeline};
+    ///
+    /// // Rotate 90° twice, then mirror vertically → a single horizontal mirror;
+    /// // the two nested crops → one crop.
+    /// let p = Pipeline::new()
+    ///     .rotate_90()
+    ///     .rotate_90()
+    ///     .flip_vertical()
+    ///     .crop(4, 4, 20, 20)
+    ///     .crop(2, 2, 8, 8)
+    ///     .optimize();
+    /// assert_eq!(
+    ///     p.ops(),
+    ///     &[
+    ///         Op::FlipHorizontal,
+    ///         Op::Crop { x: 6, y: 6, width: 8, height: 8 },
+    ///     ]
+    /// );
+    /// ```
+    #[must_use]
+    pub fn optimize(mut self) -> Self {
+        self.ops = super::optimize::simplify(self.ops);
+        self
+    }
+
     /// Validate the chain against a concrete input and allocate all buffers.
     pub fn compile(&self, input: ImageSpec, strategy: Strategy) -> Result<Runner, PipelineError> {
         input.validate()?;

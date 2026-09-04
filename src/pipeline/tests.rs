@@ -1255,3 +1255,170 @@ fn segmented_tiling_matches_sequential() {
         }
     }
 }
+
+// --- Pipeline::optimize -------------------------------------------------------
+
+fn run_gray_u16(p: &Pipeline, w: usize, h: usize, src: &[u16]) -> (usize, usize, Vec<u16>) {
+    let mut runner = p
+        .clone()
+        .compile(
+            ImageSpec::new(w, h, ColorSpace::Gray, PixelType::U16),
+            Strategy::Sequential,
+        )
+        .unwrap();
+    let mut f = src.to_vec();
+    let out = runner.run(&gray16(w, h, &mut f)).unwrap();
+    (
+        out.width(),
+        out.height(),
+        bytemuck::cast_slice::<u8, u16>(out.as_raw_u8()).to_vec(),
+    )
+}
+
+/// Every chain of up to three flips / rotations optimizes to at most two ops and
+/// produces byte-identical output.
+#[test]
+fn optimize_dihedral_runs_preserve_output() {
+    let dih = [
+        Op::FlipHorizontal,
+        Op::FlipVertical,
+        Op::Rotate90,
+        Op::Rotate180,
+        Op::Rotate270,
+    ];
+    let (w, h) = (5usize, 3usize);
+    let src: Vec<u16> = (0..(w * h) as u16).collect();
+
+    let mut chains: Vec<Vec<Op>> = vec![vec![]];
+    for _ in 0..3 {
+        let mut next = chains.clone();
+        for c in &chains {
+            if c.len() == 3 {
+                continue;
+            }
+            for op in &dih {
+                let mut nc = c.clone();
+                nc.push(op.clone());
+                next.push(nc);
+            }
+        }
+        chains = next;
+    }
+
+    for chain in &chains {
+        let base = chain.iter().cloned().fold(Pipeline::new(), Pipeline::push);
+        let opt = base.clone().optimize();
+
+        assert!(opt.ops().len() <= 2, "{chain:?} -> {:?}", opt.ops());
+        assert!(!opt.ops().iter().any(|o| matches!(o, Op::Nop)), "{chain:?}");
+        // Idempotent.
+        assert_eq!(opt.clone().optimize().ops(), opt.ops(), "{chain:?}");
+
+        let want = run_gray_u16(&base, w, h, &src);
+        let got = run_gray_u16(&opt, w, h, &src);
+        assert_eq!(got, want, "{chain:?} -> {:?}", opt.ops());
+    }
+}
+
+#[test]
+fn optimize_folds_known_identities() {
+    let f = |p: Pipeline| p.optimize().ops().to_vec();
+
+    assert_eq!(f(Pipeline::new().flip_horizontal().flip_horizontal()), vec![]);
+    assert_eq!(f(Pipeline::new().rotate_90().rotate_270()), vec![]);
+    assert_eq!(
+        f(Pipeline::new().rotate_90().rotate_90()),
+        vec![Op::Rotate180]
+    );
+    assert_eq!(
+        f(Pipeline::new().rotate_90().rotate_90().rotate_90()),
+        vec![Op::Rotate270]
+    );
+    assert_eq!(
+        f(Pipeline::new().flip_horizontal().flip_vertical()),
+        vec![Op::Rotate180]
+    );
+    // A lone transform is untouched.
+    assert_eq!(f(Pipeline::new().rotate_90()), vec![Op::Rotate90]);
+}
+
+#[test]
+fn optimize_merges_nested_crops() {
+    let p = Pipeline::new()
+        .crop(4, 4, 20, 20)
+        .crop(2, 3, 8, 6)
+        .crop(1, 1, 4, 4)
+        .optimize();
+    assert_eq!(
+        p.ops(),
+        &[Op::Crop {
+            x: 7,
+            y: 8,
+            width: 4,
+            height: 4,
+        }]
+    );
+
+    // Same pixels as running the three crops in sequence.
+    let (w, h) = (40usize, 40usize);
+    let src: Vec<u16> = (0..(w * h) as u16).collect();
+    let base = Pipeline::new()
+        .crop(4, 4, 20, 20)
+        .crop(2, 3, 8, 6)
+        .crop(1, 1, 4, 4);
+    assert_eq!(run_gray_u16(&p, w, h, &src), run_gray_u16(&base, w, h, &src));
+}
+
+#[test]
+fn optimize_drops_nops_and_redundant_stages() {
+    let p = Pipeline::new()
+        .push(Op::Nop)
+        .to_luma()
+        .to_luma_custom([0.2, 0.7, 0.1])
+        .push(Op::Nop)
+        .convert(PixelType::U8)
+        .convert(PixelType::U8)
+        .optimize();
+    assert_eq!(p.ops(), &[Op::ToLuma, Op::Convert(PixelType::U8)]);
+}
+
+/// A Bayer-valid flip/180° run still round-trips to identical pixels (the
+/// pattern re-phasing follows the net transform) after folding.
+#[test]
+fn optimize_dihedral_preserves_bayer_output() {
+    let (w, h) = (16usize, 12usize);
+    let pat = BayerPattern::Grbg;
+    let base = Pipeline::new()
+        .flip_horizontal()
+        .rotate_180()
+        .flip_vertical()
+        .flip_horizontal()
+        .debayer(DemosaicMethod::Linear)
+        .to_luma();
+    let opt = base.clone().optimize();
+    assert_eq!(opt.ops()[0], Op::FlipHorizontal);
+
+    let spec = ImageSpec::new(w, h, ColorSpace::Bayer(pat), PixelType::U16);
+    let run = |p: &Pipeline| {
+        let mut r = p.clone().compile(spec.clone(), Strategy::Sequential).unwrap();
+        let mut f = sample16(w * h);
+        r.run(&bayer_frame(w, h, pat, &mut f))
+            .unwrap()
+            .as_raw_u8()
+            .to_vec()
+    };
+    assert_eq!(run(&opt), run(&base));
+}
+
+#[test]
+fn optimize_keeps_arithmetic_stages_unfused() {
+    // Distinct scales are observable individually (saturation between them).
+    let p = Pipeline::new().scale_by(2.0).scale_by(0.5).optimize();
+    assert_eq!(
+        p.ops(),
+        &[
+            Op::ScalePixels(ScaleFactor::Float(2.0)),
+            Op::ScalePixels(ScaleFactor::Float(0.5)),
+        ]
+    );
+}

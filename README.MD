@@ -40,8 +40,8 @@ let json = serde_json::to_string(&img).unwrap(); // serialize the image to JSON
 let rimg: GenericImageOwned = serde_json::from_str(&json).unwrap(); // deserialize to GenericImageOwned
 assert_eq!(&img, &rimg); // Confirm that deserialized image matches the original
 ```
-The intention behind `*ImageRef` is to minimize unnecessary allocations. Running a
-`GenericImageRef` through `Pipeline::apply` returns a `GenericImageOwned` with its
+`*ImageRef` to minimizes unnecessary allocations. Running a
+`GenericImageRef` through `Pipeline::apply` returns a `GenericImageOwned`, with its
 metadata carried across unchanged.
 
 ## `GenericImageOwned` and other `ImageOwned` types
@@ -56,6 +56,7 @@ let img = DynamicImageOwned::try_from(img).expect("Could not convert image");
 
 ## Loading and storing a `GenericImageRef`
 A `GenericImageRef` can be stored in a standard format such as [bincode](https://crates.io/crates/bincode) — which follows trivially from its `serde` implementation — or written to a FITS file through the `FitsWrite` trait. The FITS writer is pure Rust and always available.
+
 ```rust,no_run
 use refimage::{FitsCompression, FitsWrite, GenericImageRef, Gzip, Rice, Quantize};
 use std::path::Path;

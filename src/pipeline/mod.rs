@@ -95,6 +95,8 @@
 //! - `op` — [`Op`] and its compile-time shape inference.
 //! - `strategy` — [`Strategy`].
 //! - `builder` — [`Pipeline`]: the op list, `compile`, and `apply`.
+//! - `optimize` — [`Pipeline::optimize`]: output-preserving peephole cleanup of
+//!   the op list (drop no-ops, fold flip/rotation runs, merge nested crops).
 //! - `apply` — the [`Frame`] / [`ApplyInput`] input traits.
 //! - `plan` — lowering to steps, the buffer-liveness walk, and the tiling math.
 //! - `runner` — [`Runner`]: the compiled pipeline plus its scratch.
@@ -108,7 +110,8 @@ mod error;
 mod exec;
 mod geom;
 mod kernels;
-mod op;
+mod operations;
+mod optimize;
 mod plan;
 mod resample;
 mod runner;
@@ -118,7 +121,7 @@ mod strategy;
 pub use apply::{ApplyInput, Frame};
 pub use builder::Pipeline;
 pub use error::PipelineError;
-pub use op::{Op, ScaleFactor};
+pub use operations::{Op, ScaleFactor};
 pub use resample::ResizeFilter;
 pub use runner::Runner;
 pub use spec::ImageSpec;
