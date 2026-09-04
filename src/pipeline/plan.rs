@@ -25,9 +25,12 @@ impl Plan {
             let next = op.output_spec(&cur)?;
             let mut step = Step {
                 kind: StepKind::Convert,
-                // Kernels only know the storage widths; `U10` / `U12` / `U14`
-                // are `u16` (the tag is re-applied to the output by `view`).
-                in_pt: cur.pixel_type.storage(),
+                // Kernels dispatch on the tagged type (`U10`/`U12`/`U14` pick a
+                // sub-range `PixelStor`, not plain `u16`) so saturation and
+                // rescaling respect the sensor's true range. Only `out_pt` —
+                // read solely by `Op::Convert`'s cast target — is normalized to
+                // a real storage type; `output_spec` rejects any other target.
+                in_pt: cur.pixel_type,
                 out_pt: next.pixel_type.storage(),
                 in_channels: cur.cspace.channels(),
                 bayer: None,
@@ -202,10 +205,11 @@ pub(super) enum TailPhase {
 /// when they abut.
 fn push_whole(phases: &mut Vec<TailPhase>, lo: usize, hi: usize) {
     if let Some(TailPhase::Whole { hi: prev_hi, .. }) = phases.last_mut()
-        && *prev_hi == lo {
-            *prev_hi = hi;
-            return;
-        }
+        && *prev_hi == lo
+    {
+        *prev_hi = hi;
+        return;
+    }
     phases.push(TailPhase::Whole { lo, hi });
 }
 

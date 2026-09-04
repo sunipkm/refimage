@@ -150,6 +150,9 @@ impl Op {
             }
             Op::Convert(pt) => {
                 pixel_size(*pt)?;
+                if pt.storage() != *pt {
+                    return Err(PipelineError::ConvertTargetNotStorage(*pt));
+                }
                 Ok(ImageSpec {
                     pixel_type: *pt,
                     ..input.clone()

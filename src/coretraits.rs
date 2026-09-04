@@ -1,6 +1,6 @@
 use bytemuck::NoUninit;
-use num_traits::{Bounded, Num, NumCast, ToPrimitive, Zero};
-use std::ops::AddAssign;
+use num_traits::{Bounded, Num, NumCast, One, ToPrimitive, Zero};
+use std::ops::{Add, AddAssign, Div, Mul, Rem, Sub};
 
 use crate::PixelType;
 
@@ -274,15 +274,173 @@ impl Enlargeable for f32 {
     type Larger = f64;
 }
 
+/// Declares a sub-container `PixelStor`: a `#[repr(transparent)]` newtype over
+/// `u16` whose `DEFAULT_MIN/MAX_VALUE` (and so every cast/saturate/interpolate
+/// that goes through them) is the sensor's true bit depth rather than the full
+/// `u16` range. See [`U10`] for the shared rationale.
+macro_rules! declare_subrange_pixelstor {
+    ($name:ident, $max:literal, $doc:literal) => {
+        #[doc = $doc]
+        #[repr(transparent)]
+        #[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd)]
+        pub struct $name(pub u16);
+
+        // SAFETY: `#[repr(transparent)]` over `u16`, which is `Pod` — identical
+        // layout, no padding, every bit pattern valid.
+        unsafe impl bytemuck::Zeroable for $name {}
+        unsafe impl bytemuck::Pod for $name {}
+
+        impl Add for $name {
+            type Output = Self;
+            fn add(self, rhs: Self) -> Self {
+                Self(self.0 + rhs.0)
+            }
+        }
+        impl Sub for $name {
+            type Output = Self;
+            fn sub(self, rhs: Self) -> Self {
+                Self(self.0 - rhs.0)
+            }
+        }
+        impl Mul for $name {
+            type Output = Self;
+            fn mul(self, rhs: Self) -> Self {
+                Self(self.0 * rhs.0)
+            }
+        }
+        impl Div for $name {
+            type Output = Self;
+            fn div(self, rhs: Self) -> Self {
+                Self(self.0 / rhs.0)
+            }
+        }
+        impl Rem for $name {
+            type Output = Self;
+            fn rem(self, rhs: Self) -> Self {
+                Self(self.0 % rhs.0)
+            }
+        }
+
+        impl Zero for $name {
+            fn zero() -> Self {
+                Self(0)
+            }
+            fn is_zero(&self) -> bool {
+                self.0 == 0
+            }
+        }
+        impl One for $name {
+            fn one() -> Self {
+                Self(1)
+            }
+        }
+        impl Bounded for $name {
+            fn min_value() -> Self {
+                Self(0)
+            }
+            fn max_value() -> Self {
+                Self($max)
+            }
+        }
+        impl ToPrimitive for $name {
+            fn to_i64(&self) -> Option<i64> {
+                self.0.to_i64()
+            }
+            fn to_u64(&self) -> Option<u64> {
+                self.0.to_u64()
+            }
+        }
+        impl NumCast for $name {
+            fn from<F: ToPrimitive>(n: F) -> Option<Self> {
+                <u16 as NumCast>::from(n).map(Self)
+            }
+        }
+        impl Num for $name {
+            type FromStrRadixErr = <u16 as Num>::FromStrRadixErr;
+            fn from_str_radix(s: &str, radix: u32) -> Result<Self, Self::FromStrRadixErr> {
+                <u16 as Num>::from_str_radix(s, radix).map(Self)
+            }
+        }
+
+        impl PixelStor for $name {
+            const DEFAULT_MAX_VALUE: Self = Self($max);
+            const DEFAULT_MIN_VALUE: Self = Self(0);
+            const PIXEL_TYPE: PixelType = PixelType::$name;
+        }
+
+        impl Enlargeable for $name {
+            type Larger = u32;
+        }
+    };
+}
+
+declare_subrange_pixelstor!(
+    U10,
+    1023,
+    "A 10-bit sample stored right-aligned in a `u16` (see [`PixelType::U10`]).\n\n\
+     It is bit-identical to `u16`, but every [`PixelStor`] cast and saturation \
+     on `U10` (`from_f64`, `cast_u8`, …) is relative to `0..=1023` instead of \
+     the full `u16` range. A [`pipeline`](crate::pipeline) stage dispatches to \
+     `U10` instead of plain `u16`, so e.g. converting to `u8` \
+     scales against the sensor's true range rather than clipping almost \
+     everything to black."
+);
+declare_subrange_pixelstor!(
+    U12,
+    4095,
+    "A 12-bit sample stored right-aligned in a `u16` (see [`PixelType::U12`]); \
+     see [`U10`] for the rationale. The only difference is the saturating \
+     range, `0..=4095`."
+);
+declare_subrange_pixelstor!(
+    U14,
+    16383,
+    "A 14-bit sample stored right-aligned in a `u16` (see [`PixelType::U14`]); \
+     see [`U10`] for the rationale. The only difference is the saturating \
+     range, `0..=16383`."
+);
+
+#[cfg(test)]
 mod test {
+    use super::*;
+
     #[test]
     fn test_pixelstor() {
-        use crate::coretraits::PixelStor;
         let v = 0.5f32;
         let u = v.cast_u8();
         assert_eq!(u, 128);
         let v = 0.4f32;
         let u = v.cast_u8();
         assert_eq!(u, 102); // f32::round(v * 255.0) as u8);
+    }
+
+    #[test]
+    fn subrange_pixelstor_saturates_at_true_range() {
+        assert_eq!(U10::DEFAULT_MAX_VALUE, U10(1023));
+        assert_eq!(U12::DEFAULT_MAX_VALUE, U12(4095));
+        assert_eq!(U14::DEFAULT_MAX_VALUE, U14(16383));
+        assert_eq!(U10::PIXEL_TYPE, PixelType::U10);
+        assert_eq!(U12::PIXEL_TYPE, PixelType::U12);
+        assert_eq!(U14::PIXEL_TYPE, PixelType::U14);
+
+        // `from_f64` clamps into the *tagged* range, not the full `u16` one.
+        assert_eq!(U12::from_f64(5000.0), U12(4095));
+        assert_eq!(U12::from_f64(-5.0), U12(0));
+        assert_eq!(U12::from_f64(2000.0), U12(2000));
+
+        // The max value of each range casts to the top of any target type.
+        assert_eq!(U10(1023).cast_u8(), u8::MAX);
+        assert_eq!(U12(4095).cast_u8(), u8::MAX);
+        assert_eq!(U14(16383).cast_u8(), u8::MAX);
+        assert_eq!(U12(4095).cast_u16(), u16::MAX);
+        assert_eq!(U12(4095).cast_f32(), 1.0);
+
+        // The `u16` storage representation is a public field.
+        assert_eq!(U12(4000).0, 4000u16);
+
+        // `bytemuck` reinterprets a `u16` buffer as any of the sub-ranges.
+        let mut buf = [500u16, 1000];
+        let tagged: &mut [U12] = bytemuck::cast_slice_mut(&mut buf);
+        assert_eq!(tagged, &[U12(500), U12(1000)]);
     }
 }

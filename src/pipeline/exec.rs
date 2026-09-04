@@ -44,7 +44,7 @@ pub(super) fn run_chain(
             }
             StepKind::Scale { gain, offset } => {
                 let buf = current(&mut *buf_a, &mut *buf_b, cur_a);
-                scale_inplace(buf, step.in_pt, n, gain, offset)?;
+                scale_inplace(buf, step.in_pt, n, gain, offset);
             }
             StepKind::ScalePixels(factor) => {
                 let buf = current(&mut *buf_a, &mut *buf_b, cur_a);
@@ -54,7 +54,7 @@ pub(super) fn run_chain(
                 if !step.luma_identity {
                     let cf = &coeffs[step.coeff_idx];
                     let buf = current(&mut *buf_a, &mut *buf_b, cur_a);
-                    luma_inplace(buf, step.in_pt, step.in_channels as usize, n, cf)?;
+                    luma_inplace(buf, step.in_pt, step.in_channels as usize, n, cf);
                 }
             }
             StepKind::Crop { x, y, w: ow, h: oh } => {
@@ -315,8 +315,8 @@ pub(super) fn view<'a>(
         PixelType::U16 => {
             let d = &mut cast_slice_mut::<f32, u16>(buf)[..n];
             // Re-apply a `U10` / `U12` / `U14` tag; a plain `U16` clears it.
-            let img = ImageRef::<u16>::create(d, w, h, cs)?
-                .with_bit_depth(spec.pixel_type.bit_depth());
+            let img =
+                ImageRef::<u16>::create(d, w, h, cs)?.with_bit_depth(spec.pixel_type.bit_depth());
             DynamicImageRef::from(img)
         }
         PixelType::F32 => {

@@ -4,8 +4,8 @@ use thiserror::Error;
 
 #[allow(unused_imports)]
 use crate::{
-    pipeline::{Op, Pipeline, Runner},
     BayerError, ImageError, PixelType,
+    pipeline::{Op, Pipeline, Runner},
 };
 
 use super::ImageSpec;
@@ -14,9 +14,20 @@ use super::ImageSpec;
 #[non_exhaustive]
 /// Errors from compiling or running a [`Pipeline`].
 pub enum PipelineError {
-    /// A pixel type outside the supported `{u8, u16, f32}` set was requested.
+    /// A pixel type this pipeline build can't size or process at all. In
+    /// practice unreachable today — every [`PixelType`] variant has a
+    /// [`storage`](PixelType::storage) width the kernels understand — kept as a
+    /// defensive fallback for a future variant added ahead of kernel support.
     #[error("unsupported pixel type: {0:?}")]
     UnsupportedPixelType(PixelType),
+    /// [`Op::Convert`]'s target must be a real storage type
+    /// ([`PixelType::U8`] / [`PixelType::U16`] / [`PixelType::F32`]).
+    /// [`PixelType::U10`] / `U12` / `U14` describe a meaningful bit depth
+    /// *within* `u16` storage, not a distinct byte layout to convert into —
+    /// tag the result with
+    /// [`ImageRef::with_bit_depth`](crate::ImageRef::with_bit_depth) instead.
+    #[error("Op::Convert target must be a storage type (U8/U16/F32), not {0:?}")]
+    ConvertTargetNotStorage(PixelType),
     /// An image dimension is zero or exceeds 65535.
     #[error("image dimension is zero or exceeds 65535")]
     BadDimensions,

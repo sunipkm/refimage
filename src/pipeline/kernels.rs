@@ -5,10 +5,11 @@
 use bytemuck::cast_slice_mut;
 
 use crate::demosaic::{
-    run_demosaic_imagedata, run_demosaic_imagedata_serial, ColorFilterArray, RasterMut,
+    ColorFilterArray, RasterMut, run_demosaic_imagedata, run_demosaic_imagedata_serial,
 };
 use crate::{
-    BayerPattern, ColorSpace, DemosaicMethod, Enlargeable, ImageRef, PixelStor, PixelType,
+    BayerPattern, ColorSpace, DemosaicMethod, Enlargeable, ImageRef, PixelStor, PixelType, U10,
+    U12, U14,
 };
 
 use super::spec::pixel_size;
@@ -43,6 +44,35 @@ pub(super) fn debayer_into(
             method,
             demosaic,
         ),
+        // `U10`/`U12`/`U14` clamp interpolation overshoot against the sensor's
+        // true range instead of the full `u16` one.
+        PixelType::U10 => debayer_typed::<U10>(
+            cast_slice_mut(src),
+            cast_slice_mut(dst),
+            w,
+            h,
+            pat,
+            method,
+            demosaic,
+        ),
+        PixelType::U12 => debayer_typed::<U12>(
+            cast_slice_mut(src),
+            cast_slice_mut(dst),
+            w,
+            h,
+            pat,
+            method,
+            demosaic,
+        ),
+        PixelType::U14 => debayer_typed::<U14>(
+            cast_slice_mut(src),
+            cast_slice_mut(dst),
+            w,
+            h,
+            pat,
+            method,
+            demosaic,
+        ),
         PixelType::U16 => debayer_typed::<u16>(
             cast_slice_mut(src),
             cast_slice_mut(dst),
@@ -53,7 +83,6 @@ pub(super) fn debayer_into(
             demosaic,
         ),
         PixelType::F32 => debayer_typed::<f32>(src, dst, w, h, pat, method, demosaic),
-        other => Err(PipelineError::UnsupportedPixelType(other)),
     }
 }
 
@@ -120,58 +149,82 @@ pub(super) fn convert_inplace(
     Ok(())
 }
 
-/// Convert one packed element; returns up to 4 bytes, of which the caller writes
-/// `pixel_size(out_pt)`. `in_pt`/`out_pt` are assumed distinct and supported.
-fn convert_one(src: &[u8], in_pt: PixelType, out_pt: PixelType) -> [u8; 4] {
+/// Rescale one already-decoded source sample into the packed bytes of
+/// `out_pt` (`pixel_size(out_pt)` of them are meaningful). `T::cast_u8` /
+/// `cast_u16` / `cast_f32` saturate against `T::DEFAULT_MIN/MAX_VALUE`, so a
+/// tagged `U10`/`U12`/`U14` source rescales against its true range rather than
+/// the full `u16` one. `out_pt` is always a storage type — never `U10`/`U12`/
+/// `U14` — because [`Op::Convert`](super::Op::Convert) rejects any other
+/// target ([`PipelineError::ConvertTargetNotStorage`]).
+fn cast_to_bytes<T: PixelStor>(v: T, out_pt: PixelType) -> [u8; 4] {
     let pad2 = |b: [u8; 2]| [b[0], b[1], 0, 0];
     let pad1 = |b: u8| [b, 0, 0, 0];
-    match (in_pt, out_pt) {
-        (PixelType::U8, PixelType::U16) => pad2(src[0].cast_u16().to_ne_bytes()),
-        (PixelType::U8, PixelType::F32) => src[0].cast_f32().to_ne_bytes(),
-        (PixelType::U16, PixelType::U8) => pad1(u16::from_ne_bytes([src[0], src[1]]).cast_u8()),
-        (PixelType::U16, PixelType::F32) => u16::from_ne_bytes([src[0], src[1]])
-            .cast_f32()
-            .to_ne_bytes(),
-        (PixelType::F32, PixelType::U8) => {
-            pad1(f32::from_ne_bytes([src[0], src[1], src[2], src[3]]).cast_u8())
+    match out_pt {
+        PixelType::U8 => pad1(v.cast_u8()),
+        PixelType::U16 => pad2(v.cast_u16().to_ne_bytes()),
+        PixelType::F32 => v.cast_f32().to_ne_bytes(),
+        _ => unreachable!("Op::Convert target is always a storage type"),
+    }
+}
+
+/// Convert one packed element; returns up to 4 bytes, of which the caller
+/// writes `pixel_size(out_pt)`. `in_pt`/`out_pt` are assumed distinct.
+fn convert_one(src: &[u8], in_pt: PixelType, out_pt: PixelType) -> [u8; 4] {
+    let u16_at = |src: &[u8]| u16::from_ne_bytes([src[0], src[1]]);
+    match in_pt {
+        PixelType::U8 => cast_to_bytes(src[0], out_pt),
+        PixelType::U10 => cast_to_bytes(U10(u16_at(src)), out_pt),
+        PixelType::U12 => cast_to_bytes(U12(u16_at(src)), out_pt),
+        PixelType::U14 => cast_to_bytes(U14(u16_at(src)), out_pt),
+        PixelType::U16 => cast_to_bytes(u16_at(src), out_pt),
+        PixelType::F32 => {
+            cast_to_bytes(f32::from_ne_bytes([src[0], src[1], src[2], src[3]]), out_pt)
         }
-        (PixelType::F32, PixelType::U16) => pad2(
-            f32::from_ne_bytes([src[0], src[1], src[2], src[3]])
-                .cast_u16()
-                .to_ne_bytes(),
-        ),
-        _ => unreachable!("identity handled by caller; other types rejected by pixel_size"),
+    }
+}
+
+/// `y = x * gain + offset` in raw storage units, saturating back into `T`
+/// (`T::DEFAULT_MIN/MAX_VALUE` — the true sensor range for `U10`/`U12`/`U14`).
+fn scale_typed<T: PixelStor + bytemuck::AnyBitPattern>(
+    buf: &mut [f32],
+    n: usize,
+    gain: f64,
+    offset: f64,
+) {
+    for x in &mut cast_slice_mut::<f32, T>(buf)[..n] {
+        *x = T::from_f64((*x).to_f64() * gain + offset);
     }
 }
 
 /// Apply `y = x * gain + offset` to `n` raw elements of `buf` in place,
 /// saturating back into `pt` (`[0.0, 1.0]` for `f32`).
-pub(super) fn scale_inplace(
-    buf: &mut [f32],
-    pt: PixelType,
-    n: usize,
-    gain: f64,
-    offset: f64,
-) -> Result<(), PipelineError> {
+pub(super) fn scale_inplace(buf: &mut [f32], pt: PixelType, n: usize, gain: f64, offset: f64) {
     match pt {
-        PixelType::U8 => {
-            for x in &mut cast_slice_mut::<f32, u8>(buf)[..n] {
-                *x = u8::from_f64((*x).to_f64() * gain + offset);
-            }
-        }
-        PixelType::U16 => {
-            for x in &mut cast_slice_mut::<f32, u16>(buf)[..n] {
-                *x = u16::from_f64((*x).to_f64() * gain + offset);
-            }
-        }
-        PixelType::F32 => {
-            for x in &mut buf[..n] {
-                *x = f32::from_f64((*x).to_f64() * gain + offset);
-            }
-        }
-        other => return Err(PipelineError::UnsupportedPixelType(other)),
+        PixelType::U8 => scale_typed::<u8>(buf, n, gain, offset),
+        PixelType::U10 => scale_typed::<U10>(buf, n, gain, offset),
+        PixelType::U12 => scale_typed::<U12>(buf, n, gain, offset),
+        PixelType::U14 => scale_typed::<U14>(buf, n, gain, offset),
+        PixelType::U16 => scale_typed::<u16>(buf, n, gain, offset),
+        PixelType::F32 => scale_typed::<f32>(buf, n, gain, offset),
     }
-    Ok(())
+}
+
+/// `round(x * num / den)` for `n` raw elements of `buf`, in widened integer
+/// arithmetic (no float round-trip), clamped into `T::DEFAULT_MIN/MAX_VALUE` —
+/// the sensor's true range for `U10`/`U12`/`U14`, not the full `u16` one.
+fn scale_pixels_rational_typed<T: PixelStor + bytemuck::AnyBitPattern>(
+    buf: &mut [f32],
+    n: usize,
+    num: i128,
+    den: i128,
+) {
+    let lo = T::DEFAULT_MIN_VALUE.to_i64().unwrap() as i128;
+    let hi = T::DEFAULT_MAX_VALUE.to_i64().unwrap() as i128;
+    for x in &mut cast_slice_mut::<f32, T>(buf)[..n] {
+        let raw = x.to_i64().unwrap() as i128;
+        let v = rational_round(raw, num, den).clamp(lo, hi);
+        *x = <T as num_traits::NumCast>::from(v as i64).unwrap();
+    }
 }
 
 /// Multiply `n` raw elements of `buf` in place by `factor`, saturating back into
@@ -185,31 +238,23 @@ pub(super) fn scale_pixels_inplace(
     factor: ScaleFactor,
 ) -> Result<(), PipelineError> {
     let ScaleFactor::Rational { num, den } = factor else {
-        let ScaleFactor::Float(f) = factor else { unreachable!() };
-        return scale_inplace(buf, pt, n, f, 0.0);
+        let ScaleFactor::Float(f) = factor else {
+            unreachable!()
+        };
+        scale_inplace(buf, pt, n, f, 0.0);
+        return Ok(());
     };
     if den == 0 {
         return Err(PipelineError::BadScaleFactor);
     }
     let (num, den) = (num as i128, den as i128);
     match pt {
-        PixelType::U8 => {
-            for x in &mut cast_slice_mut::<f32, u8>(buf)[..n] {
-                *x = rational_round(*x as i128, num, den).clamp(0, u8::MAX as i128) as u8;
-            }
-        }
-        PixelType::U16 => {
-            for x in &mut cast_slice_mut::<f32, u16>(buf)[..n] {
-                *x = rational_round(*x as i128, num, den).clamp(0, u16::MAX as i128) as u16;
-            }
-        }
-        PixelType::F32 => {
-            let r = num as f64 / den as f64;
-            for x in &mut buf[..n] {
-                *x = f32::from_f64((*x).to_f64() * r);
-            }
-        }
-        other => return Err(PipelineError::UnsupportedPixelType(other)),
+        PixelType::U8 => scale_pixels_rational_typed::<u8>(buf, n, num, den),
+        PixelType::U10 => scale_pixels_rational_typed::<U10>(buf, n, num, den),
+        PixelType::U12 => scale_pixels_rational_typed::<U12>(buf, n, num, den),
+        PixelType::U14 => scale_pixels_rational_typed::<U14>(buf, n, num, den),
+        PixelType::U16 => scale_pixels_rational_typed::<u16>(buf, n, num, den),
+        PixelType::F32 => scale_typed::<f32>(buf, n, num as f64 / den as f64, 0.0),
     }
     Ok(())
 }
@@ -235,16 +280,23 @@ pub(super) fn luma_inplace(
     channels: usize,
     total: usize,
     weights: &[f64],
-) -> Result<(), PipelineError> {
+) {
     match in_pt {
         PixelType::U8 => {
             crate::coreimpls::run_luma(channels, total, cast_slice_mut::<f32, u8>(buf), weights)
+        }
+        PixelType::U10 => {
+            crate::coreimpls::run_luma(channels, total, cast_slice_mut::<f32, U10>(buf), weights)
+        }
+        PixelType::U12 => {
+            crate::coreimpls::run_luma(channels, total, cast_slice_mut::<f32, U12>(buf), weights)
+        }
+        PixelType::U14 => {
+            crate::coreimpls::run_luma(channels, total, cast_slice_mut::<f32, U14>(buf), weights)
         }
         PixelType::U16 => {
             crate::coreimpls::run_luma(channels, total, cast_slice_mut::<f32, u16>(buf), weights)
         }
         PixelType::F32 => crate::coreimpls::run_luma(channels, total, buf, weights),
-        other => return Err(PipelineError::UnsupportedPixelType(other)),
     }
-    Ok(())
 }

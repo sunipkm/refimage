@@ -56,12 +56,63 @@ fn sub_container_depth_flows_through_pipeline() {
     let doubled = Pipeline::new().scale_by(2.0).apply(&img).unwrap();
     assert_eq!(doubled.pixel_type(), PixelType::U12);
     let got: &[u16] = bytemuck::cast_slice(doubled.as_raw_u8());
-    let want: Vec<u16> = sample16(w * h).iter().map(|&v| v.saturating_mul(2)).collect();
+    let want: Vec<u16> = sample16(w * h)
+        .iter()
+        .map(|&v| v.saturating_mul(2))
+        .collect();
     assert_eq!(got, &want[..]);
 
     // Converting away from u16 drops the tag.
     let as_u8 = Pipeline::new().convert(PixelType::U8).apply(&img).unwrap();
     assert_eq!(as_u8.pixel_type(), PixelType::U8);
+
+    // `Op::Convert`'s target must be a real storage type.
+    assert!(matches!(
+        Pipeline::new()
+            .convert(PixelType::U12)
+            .compile(
+                ImageSpec::new(w, h, ColorSpace::Gray, PixelType::U12),
+                Strategy::Sequential
+            )
+            .unwrap_err(),
+        PipelineError::ConvertTargetNotStorage(PixelType::U12)
+    ));
+}
+
+/// Value scaling, saturation, and conversion all respect the sensor's true
+/// range for a `U10`/`U12`/`U14`-tagged buffer — not the full `u16` one.
+#[test]
+fn sub_container_depth_scales_against_true_range() {
+    let (w, h) = (2usize, 1usize);
+
+    // 12-bit max value (4095), tagged U12: converting to u8 should land at
+    // 255 (4095 / 4095 * 255), not ~16 (4095 / 65535 * 255).
+    let mut data = [4095u16, 0];
+    let img = DynamicImageRef::from(
+        ImageRef::new(&mut data, w, h, ColorSpace::Gray)
+            .unwrap()
+            .with_bit_depth(12u8),
+    );
+    let as_u8 = Pipeline::new().convert(PixelType::U8).apply(&img).unwrap();
+    assert_eq!(as_u8.as_raw_u8(), &[255, 0]);
+
+    // The same value expanded to full 16-bit range lands at u16::MAX, not a
+    // no-op copy of the raw `4095` bit pattern.
+    let as_u16 = Pipeline::new().convert(PixelType::U16).apply(&img).unwrap();
+    let got: &[u16] = bytemuck::cast_slice(as_u16.as_raw_u8());
+    assert_eq!(got, &[u16::MAX, 0]);
+    assert_eq!(as_u16.pixel_type(), PixelType::U16);
+
+    // ScalePixels saturates at 4095 (the 12-bit max), not 65535.
+    let mut data2 = [3000u16, 0];
+    let img2 = DynamicImageRef::from(
+        ImageRef::new(&mut data2, w, h, ColorSpace::Gray)
+            .unwrap()
+            .with_bit_depth(12u8),
+    );
+    let scaled = Pipeline::new().scale_rational(2, 1).apply(&img2).unwrap();
+    let got: &[u16] = bytemuck::cast_slice(scaled.as_raw_u8());
+    assert_eq!(got, &[4095, 0]);
 }
 
 /// Each geometric op relocates pixels according to its coordinate map.
@@ -743,7 +794,9 @@ fn scale_pixels_rational_is_exact() {
 #[test]
 fn scale_pixels_float_matches_and_saturates() {
     let (w, h) = (8, 4);
-    let mut a: Vec<u16> = (0..(w * h) as u16).map(|v| v.saturating_mul(3000)).collect();
+    let mut a: Vec<u16> = (0..(w * h) as u16)
+        .map(|v| v.saturating_mul(3000))
+        .collect();
     let mut b = a.clone();
 
     let run = |p: Pipeline, buf: &mut [u16]| -> Vec<u16> {
@@ -1123,11 +1176,13 @@ fn resize_to_fit_rejects_bayer() {
         .unwrap_err();
     assert!(matches!(err, PipelineError::ResizeOnBayer));
 
-    assert!(Pipeline::new()
-        .debayer(DemosaicMethod::Linear)
-        .resize_to_fit(8, 8, ResizeFilter::Bicubic)
-        .compile(bayer, Strategy::Sequential)
-        .is_ok());
+    assert!(
+        Pipeline::new()
+            .debayer(DemosaicMethod::Linear)
+            .resize_to_fit(8, 8, ResizeFilter::Bicubic)
+            .compile(bayer, Strategy::Sequential)
+            .is_ok()
+    );
 }
 
 /// Resize runs as the sequential tail after a tiled pixel-op body.
@@ -1350,7 +1405,10 @@ fn optimize_dihedral_runs_preserve_output() {
 fn optimize_folds_known_identities() {
     let f = |p: Pipeline| p.optimize().ops().to_vec();
 
-    assert_eq!(f(Pipeline::new().flip_horizontal().flip_horizontal()), vec![]);
+    assert_eq!(
+        f(Pipeline::new().flip_horizontal().flip_horizontal()),
+        vec![]
+    );
     assert_eq!(f(Pipeline::new().rotate_90().rotate_270()), vec![]);
     assert_eq!(
         f(Pipeline::new().rotate_90().rotate_90()),
@@ -1392,7 +1450,10 @@ fn optimize_merges_nested_crops() {
         .crop(4, 4, 20, 20)
         .crop(2, 3, 8, 6)
         .crop(1, 1, 4, 4);
-    assert_eq!(run_gray_u16(&p, w, h, &src), run_gray_u16(&base, w, h, &src));
+    assert_eq!(
+        run_gray_u16(&p, w, h, &src),
+        run_gray_u16(&base, w, h, &src)
+    );
 }
 
 #[test]
@@ -1426,7 +1487,10 @@ fn optimize_dihedral_preserves_bayer_output() {
 
     let spec = ImageSpec::new(w, h, ColorSpace::Bayer(pat), PixelType::U16);
     let run = |p: &Pipeline| {
-        let mut r = p.clone().compile(spec.clone(), Strategy::Sequential).unwrap();
+        let mut r = p
+            .clone()
+            .compile(spec.clone(), Strategy::Sequential)
+            .unwrap();
         let mut f = sample16(w * h);
         r.run(&bayer_frame(w, h, pat, &mut f))
             .unwrap()

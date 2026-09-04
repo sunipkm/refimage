@@ -92,7 +92,7 @@ pub mod pipeline;
 /// `refimage::chrono::Utc::now()` — which needs `chrono`'s `clock` feature, so add
 /// `chrono` as a direct dependency of your binary if you rely on `now()`).
 pub use chrono;
-pub use coretraits::{Enlargeable, PixelStor};
+pub use coretraits::{Enlargeable, PixelStor, U10, U12, U14};
 pub use demosaic::{BayerError, DemosaicMethod};
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]

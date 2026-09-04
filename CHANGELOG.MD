@@ -2,17 +2,26 @@
 
 ## Changes
 
-### Unreleased
+### 1.0.0-pre6 (2026-09-03)
 
 - **Breaking:** `PixelType` now has only the six variants the crate can actually
   store and process — `U8`, `U10`, `U12`, `U14`, `U16`, `F32`. The signed and
   wide-integer variants (`I8`/`I16`/`I32`/`I64`/`U32`/`U64`/`F64`) and the
   `PixelStor` impls for `i8`/`i16`/`i32`/`u32`/`f64` are gone; they were never
   representable in a `DynamicImage*` or a pipeline. `PixelType::UnsupportedPixelType`
-  can still surface if a future variant is added ahead of kernel support. The
-  sub-container depths `U10`/`U12`/`U14` now flow through a `Pipeline` (processed
-  as their `u16` `storage()`); a chain that leaves the element type alone carries
-  the depth tag onto the output.
+  can still surface if a future variant is added ahead of kernel support.
+- Added `PixelStor` for three new types, `U10` / `U12` / `U14`: `#[repr(transparent)]`
+  newtypes over `u16` whose `DEFAULT_MIN/MAX_VALUE` is the sensor's true range
+  (`0..=1023` / `4095` / `16383`) instead of the full `u16` one. A `Pipeline` now
+  dispatches every per-pixel kernel (`Convert`, `Scale`, `ScalePixels`, luma,
+  debayer, `ResizeToFit`) to the matching sub-range type whenever the source
+  carries an [`ImageRef::with_bit_depth`] tag, so e.g. converting a `U12`-tagged
+  image to `u8` scales against `4095`, not `65535` — previously the tag was
+  read back by `pixel_type()` but silently ignored by every kernel, so tagged
+  data was scaled and clamped as if it were full-range `u16`. `Op::Convert`'s
+  target must now be a real storage type (`U8`/`U16`/`F32`); requesting `U10`/
+  `U12`/`U14` as a target is a `PipelineError::ConvertTargetNotStorage` — tag
+  the result with `with_bit_depth` instead.
 - **Breaking:** the raw-buffer accessors (`as_raw_u8`, `as_raw_u8_checked`,
   `as_slice_u8` / `_u16` / `_f32`, and the `_mut` variants) moved from inherent
   methods to a new `PixelData` trait, implemented for `DynamicImageRef` /

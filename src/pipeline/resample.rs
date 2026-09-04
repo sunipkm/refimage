@@ -18,10 +18,10 @@
 use bytemuck::{cast_slice, cast_slice_mut};
 use serde::{Deserialize, Serialize};
 
-use crate::{PixelStor, PixelType};
+use crate::{PixelStor, PixelType, U10, U12, U14};
 
-use super::spec::pixel_size;
 use super::PipelineError;
+use super::spec::pixel_size;
 
 /// Resampling filter for [`Op::ResizeToFit`](super::Op::ResizeToFit).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -177,6 +177,38 @@ pub(super) fn geo_resize(
             oh,
             filter,
         ),
+        // `U10`/`U12`/`U14`: interpolation overshoot (ringing) saturates
+        // against the sensor's true range instead of the full `u16` one.
+        PixelType::U10 => resize_typed::<U10>(
+            cast_slice(src),
+            cast_slice_mut(dst),
+            sw,
+            sh,
+            channels,
+            ow,
+            oh,
+            filter,
+        ),
+        PixelType::U12 => resize_typed::<U12>(
+            cast_slice(src),
+            cast_slice_mut(dst),
+            sw,
+            sh,
+            channels,
+            ow,
+            oh,
+            filter,
+        ),
+        PixelType::U14 => resize_typed::<U14>(
+            cast_slice(src),
+            cast_slice_mut(dst),
+            sw,
+            sh,
+            channels,
+            ow,
+            oh,
+            filter,
+        ),
         PixelType::U16 => resize_typed::<u16>(
             cast_slice(src),
             cast_slice_mut(dst),
@@ -188,7 +220,6 @@ pub(super) fn geo_resize(
             filter,
         ),
         PixelType::F32 => resize_typed::<f32>(src, dst, sw, sh, channels, ow, oh, filter),
-        other => return Err(PipelineError::UnsupportedPixelType(other)),
     }
     Ok(())
 }
