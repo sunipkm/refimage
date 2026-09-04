@@ -70,7 +70,7 @@ fn uncompressed_primary_structure() {
 fn frame_id_card() {
     // An unset frame ID is not written.
     let g = gray_u16(8, 4);
-    assert_eq!(g.get_frame_id(), None);
+    assert_eq!(g.frame_id(), None);
     let bytes = g.fits_bytes(FitsCompression::NONE).unwrap();
     assert!(find_card(&bytes, "FRAMEID").is_none());
 
@@ -332,5 +332,5 @@ fn bincode_roundtrip_still_works() {
     let g = gray_u16(4, 4);
     let ser = bincode::serialize(&g).unwrap();
     let de: GenericImageOwned = bincode::deserialize(&ser).unwrap();
-    assert_eq!(g.get_metadata(), de.get_metadata());
+    assert_eq!(g.metadata(), de.metadata());
 }

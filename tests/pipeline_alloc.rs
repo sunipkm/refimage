@@ -6,7 +6,9 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use refimage::pipeline::{ImageSpec, Pipeline, Strategy};
-use refimage::{BayerPattern, ColorSpace, DemosaicMethod, DynamicImageRef, ImageRef, PixelType};
+use refimage::{
+    BayerPattern, ColorSpace, DemosaicMethod, DynamicImageRef, ImageRef, PixelData, PixelType,
+};
 
 // Second test would race the global counter; keep this binary single-test.
 

@@ -5,7 +5,7 @@ use chrono::Utc;
 use refimage::pipeline::Pipeline;
 use refimage::{
     BayerPattern, ColorSpace, DemosaicMethod, DynamicImageRef, GenericImageOwned, ImageProps,
-    ImageRef,
+    ImageRef, PixelData,
 };
 
 fn main() {

@@ -11,7 +11,7 @@ use std::time::Duration;
 use chrono::DateTime;
 use refimage::{
     ColorSpace, DynamicImageOwned, FitsCompression, FitsCompressionKind, FitsWrite,
-    GenericImageOwned, Gzip, Hcompress, ImageOwned, Rice,
+    GenericImageOwned, Gzip, Hcompress, ImageOwned, PixelData, Rice,
 };
 
 fn astropy_available() -> bool {
@@ -82,7 +82,7 @@ fn roundtrip_atol(
     g.write_fits(&fits_path, &comp, true).expect("write_fits");
     std::fs::File::create(&raw_path)
         .unwrap()
-        .write_all(g.get_image().as_raw_u8())
+        .write_all(g.image().as_raw_u8())
         .unwrap();
 
     let out = Command::new("python3")

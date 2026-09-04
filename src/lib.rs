@@ -82,6 +82,7 @@ mod genericimageref;
 mod imageowned;
 mod imageref;
 mod imagetraits;
+mod imageview;
 mod metadata;
 mod optimumexposure;
 pub mod pipeline;
@@ -110,7 +111,8 @@ pub use genericimageref::GenericImageRef;
 pub use image::DynamicImage; // Used for image interop
 pub use imageowned::ImageOwned;
 pub use imageref::ImageRef;
-pub use imagetraits::{BayerShift, ImageProps};
+pub use imagetraits::{BayerShift, ImageProps, PixelData};
+pub use imageview::{DynamicImageView, ImageView};
 pub use metadata::{
     GenericLineItem, GenericValue, InsertValue, MetaCollection, Metadata, MetadataError,
     MetadataResult, CAMERANAME_KEY, EXPOSURE_KEY, FRAMEID_KEY, PROGRAMNAME_KEY, TIMESTAMP_KEY,
@@ -124,12 +126,14 @@ use serde::{Deserializer, Serializer};
 
 /// Image data with a dynamic pixel type, backed by a mutable slice of data.
 ///
-/// This represents a _matrix_ of _pixels_ which are composed of primitive and common
-/// types, i.e. `u8`, `u16`, and `f32`. The matrix is stored in a _row-major_ order.
-/// More variants that adhere to these principles may get added in the future, in
-/// particular to cover other combinations typically used. The data is stored in a single
-/// contiguous buffer, which is backed by a mutable slice, and aims to enable
+/// This represents a _matrix_ of _pixels_ whose element type is one of `u8`,
+/// `u16`, or `f32` (a `u16` buffer may additionally be tagged 10-/12-/14-bit —
+/// see [`ImageRef::with_bit_depth`]). The matrix is stored in _row-major_ order
+/// in a single contiguous buffer, backed by a mutable slice, and aims to enable
 /// reuse of allocated memory without re-allocation.
+///
+/// Raw sample access is via the [`PixelData`] trait; a shared read-only borrow
+/// is a [`DynamicImageView`] ([`view`](DynamicImageRef::view)).
 ///
 /// # Note
 /// - Does not support alpha channel natively.
@@ -162,11 +166,13 @@ pub enum DynamicImageRef<'a> {
 
 /// Image data with a dynamic pixel type, backed by owned data.
 ///
-/// This represents a _matrix_ of _pixels_ which are composed of primitive and common
-/// types, i.e. `u8`, `u16`, and `f32`. The matrix is stored in a _row-major_ order.
-/// More variants that adhere to these principles may get added in the future, in
-/// particular to cover other combinations typically used. The data is stored in a single
-/// contiguous buffer, which is backed by a vector.
+/// This represents a _matrix_ of _pixels_ whose element type is one of `u8`,
+/// `u16`, or `f32` (a `u16` buffer may additionally be tagged 10-/12-/14-bit —
+/// see [`ImageOwned::with_bit_depth`]). The matrix is stored in _row-major_
+/// order in a single contiguous buffer, backed by a vector.
+///
+/// Raw sample access is via the [`PixelData`] trait; a shared read-only borrow
+/// is a [`DynamicImageView`] ([`view`](DynamicImageOwned::view)).
 ///
 /// # Note
 /// - Does not support alpha channel natively.
@@ -245,8 +251,16 @@ pub enum BayerPattern {
     Rggb,
 }
 
-/// Enum to describe the primitive pixel type of the image.
-/// The underlying `i8` representation conforms to the FITS standard.
+/// The primitive element type of an image's samples.
+///
+/// Only the six variants here can be stored in a [`DynamicImageRef`] /
+/// [`DynamicImageOwned`] or processed by a [`pipeline`]: the storage widths
+/// [`U8`](Self::U8), [`U16`](Self::U16) and [`F32`](Self::F32), plus the three
+/// sub-container machine-vision depths [`U10`](Self::U10) / [`U12`](Self::U12) /
+/// [`U14`](Self::U14) that live right-aligned in a `u16` (see
+/// [`ImageRef::with_bit_depth`]). The `#[repr(i8)]` discriminants follow the FITS
+/// `BITPIX` convention (`U8` = 8, `U16` = 16, `F32` = -32); `U10` / `U12` / `U14`
+/// are a `refimage` extension that serializes as its 16-bit [`storage`](Self::storage).
 #[repr(i8)]
 #[non_exhaustive]
 #[derive(Debug, PartialEq, Clone, Copy, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -265,22 +279,8 @@ pub enum PixelType {
     U14 = 14,
     /// 16-bit unsigned integer.
     U16 = 16,
-    /// 32-bit unsigned integer.
-    U32 = 32,
-    /// 64-bit unsigned integer.
-    U64 = 64,
-    /// 8-bit signed integer.
-    I8 = -8,
-    /// 16-bit signed integer.
-    I16 = -16,
-    /// 32-bit signed integer.
-    I32 = -128,
-    /// 64-bit signed integer.
-    I64 = -78,
     /// 32-bit floating point.
     F32 = -32,
-    /// 64-bit floating point.
-    F64 = -64,
 }
 
 impl PixelType {
@@ -288,13 +288,12 @@ impl PixelType {
     /// sub-container machine-vision depths, otherwise the storage width.
     pub const fn bit_depth(self) -> u8 {
         match self {
-            PixelType::U8 | PixelType::I8 => 8,
+            PixelType::U8 => 8,
             PixelType::U10 => 10,
             PixelType::U12 => 12,
             PixelType::U14 => 14,
-            PixelType::U16 | PixelType::I16 => 16,
-            PixelType::U32 | PixelType::I32 | PixelType::F32 => 32,
-            PixelType::U64 | PixelType::I64 | PixelType::F64 => 64,
+            PixelType::U16 => 16,
+            PixelType::F32 => 32,
         }
     }
 
@@ -305,7 +304,7 @@ impl PixelType {
     pub const fn storage(self) -> PixelType {
         match self {
             PixelType::U10 | PixelType::U12 | PixelType::U14 => PixelType::U16,
-            other => other,
+            PixelType::U8 | PixelType::U16 | PixelType::F32 => self,
         }
     }
 }
@@ -314,7 +313,7 @@ mod test {
     #[test]
     fn test_debayer() {
         use crate::pipeline::Pipeline;
-        use crate::ImageProps;
+        use crate::{ImageProps, PixelData};
         // color_backtrace::install();
         let mut src: [u8; 16] = [
             229, 67, 95, 146, 232, 51, 229, 241, 169, 161, 15, 52, 45, 175, 98, 197,

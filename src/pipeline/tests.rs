@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     BayerPattern, ColorSpace, DemosaicMethod, DynamicImageOwned, DynamicImageRef, GenericImageRef,
-    ImageProps, ImageRef, PixelStor, PixelType,
+    ImageProps, ImageRef, PixelData, PixelStor, PixelType,
 };
 
 fn sample16(n: usize) -> Vec<u16> {
@@ -36,6 +36,32 @@ fn growing_convert_in_place_matches_reference() {
 
 fn gray16(w: usize, h: usize, data: &mut [u16]) -> DynamicImageRef<'_> {
     DynamicImageRef::from(ImageRef::new(data, w, h, ColorSpace::Gray).unwrap())
+}
+
+/// A `u16` frame tagged with a sub-container depth (`U12`) is processed as
+/// `u16`, and a chain that leaves the type alone carries the tag onto the
+/// output.
+#[test]
+fn sub_container_depth_flows_through_pipeline() {
+    let (w, h) = (6usize, 4usize);
+    let mut data = sample16(w * h);
+    let img = DynamicImageRef::from(
+        ImageRef::new(&mut data, w, h, ColorSpace::Gray)
+            .unwrap()
+            .with_bit_depth(12u8),
+    );
+    assert_eq!(img.pixel_type(), PixelType::U12);
+
+    // Identity-ish pixel op: doubles values, keeps the type + tag.
+    let doubled = Pipeline::new().scale_by(2.0).apply(&img).unwrap();
+    assert_eq!(doubled.pixel_type(), PixelType::U12);
+    let got: &[u16] = bytemuck::cast_slice(doubled.as_raw_u8());
+    let want: Vec<u16> = sample16(w * h).iter().map(|&v| v.saturating_mul(2)).collect();
+    assert_eq!(got, &want[..]);
+
+    // Converting away from u16 drops the tag.
+    let as_u8 = Pipeline::new().convert(PixelType::U8).apply(&img).unwrap();
+    assert_eq!(as_u8.pixel_type(), PixelType::U8);
 }
 
 /// Each geometric op relocates pixels according to its coordinate map.
@@ -265,9 +291,9 @@ fn apply_preserves_metadata() {
     rgen.insert_key("CAMERA", "test-cam").unwrap();
 
     let out = Pipeline::new().convert(PixelType::U8).apply(&rgen).unwrap();
-    assert_eq!(out.get_metadata(), rgen.get_metadata());
-    assert_eq!(out.get_timestamp(), ts);
-    assert_eq!(out.get_exposure(), Duration::from_millis(50));
+    assert_eq!(out.metadata(), rgen.metadata());
+    assert_eq!(out.timestamp(), ts);
+    assert_eq!(out.exposure(), Duration::from_millis(50));
     assert_eq!(out.pixel_type(), PixelType::U8);
 }
 

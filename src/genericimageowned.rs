@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     genericimageref::GenericImageRef, metadata::InsertValue, CalcOptExp, DynamicImageOwned,
     ExposureResult, GenericLineItem, ImageProps, Metadata, OptimumExposure, OptimumExposureResult,
+    PixelData,
 };
 
 #[allow(unused_imports)]
@@ -79,13 +80,13 @@ impl GenericImageOwned {
         }
     }
 
-    /// Get the UTC timestamp of the image.
-    pub fn get_timestamp(&self) -> DateTime<Utc> {
+    /// The UTC timestamp of the image.
+    pub fn timestamp(&self) -> DateTime<Utc> {
         self.metadata.timestamp()
     }
 
-    /// Get the exposure time of the image (`Duration::ZERO` if not applicable).
-    pub fn get_exposure(&self) -> Duration {
+    /// The exposure time of the image (`Duration::ZERO` if not applicable).
+    pub fn exposure(&self) -> Duration {
         self.metadata.exposure()
     }
 
@@ -94,8 +95,8 @@ impl GenericImageOwned {
         self.metadata.set_exposure(exposure);
     }
 
-    /// Get the acquisition frame ID of the image, or `None` if unset.
-    pub fn get_frame_id(&self) -> Option<u32> {
+    /// The acquisition frame ID of the image, or `None` if unset.
+    pub fn frame_id(&self) -> Option<u32> {
         self.metadata.frame_id()
     }
 
@@ -158,31 +159,28 @@ impl GenericImageOwned {
         self.metadata.replace(name, value)
     }
 
-    /// Get the underlying [`DynamicImageOwned`].
-    ///
-    /// # Returns
-    /// The underlying [`DynamicImageOwned`] of the [`GenericImageOwned`].
-    pub fn get_image(&self) -> &DynamicImageOwned {
+    /// The underlying [`DynamicImageOwned`].
+    pub fn image(&self) -> &DynamicImageOwned {
         &self.image
     }
 
-    /// Get the underlying [`DynamicImageOwned`] mutably.
-    pub fn get_image_mut(&mut self) -> &mut DynamicImageOwned {
+    /// The underlying [`DynamicImageOwned`], mutably.
+    pub fn image_mut(&mut self) -> &mut DynamicImageOwned {
         &mut self.image
     }
 
     /// Borrow the image's [`Metadata`].
-    pub fn get_metadata(&self) -> &Metadata {
+    pub fn metadata(&self) -> &Metadata {
         &self.metadata
     }
 
     /// Mutably borrow the image's [`Metadata`].
-    pub fn get_metadata_mut(&mut self) -> &mut Metadata {
+    pub fn metadata_mut(&mut self) -> &mut Metadata {
         &mut self.metadata
     }
 
-    /// Get a specific extra metadata item by name (case-insensitive).
-    pub fn get_key(&self, name: &str) -> Option<&GenericLineItem> {
+    /// A specific extra metadata item by name (case-insensitive).
+    pub fn key(&self, name: &str) -> Option<&GenericLineItem> {
         self.metadata.get(name)
     }
 }
@@ -239,7 +237,7 @@ impl CalcOptExp for GenericImageOwned {
 
 impl GenericImageOwned {
     /// Optimum exposure and binning, using this image's own recorded
-    /// [`exposure`](Self::get_exposure).
+    /// [`exposure`](Self::exposure).
     ///
     /// # Errors
     /// [`ExposureError::ZeroExposure`](crate::ExposureError::ZeroExposure) if the
@@ -249,49 +247,34 @@ impl GenericImageOwned {
         eval: &OptimumExposure,
         bin: u16,
     ) -> ExposureResult<OptimumExposureResult> {
-        let exposure = self.get_exposure();
+        let exposure = self.exposure();
         self.image.calc_opt_exp(eval, exposure, bin)
     }
 }
 
-impl GenericImageOwned {
-    /// Get the data as a slice of `u8`, regardless of the underlying type.
-    pub fn as_raw_u8(&self) -> &[u8] {
+impl PixelData for GenericImageOwned {
+    fn as_raw_u8(&self) -> &[u8] {
         self.image.as_raw_u8()
     }
-
-    /// Get the data as a slice of `u8`, regardless of the underlying type.
-    pub fn as_raw_u8_checked(&self) -> Option<&[u8]> {
+    fn as_raw_u8_checked(&self) -> Option<&[u8]> {
         self.image.as_raw_u8_checked()
     }
-
-    /// Get the data as a slice of `u8`.
-    pub fn as_slice_u8(&self) -> Option<&[u8]> {
+    fn as_slice_u8(&self) -> Option<&[u8]> {
         self.image.as_slice_u8()
     }
-
-    /// Get the data as a mutable slice of `u8`.
-    pub fn as_mut_slice_u8(&mut self) -> Option<&mut [u8]> {
+    fn as_mut_slice_u8(&mut self) -> Option<&mut [u8]> {
         self.image.as_mut_slice_u8()
     }
-
-    /// Get the data as a slice of `u16`.
-    pub fn as_slice_u16(&self) -> Option<&[u16]> {
+    fn as_slice_u16(&self) -> Option<&[u16]> {
         self.image.as_slice_u16()
     }
-
-    /// Get the data as a mutable slice of `u16`.
-    pub fn as_mut_slice_u16(&mut self) -> Option<&mut [u16]> {
+    fn as_mut_slice_u16(&mut self) -> Option<&mut [u16]> {
         self.image.as_mut_slice_u16()
     }
-
-    /// Get the data as a slice of `f32`.
-    pub fn as_slice_f32(&self) -> Option<&[f32]> {
+    fn as_slice_f32(&self) -> Option<&[f32]> {
         self.image.as_slice_f32()
     }
-
-    /// Get the data as a mutable slice of `f32`.
-    pub fn as_mut_slice_f32(&mut self) -> Option<&mut [f32]> {
+    fn as_mut_slice_f32(&mut self) -> Option<&mut [f32]> {
         self.image.as_mut_slice_f32()
     }
 }

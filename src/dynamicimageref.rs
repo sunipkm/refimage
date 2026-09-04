@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::{
     CalcOptExp, ColorSpace, DynamicImageRef, ExposureResult, ImageProps, ImageRef, OptimumExposure,
-    OptimumExposureResult, PixelType,
+    OptimumExposureResult, PixelData, PixelType,
 };
 
 macro_rules! dynamic_map(
@@ -117,83 +117,51 @@ from_imgdata_dynimg!(u8, DynamicImageRef::U8);
 from_imgdata_dynimg!(u16, DynamicImageRef::U16);
 from_imgdata_dynimg!(f32, DynamicImageRef::F32);
 
-impl DynamicImageRef<'_> {
-    /// Get the data as a slice of [`u8`], regardless of the underlying type.
-    pub fn as_raw_u8(&self) -> &[u8] {
+impl PixelData for DynamicImageRef<'_> {
+    fn as_raw_u8(&self) -> &[u8] {
         dynamic_map!(self, image, { image.as_u8_slice() })
     }
 
-    /// Get the data as a slice of [`u8`], regardless of the underlying type.
-    pub fn as_raw_u8_checked(&self) -> Option<&[u8]> {
+    fn as_raw_u8_checked(&self) -> Option<&[u8]> {
         dynamic_map!(self, image, { image.as_u8_slice_checked() })
     }
 
-    /// Get the data as a slice of [`u8`].
-    ///
-    /// # Note
-    /// The returned slice is not guaranteed to have the same length as the image.
-    /// Use [`len`](DynamicImageRef::len) to get the length of the image.
-    pub fn as_slice_u8(&self) -> Option<&[u8]> {
+    fn as_slice_u8(&self) -> Option<&[u8]> {
         match self {
             DynamicImageRef::U8(data) => Some(data.as_slice()),
             _ => None,
         }
     }
 
-    /// Get the data as a mutable slice of [`u8`].
-    ///
-    /// # Note
-    /// The returned slice is not guaranteed to have the same length as the image.
-    /// Use [`len`](DynamicImageRef::len) to get the length of the image.
-    pub fn as_mut_slice_u8(&mut self) -> Option<&mut [u8]> {
+    fn as_mut_slice_u8(&mut self) -> Option<&mut [u8]> {
         match self {
             DynamicImageRef::U8(data) => Some(data.as_mut_slice()),
             _ => None,
         }
     }
 
-    /// Get the data as a slice of [`u16`].
-    ///
-    /// # Note
-    /// The returned slice is not guaranteed to have the same length as the image.
-    /// Use [`len`](DynamicImageRef::len) to get the length of the image.
-    pub fn as_slice_u16(&self) -> Option<&[u16]> {
+    fn as_slice_u16(&self) -> Option<&[u16]> {
         match self {
             DynamicImageRef::U16(data) => Some(data.as_slice()),
             _ => None,
         }
     }
 
-    /// Get the data as a mutable slice of [`u16`].
-    ///
-    /// # Note
-    /// The returned slice is not guaranteed to have the same length as the image.
-    /// Use [`len`](DynamicImageRef::len) to get the length of the image.
-    pub fn as_mut_slice_u16(&mut self) -> Option<&mut [u16]> {
+    fn as_mut_slice_u16(&mut self) -> Option<&mut [u16]> {
         match self {
             DynamicImageRef::U16(data) => Some(data.as_mut_slice()),
             _ => None,
         }
     }
 
-    /// Get the data as a slice of [`f32`].
-    ///
-    /// # Note
-    /// The returned slice is not guaranteed to have the same length as the image.
-    /// Use [`len`](DynamicImageRef::len) to get the length of the image.
-    pub fn as_slice_f32(&self) -> Option<&[f32]> {
+    fn as_slice_f32(&self) -> Option<&[f32]> {
         match self {
             DynamicImageRef::F32(data) => Some(data.as_slice()),
             _ => None,
         }
     }
 
-    /// Get the data as a mutable slice of [`f32`].
-    ///
-    /// # Note
-    /// The returned slice is not guaranteed to have the same length as the image.
-    /// Use [`len`](DynamicImageRef::len) to get the length of the image.
-    pub fn as_mut_slice_f32(&mut self) -> Option<&mut [f32]> {
+    fn as_mut_slice_f32(&mut self) -> Option<&mut [f32]> {
         match self {
             DynamicImageRef::F32(data) => Some(data.as_mut_slice()),
             _ => None,

@@ -1,7 +1,9 @@
 //! [`Frame`] / [`ApplyInput`] — the input traits for [`Runner::run`] and the
 //! one-shot [`Pipeline::apply`](super::Pipeline::apply).
 
-use crate::{DynamicImageOwned, DynamicImageRef, GenericImageOwned, GenericImageRef, ImageProps};
+use crate::{
+    DynamicImageOwned, DynamicImageRef, GenericImageOwned, GenericImageRef, ImageProps, PixelData,
+};
 
 use super::{ImageSpec, Pipeline, PipelineError, Runner, Strategy};
 
@@ -71,7 +73,7 @@ impl ApplyInput for GenericImageRef<'_> {
     fn run_pipeline(&self, pipeline: &Pipeline) -> Result<Self::Output, PipelineError> {
         Ok(GenericImageOwned {
             metadata: self.metadata.clone(),
-            image: apply_dynamic(pipeline, self.get_image())?,
+            image: apply_dynamic(pipeline, self.image())?,
         })
     }
 }
@@ -82,7 +84,7 @@ impl ApplyInput for GenericImageOwned {
     fn run_pipeline(&self, pipeline: &Pipeline) -> Result<Self::Output, PipelineError> {
         Ok(GenericImageOwned {
             metadata: self.metadata.clone(),
-            image: apply_dynamic(pipeline, self.get_image())?,
+            image: apply_dynamic(pipeline, self.image())?,
         })
     }
 }

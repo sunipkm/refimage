@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::DynamicImageRef;
 use crate::{
     CalcOptExp, ColorSpace, DynamicImageOwned, ExposureResult, ImageOwned, ImageProps,
-    OptimumExposure, OptimumExposureResult, PixelType,
+    OptimumExposure, OptimumExposureResult, PixelData, PixelType,
 };
 
 macro_rules! dynamic_map(
@@ -95,63 +95,58 @@ from_imgdata_dynimg!(u16, DynamicImageOwned::U16);
 from_imgdata_dynimg!(f32, DynamicImageOwned::F32);
 
 impl DynamicImageOwned {
-    /// Get the data as a slice of `u8`, regardless of the underlying type.
-    pub fn as_raw_u8(&self) -> &[u8] {
-        dynamic_map!(self, image, { image.as_u8_slice() })
-    }
-
-    /// Get the data as a slice of `u8`, regardless of the underlying type.
-    pub fn as_raw_u8_checked(&self) -> Option<&[u8]> {
-        dynamic_map!(self, image, { image.as_u8_slice_checked() })
-    }
-
-    /// Get the data as a mutable slice of `u8`, regardless of the underlying type.
+    /// The whole sample buffer as a mutable `&mut [u8]`, whatever the element
+    /// type (native endianness).
     pub fn as_mut_raw_u8(&mut self) -> &mut [u8] {
         dynamic_map!(self, image, image.as_mut_u8_slice())
     }
+}
 
-    /// Get the data as a slice of `u8`.
-    pub fn as_slice_u8(&self) -> Option<&[u8]> {
+impl PixelData for DynamicImageOwned {
+    fn as_raw_u8(&self) -> &[u8] {
+        dynamic_map!(self, image, { image.as_u8_slice() })
+    }
+
+    fn as_raw_u8_checked(&self) -> Option<&[u8]> {
+        dynamic_map!(self, image, { image.as_u8_slice_checked() })
+    }
+
+    fn as_slice_u8(&self) -> Option<&[u8]> {
         match self {
             DynamicImageOwned::U8(data) => Some(data.as_slice()),
             _ => None,
         }
     }
 
-    /// Get the data as a mutable slice of `u8`.
-    pub fn as_mut_slice_u8(&mut self) -> Option<&mut [u8]> {
+    fn as_mut_slice_u8(&mut self) -> Option<&mut [u8]> {
         match self {
             DynamicImageOwned::U8(data) => Some(data.as_mut_slice()),
             _ => None,
         }
     }
 
-    /// Get the data as a slice of `u16`.
-    pub fn as_slice_u16(&self) -> Option<&[u16]> {
+    fn as_slice_u16(&self) -> Option<&[u16]> {
         match self {
             DynamicImageOwned::U16(data) => Some(data.as_slice()),
             _ => None,
         }
     }
 
-    /// Get the data as a mutable slice of `u16`.
-    pub fn as_mut_slice_u16(&mut self) -> Option<&mut [u16]> {
+    fn as_mut_slice_u16(&mut self) -> Option<&mut [u16]> {
         match self {
             DynamicImageOwned::U16(data) => Some(data.as_mut_slice()),
             _ => None,
         }
     }
 
-    /// Get the data as a slice of `f32`.
-    pub fn as_slice_f32(&self) -> Option<&[f32]> {
+    fn as_slice_f32(&self) -> Option<&[f32]> {
         match self {
             DynamicImageOwned::F32(data) => Some(data.as_slice()),
             _ => None,
         }
     }
 
-    /// Get the data as a mutable slice of `f32`.
-    pub fn as_mut_slice_f32(&mut self) -> Option<&mut [f32]> {
+    fn as_mut_slice_f32(&mut self) -> Option<&mut [f32]> {
         match self {
             DynamicImageOwned::F32(data) => Some(data.as_mut_slice()),
             _ => None,

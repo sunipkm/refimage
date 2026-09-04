@@ -1,4 +1,4 @@
-use crate::imagetraits::ImageProps;
+use crate::imagetraits::{ImageProps, PixelData};
 use crate::{ColorSpace, DynamicImageOwned, DynamicImageRef, ImageError, ImageOwned, PixelType};
 use crate::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
@@ -172,7 +172,6 @@ impl TryFrom<SerialImage> for DynamicImageOwned {
                 check(&img, channels)?;
                 Ok(DynamicImageOwned::F32(img))
             }
-            other => Err(SerdeError::Image(ImageError::InvalidPixelType(other as i8))),
         }
     }
 }

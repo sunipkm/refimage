@@ -307,14 +307,17 @@ pub(super) fn view<'a>(
     let n = spec.elems();
     let (w, h) = (spec.width, spec.height);
     let cs = spec.cspace.clone();
-    Ok(match spec.pixel_type {
+    Ok(match spec.pixel_type.storage() {
         PixelType::U8 => {
             let d = &mut cast_slice_mut::<f32, u8>(buf)[..n];
             DynamicImageRef::from(ImageRef::<u8>::create(d, w, h, cs)?)
         }
         PixelType::U16 => {
             let d = &mut cast_slice_mut::<f32, u16>(buf)[..n];
-            DynamicImageRef::from(ImageRef::<u16>::create(d, w, h, cs)?)
+            // Re-apply a `U10` / `U12` / `U14` tag; a plain `U16` clears it.
+            let img = ImageRef::<u16>::create(d, w, h, cs)?
+                .with_bit_depth(spec.pixel_type.bit_depth());
+            DynamicImageRef::from(img)
         }
         PixelType::F32 => {
             let d = &mut buf[..n];

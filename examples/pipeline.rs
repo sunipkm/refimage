@@ -7,7 +7,8 @@ use std::time::Instant;
 
 use refimage::pipeline::{ImageSpec, Pipeline, Strategy};
 use refimage::{
-    BayerPattern, ColorSpace, DemosaicMethod, DynamicImageRef, ImageProps, ImageRef, PixelType,
+    BayerPattern, ColorSpace, DemosaicMethod, DynamicImageRef, ImageProps, ImageRef, PixelData,
+    PixelType,
 };
 
 fn main() {

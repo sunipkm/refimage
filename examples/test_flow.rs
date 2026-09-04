@@ -7,7 +7,7 @@ use refimage::pipeline::Pipeline;
 use refimage::OptimumExposureBuilder;
 use refimage::{
     BayerPattern, ColorSpace, DemosaicMethod, DynamicImageRef, FitsCompression, FitsWrite,
-    GenericImageRef, ImageProps, ImageRef,
+    GenericImageRef, ImageProps, ImageRef, PixelData,
 };
 
 fn main() {

@@ -24,8 +24,8 @@ use refimage::chrono::DateTime;
 use refimage::pipeline::{ImageSpec, Pipeline, Strategy};
 use refimage::{
     BayerPattern, ColorSpace, DemosaicMethod, DynamicImageOwned, DynamicImageRef, FitsCompression,
-    FitsWrite, GenericImageOwned, Gzip, Hcompress, ImageOwned, ImageProps, ImageRef, PixelType,
-    Rice,
+    FitsWrite, GenericImageOwned, Gzip, Hcompress, ImageOwned, ImageProps, ImageRef, PixelData,
+    PixelType, Rice,
 };
 use wasm_bindgen_test::wasm_bindgen_test;
 
@@ -114,10 +114,10 @@ fn generic_image_carries_metadata() {
     let mut g = GenericImageOwned::new(stamp, Duration::ZERO, img);
     g.insert_key("GAIN", 42u16).unwrap();
 
-    assert_eq!(g.get_timestamp(), stamp);
+    assert_eq!(g.timestamp(), stamp);
     assert_eq!(
-        g.get_key("GAIN")
-            .and_then(|it| it.get_value().get_value_u16()),
+        g.key("GAIN")
+            .and_then(|it| it.value().value_u16()),
         Some(42)
     );
 }

@@ -397,7 +397,7 @@ mod test {
             .pixel_exclusion(1)
             .build()
             .unwrap();
-        let mut img = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let mut img = vec![0u16, 1, 2, 3, 4, 5, 6, 7, 8, 9];
         let exp = Duration::from_secs(10);
         let res = opt_exp.calculate(&mut img, exp, 1).unwrap();
         // A near-black frame wants a much longer exposure -> clamped to the max.

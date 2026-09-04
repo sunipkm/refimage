@@ -58,7 +58,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_raster_mut_overflow() {
-        let mut buf = [0; 1];
+        let mut buf = [0u16; 1];
         let _ = RasterMut::new(usize::MAX, usize::MAX, &mut buf);
     }
 

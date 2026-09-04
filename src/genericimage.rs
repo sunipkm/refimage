@@ -7,8 +7,8 @@ use crate::imagetraits::ImageProps;
 use crate::metadata::InsertValue;
 use crate::{genericimageowned::GenericImageOwned, genericimageref::GenericImageRef};
 use crate::{
-    CalcOptExp, ColorSpace, ExposureResult, GenericLineItem, Metadata, OptimumExposure,
-    OptimumExposureResult, PixelType,
+    CalcOptExp, ColorSpace, DynamicImageView, ExposureResult, GenericLineItem, Metadata,
+    OptimumExposure, OptimumExposureResult, PixelData, PixelType,
 };
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -54,14 +54,14 @@ macro_rules! dynamic_map(
 );
 
 impl GenericImage<'_> {
-    /// Get the UTC timestamp of the image.
-    pub fn get_timestamp(&self) -> DateTime<Utc> {
-        dynamic_map!(self, image, { image.get_timestamp() })
+    /// The UTC timestamp of the image.
+    pub fn timestamp(&self) -> DateTime<Utc> {
+        dynamic_map!(self, image, { image.timestamp() })
     }
 
-    /// Get the exposure time of the image (`Duration::ZERO` if not applicable).
-    pub fn get_exposure(&self) -> Duration {
-        dynamic_map!(self, image, { image.get_exposure() })
+    /// The exposure time of the image (`Duration::ZERO` if not applicable).
+    pub fn exposure(&self) -> Duration {
+        dynamic_map!(self, image, { image.exposure() })
     }
 
     /// Set the exposure time of the image.
@@ -69,9 +69,9 @@ impl GenericImage<'_> {
         dynamic_map!(self, image, { image.set_exposure(exposure) })
     }
 
-    /// Get the acquisition frame ID of the image, or `None` if unset.
-    pub fn get_frame_id(&self) -> Option<u32> {
-        dynamic_map!(self, image, { image.get_frame_id() })
+    /// The acquisition frame ID of the image, or `None` if unset.
+    pub fn frame_id(&self) -> Option<u32> {
+        dynamic_map!(self, image, { image.frame_id() })
     }
 
     /// Set the acquisition frame ID of the image.
@@ -141,22 +141,34 @@ impl GenericImage<'_> {
         dynamic_map!(self, image, { image.replace_key(name, value) })
     }
 
-    // /// Get the underlying [`DynamicImageOwned`].
-    // ///
-    // /// # Returns
-    // /// The underlying [`DynamicImageOwned`] of the [`GenericImageOwned`].
-    // pub fn get_image(&self) -> &DynamicImageOwned {
-    //     dynamic_map!(self, ref image => image.get_image())
-    // }
-
-    /// Borrow the image's [`Metadata`].
-    pub fn get_metadata(&self) -> &Metadata {
-        dynamic_map!(self, image, { image.get_metadata() })
+    /// A read-only, type-erased [`DynamicImageView`] over the samples, whichever
+    /// half this [`GenericImage`] holds.
+    pub fn image(&self) -> DynamicImageView<'_> {
+        match self {
+            GenericImage::Ref(g) => g.image().view(),
+            GenericImage::Own(g) => g.image().view(),
+        }
     }
 
-    /// Get a specific extra metadata item by name (case-insensitive).
-    pub fn get_key(&self, name: &str) -> Option<&GenericLineItem> {
-        dynamic_map!(self, image, { image.get_key(name) })
+    /// Borrow the image's [`Metadata`].
+    pub fn metadata(&self) -> &Metadata {
+        dynamic_map!(self, image, { image.metadata() })
+    }
+
+    /// Mutably borrow the image's [`Metadata`].
+    pub fn metadata_mut(&mut self) -> &mut Metadata {
+        dynamic_map!(self, image, { image.metadata_mut() })
+    }
+
+    /// A specific extra metadata item by name (case-insensitive).
+    pub fn key(&self, name: &str) -> Option<&GenericLineItem> {
+        dynamic_map!(self, image, { image.key(name) })
+    }
+
+    /// Convert into an owned [`GenericImageOwned`], copying the samples when this
+    /// is the borrowed half.
+    pub fn into_owned(self) -> GenericImageOwned {
+        self.into()
     }
 }
 
@@ -238,7 +250,7 @@ impl CalcOptExp for GenericImage<'_> {
 
 impl GenericImage<'_> {
     /// Optimum exposure and binning, using this image's own recorded
-    /// [`exposure`](Self::get_exposure).
+    /// [`exposure`](Self::exposure).
     ///
     /// # Errors
     /// [`ExposureError::ZeroExposure`](crate::ExposureError::ZeroExposure) if the
@@ -249,74 +261,35 @@ impl GenericImage<'_> {
         eval: &OptimumExposure,
         bin: u16,
     ) -> ExposureResult<OptimumExposureResult> {
-        let exposure = self.get_exposure();
+        let exposure = self.exposure();
         self.calc_opt_exp(eval, exposure, bin)
     }
 }
 
-impl GenericImage<'_> {
-    /// Get the data as a slice of [`u8`], regardless of the underlying type.
-    pub fn as_raw_u8(&self) -> &[u8] {
-        dynamic_map!(self, image, { image.image.as_raw_u8() })
+impl PixelData for GenericImage<'_> {
+    fn as_raw_u8(&self) -> &[u8] {
+        dynamic_map!(self, image, { image.as_raw_u8() })
     }
-
-    /// Get the data as a slice of [`u8`], regardless of the underlying type.
-    pub fn as_raw_u8_checked(&self) -> Option<&[u8]> {
-        dynamic_map!(self, image, { image.image.as_raw_u8_checked() })
+    fn as_raw_u8_checked(&self) -> Option<&[u8]> {
+        dynamic_map!(self, image, { image.as_raw_u8_checked() })
     }
-
-    /// Get the data as a slice of [`u8`].
-    ///
-    /// # Note
-    /// The returned slice may not be the same length as the image.
-    /// Use [`len`](GenericImage::len) to get the length of the image.
-    pub fn as_slice_u8(&self) -> Option<&[u8]> {
-        dynamic_map!(self, image, { image.image.as_slice_u8() })
+    fn as_slice_u8(&self) -> Option<&[u8]> {
+        dynamic_map!(self, image, { image.as_slice_u8() })
     }
-
-    /// Get the data as a mutable slice of [`u8`].
-    ///
-    /// # Note
-    /// The returned slice may not be the same length as the image.
-    /// Use [`len`](GenericImage::len) to get the length of the image.
-    pub fn as_mut_slice_u8(&mut self) -> Option<&mut [u8]> {
-        dynamic_map!(self, image, { image.image.as_mut_slice_u8() })
+    fn as_mut_slice_u8(&mut self) -> Option<&mut [u8]> {
+        dynamic_map!(self, image, { image.as_mut_slice_u8() })
     }
-
-    /// Get the data as a slice of [`u16`].
-    ///
-    /// # Note
-    /// The returned slice may not be the same length as the image.
-    /// Use [`len`](GenericImage::len) to get the length of the image.
-    pub fn as_slice_u16(&self) -> Option<&[u16]> {
-        dynamic_map!(self, image, { image.image.as_slice_u16() })
+    fn as_slice_u16(&self) -> Option<&[u16]> {
+        dynamic_map!(self, image, { image.as_slice_u16() })
     }
-
-    /// Get the data as a mutable slice of [`u16`].
-    ///
-    /// # Note
-    /// The returned slice may not be the same length as the image.
-    /// Use [`len`](GenericImage::len) to get the length of the image.
-    pub fn as_mut_slice_u16(&mut self) -> Option<&mut [u16]> {
-        dynamic_map!(self, image, { image.image.as_mut_slice_u16() })
+    fn as_mut_slice_u16(&mut self) -> Option<&mut [u16]> {
+        dynamic_map!(self, image, { image.as_mut_slice_u16() })
     }
-
-    /// Get the data as a slice of [`f32`].
-    ///
-    /// # Note
-    /// The returned slice may not be the same length as the image.
-    /// Use [`len`](GenericImage::len) to get the length of the image.
-    pub fn as_slice_f32(&self) -> Option<&[f32]> {
-        dynamic_map!(self, image, { image.image.as_slice_f32() })
+    fn as_slice_f32(&self) -> Option<&[f32]> {
+        dynamic_map!(self, image, { image.as_slice_f32() })
     }
-
-    /// Get the data as a mutable slice of [`f32`].
-    ///
-    /// # Note
-    /// The returned slice may not be the same length as the image.
-    /// Use [`len`](GenericImage::len) to get the length of the image.
-    pub fn as_mut_slice_f32(&mut self) -> Option<&mut [f32]> {
-        dynamic_map!(self, image, { image.image.as_mut_slice_f32() })
+    fn as_mut_slice_f32(&mut self) -> Option<&mut [f32]> {
+        dynamic_map!(self, image, { image.as_mut_slice_f32() })
     }
 }
 

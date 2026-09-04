@@ -61,6 +61,47 @@ impl BayerShift for BayerPattern {
     }
 }
 
+/// Type-erased access to an image's raw sample buffer.
+///
+/// Implemented by [`DynamicImageRef`](crate::DynamicImageRef),
+/// [`DynamicImageOwned`](crate::DynamicImageOwned),
+/// [`GenericImageRef`](crate::GenericImageRef),
+/// [`GenericImageOwned`](crate::GenericImageOwned) and
+/// [`GenericImage`](crate::GenericImage), so the same accessors work whatever
+/// concrete type a value has.
+///
+/// The typed accessors ([`as_slice_u16`](Self::as_slice_u16) etc.) return `None`
+/// unless the image's element type matches exactly — a `u16` buffer tagged
+/// 10-/12-/14-bit still reads back through [`as_slice_u16`](Self::as_slice_u16).
+/// A returned slice holds [`len`](ImageProps::len) samples, which can be shorter
+/// than the backing allocation.
+pub trait PixelData {
+    /// The whole sample buffer reinterpreted as bytes (native endianness).
+    fn as_raw_u8(&self) -> &[u8];
+
+    /// [`as_raw_u8`](Self::as_raw_u8), but `None` on a reinterpret-cast failure
+    /// instead of panicking.
+    fn as_raw_u8_checked(&self) -> Option<&[u8]>;
+
+    /// The samples as `&[u8]`, or `None` unless the element type is `u8`.
+    fn as_slice_u8(&self) -> Option<&[u8]>;
+
+    /// The samples as `&[u16]`, or `None` unless the element type is `u16`.
+    fn as_slice_u16(&self) -> Option<&[u16]>;
+
+    /// The samples as `&[f32]`, or `None` unless the element type is `f32`.
+    fn as_slice_f32(&self) -> Option<&[f32]>;
+
+    /// The samples as `&mut [u8]`, or `None` unless the element type is `u8`.
+    fn as_mut_slice_u8(&mut self) -> Option<&mut [u8]>;
+
+    /// The samples as `&mut [u16]`, or `None` unless the element type is `u16`.
+    fn as_mut_slice_u16(&mut self) -> Option<&mut [u16]>;
+
+    /// The samples as `&mut [f32]`, or `None` unless the element type is `f32`.
+    fn as_mut_slice_f32(&mut self) -> Option<&mut [f32]>;
+}
+
 /// A trait for accessing the properties of an image.
 pub trait ImageProps {
     /// Get the width of the image.

@@ -25,8 +25,10 @@ impl Plan {
             let next = op.output_spec(&cur)?;
             let mut step = Step {
                 kind: StepKind::Convert,
-                in_pt: cur.pixel_type,
-                out_pt: next.pixel_type,
+                // Kernels only know the storage widths; `U10` / `U12` / `U14`
+                // are `u16` (the tag is re-applied to the output by `view`).
+                in_pt: cur.pixel_type.storage(),
+                out_pt: next.pixel_type.storage(),
                 in_channels: cur.cspace.channels(),
                 bayer: None,
                 coeff_idx: 0,

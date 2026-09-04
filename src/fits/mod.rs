@@ -253,15 +253,15 @@ macro_rules! impl_fitswrite {
                 compress: C,
             ) -> FitsResult<()> {
                 let compress = compress.into();
-                let view = ImageView::from_ref_like(self.get_image());
-                write_one(&view, self.get_metadata(), &compress, sink, true)
+                let view = ImageView::from_ref_like(self.image());
+                write_one(&view, self.metadata(), &compress, sink, true)
             }
 
             fn append_fits<Sink: Write>(&self, writer: &mut FitsWriter<Sink>) -> FitsResult<()> {
-                let view = ImageView::from_ref_like(self.get_image());
+                let view = ImageView::from_ref_like(self.image());
                 write_one(
                     &view,
-                    self.get_metadata(),
+                    self.metadata(),
                     &writer.compress,
                     &mut writer.out,
                     false,
@@ -501,8 +501,8 @@ fn write_metadata(h: &mut Header, meta: &Metadata) -> FitsResult<()> {
 }
 
 fn write_item(h: &mut Header, key: &str, item: &GenericLineItem) -> FitsResult<()> {
-    let comment = item.get_comment();
-    match item.get_value() {
+    let comment = item.comment();
+    match item.value() {
         GenericValue::Integer(v) => h.integer(key, *v, comment)?,
         GenericValue::Real(v) => h.real(key, *v, comment)?,
         GenericValue::String(s) => {

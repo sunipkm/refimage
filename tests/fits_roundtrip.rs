@@ -111,7 +111,7 @@ fn cfitsio_sees_headers() {
     let naxis1: i64 = hdu.read_key(&mut f, "NAXIS1").unwrap();
     let naxis2: i64 = hdu.read_key(&mut f, "NAXIS2").unwrap();
     assert_eq!((naxis1, naxis2), (4, 3));
-    let _ = g.get_image().width();
+    let _ = g.image().width();
 
     std::fs::remove_file(&path).ok();
 }

@@ -267,13 +267,13 @@ pub enum GenericValue {
 }
 
 impl GenericLineItem {
-    /// Get the comment of the metadata value.
-    pub fn get_comment(&self) -> Option<&str> {
+    /// The comment attached to this metadata item, if any.
+    pub fn comment(&self) -> Option<&str> {
         self.comment.as_deref()
     }
 
-    /// Get the value of the metadata item.
-    pub fn get_value(&self) -> &GenericValue {
+    /// The value of this metadata item.
+    pub fn value(&self) -> &GenericValue {
         &self.value
     }
 }
@@ -577,9 +577,9 @@ impl InsertValue for (&str, &str) {
 macro_rules! impl_getter {
     ($t:ty) => {
         ::paste::paste! {
-            #[doc = "Get the metadata value of type [`" $t " `]."]
+            #[doc = "This value as [`" $t " `], or `None` if it is a different type."]
             #[inline(always)]
-            pub fn [<get_value_ $t:lower>](&self) -> Option<$t> {
+            pub fn [<value_ $t:lower>](&self) -> Option<$t> {
                 self.clone().try_into().ok()
             }
         }
@@ -598,15 +598,15 @@ impl GenericValue {
     impl_getter!(f64);
     impl_getter!(Duration);
 
-    /// Get the UTC timestamp metadata value.
+    /// This value as a UTC timestamp, or `None` if it is a different type.
     #[inline(always)]
-    pub fn get_value_timestamp(&self) -> Option<DateTime<Utc>> {
+    pub fn value_timestamp(&self) -> Option<DateTime<Utc>> {
         self.clone().try_into().ok()
     }
 
-    /// Get the `String` metadata value.
+    /// This value as a string, or `None` if it is a different type.
     #[inline(always)]
-    pub fn get_value_string(&self) -> Option<&str> {
+    pub fn value_string(&self) -> Option<&str> {
         match self {
             GenericValue::String(s) => Some(s.as_str()),
             _ => None,
@@ -643,11 +643,11 @@ mod test {
             .apply(&img)
             .unwrap();
 
-        assert_eq!(img.get_metadata(), out.get_metadata());
-        assert_eq!(img.get_timestamp(), out.get_timestamp());
-        assert_eq!(img.get_image().width(), out.get_image().width());
-        assert_eq!(img.get_image().height(), out.get_image().height());
-        assert_eq!(img.get_image().channels() * 3, out.get_image().channels());
+        assert_eq!(img.metadata(), out.metadata());
+        assert_eq!(img.timestamp(), out.timestamp());
+        assert_eq!(img.image().width(), out.image().width());
+        assert_eq!(img.image().height(), out.image().height());
+        assert_eq!(img.image().channels() * 3, out.image().channels());
     }
 
     #[test]

@@ -3,7 +3,7 @@
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
-use crate::{DynamicImageOwned, DynamicImageRef, ImageProps};
+use crate::{DynamicImageOwned, DynamicImageRef, ImageProps, PixelData};
 
 use super::exec::{current, fill_tiled, run_chain, view, TileGeom};
 use super::kernels::Demosaic;

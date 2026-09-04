@@ -68,8 +68,10 @@ impl ImageSpec {
     }
 }
 
+/// Bytes of one sample. The sub-container depths [`PixelType::U10`] / `U12` /
+/// `U14` are `u16` storage, so they size as [`PixelType::U16`].
 pub(crate) fn pixel_size(pt: PixelType) -> Result<usize, PipelineError> {
-    match pt {
+    match pt.storage() {
         PixelType::U8 => Ok(1),
         PixelType::U16 => Ok(2),
         PixelType::F32 => Ok(4),

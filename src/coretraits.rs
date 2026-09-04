@@ -92,10 +92,6 @@ pub trait PixelStor:
 
     impl_cast_floor!(u8);
     impl_cast_floor!(u16);
-    impl_cast_floor!(u32);
-    impl_cast_floor!(i8);
-    impl_cast_floor!(i16);
-    impl_cast_floor!(i32);
 
     /// Cast the value to `f32`, by scaling the value to requisite range.
     #[inline(always)]
@@ -132,14 +128,7 @@ macro_rules! declare_pixelstor {
 
 declare_pixelstor!(u8: (0)..Self::MAX, PixelType::U8);
 declare_pixelstor!(u16: (0)..Self::MAX, PixelType::U16);
-declare_pixelstor!(u32: (0)..Self::MAX, PixelType::U32);
-
-declare_pixelstor!(i8: (Self::MIN)..Self::MAX, PixelType::I8);
-declare_pixelstor!(i16: (Self::MIN)..Self::MAX, PixelType::I16);
-declare_pixelstor!(i32: (Self::MIN)..Self::MAX, PixelType::I32);
-
-declare_pixelstor!(f32: (0.0)..1.0,  PixelType::F32);
-declare_pixelstor!(f64: (0.0)..1.0, PixelType::F64);
+declare_pixelstor!(f32: (0.0)..1.0, PixelType::F32);
 
 /// An `Enlargable::Larger` value should be enough to calculate
 /// the sum (average) of a few hundred or thousand Enlargeable values.
@@ -281,22 +270,7 @@ impl Enlargeable for u8 {
 impl Enlargeable for u16 {
     type Larger = u32;
 }
-impl Enlargeable for u32 {
-    type Larger = u64;
-}
-impl Enlargeable for i8 {
-    type Larger = i32;
-}
-impl Enlargeable for i16 {
-    type Larger = i32;
-}
-impl Enlargeable for i32 {
-    type Larger = i64;
-}
 impl Enlargeable for f32 {
-    type Larger = f64;
-}
-impl Enlargeable for f64 {
     type Larger = f64;
 }
 

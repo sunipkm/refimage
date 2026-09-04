@@ -2,6 +2,34 @@
 
 ## Changes
 
+### Unreleased
+
+- **Breaking:** `PixelType` now has only the six variants the crate can actually
+  store and process — `U8`, `U10`, `U12`, `U14`, `U16`, `F32`. The signed and
+  wide-integer variants (`I8`/`I16`/`I32`/`I64`/`U32`/`U64`/`F64`) and the
+  `PixelStor` impls for `i8`/`i16`/`i32`/`u32`/`f64` are gone; they were never
+  representable in a `DynamicImage*` or a pipeline. `PixelType::UnsupportedPixelType`
+  can still surface if a future variant is added ahead of kernel support. The
+  sub-container depths `U10`/`U12`/`U14` now flow through a `Pipeline` (processed
+  as their `u16` `storage()`); a chain that leaves the element type alone carries
+  the depth tag onto the output.
+- **Breaking:** the raw-buffer accessors (`as_raw_u8`, `as_raw_u8_checked`,
+  `as_slice_u8` / `_u16` / `_f32`, and the `_mut` variants) moved from inherent
+  methods to a new `PixelData` trait, implemented for `DynamicImageRef` /
+  `DynamicImageOwned` / `GenericImageRef` / `GenericImageOwned` / `GenericImage`
+  and the new `DynamicImageView`. `use refimage::PixelData;` to call them.
+- **Breaking:** `get_`-prefixed accessors are renamed to drop the prefix, matching
+  `Metadata`'s existing style: `GenericImageRef` / `GenericImageOwned` /
+  `GenericImage` gain `timestamp()`, `exposure()`, `frame_id()`, `image()`,
+  `image_mut()`, `metadata()`, `metadata_mut()`, `key()`; `GenericLineItem` gains
+  `value()` / `comment()`; `GenericValue` gains `value_u16()` / `value_f64()` /
+  `value_timestamp()` / `value_string()` etc. `set_*` names are unchanged.
+- Added `ImageView<'a, T>` and `DynamicImageView<'a>` — a shared *read-only*
+  borrow of image samples, produced by `ImageRef::view()` / `ImageOwned::view()` /
+  `DynamicImageRef::view()` / `DynamicImageOwned::view()`. `GenericImage` is now
+  fully wired: `image()` returns a `DynamicImageView` over whichever half it
+  holds, and it gains `metadata_mut()` and `into_owned()`.
+
 ### 1.0.0-pre5 (2026-08-28)
 
 - Updated Rust edition to 2024.
