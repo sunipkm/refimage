@@ -25,9 +25,13 @@ jobs:
           .venv/bin/pip install maturin
           .venv/bin/maturin build --release --out dist
           .venv/bin/pip install "$(ls dist/*.whl)[test]"
+      # Run from outside python/ so `import refimage` resolves to the installed wheel
+      # rather than the (uncompiled) source package.
       - name: Test
-        working-directory: python
-        run: .venv/bin/python -m pytest -q
+        working-directory: ${{ runner.temp }}
+        run: $GITHUB_WORKSPACE/python/.venv/bin/python -m pytest -q $GITHUB_WORKSPACE/python/tests
       - name: Check the type stub against the compiled module
-        working-directory: python
-        run: .venv/bin/python -m mypy.stubtest refimage._native --allowlist stubtest-allowlist.txt
+        working-directory: ${{ runner.temp }}
+        run: >-
+          $GITHUB_WORKSPACE/python/.venv/bin/python -m mypy.stubtest refimage._native
+          --allowlist $GITHUB_WORKSPACE/python/stubtest-allowlist.txt

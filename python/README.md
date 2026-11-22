@@ -36,5 +36,5 @@ out.write_fits("frame.fits", "rice")
 `skimage.transform.warp` with a matrix and `scipy.ndimage.map_coordinates` for spline
 orders 0, 1 and 3 and every scipy boundary mode, on any pixel type and channel count.
 
-Images serialize with `to_bytes()` / `Image.from_bytes()` to the same bincode bytes Rust's
-`bincode::serialize(&GenericImageOwned)` produces, and pickle.
+Images serialize with `to_bytes()` / `Image.from_bytes()` works identically to Rust bincode
+`bincode::serialize(&GenericImageOwned)` and pickle.

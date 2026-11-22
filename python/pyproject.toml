@@ -1,24 +1,36 @@
 [build-system]
-requires = ["maturin>=1.7,<2"]
+requires = ["maturin>=1.9,<2"]
 build-backend = "maturin"
 
 [project]
 name = "refimage"
-description = "Images with metadata, allocation-aware processing pipelines (debayer, resize, warp, ...) and FITS output, in Rust"
+description = "Python wrapper for refimage, providing images with metadata, allocation-aware processing pipelines (debayer, resize, warp, ...) and FITS output."
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT OR Apache-2.0" }
+license = "MIT OR Apache-2.0"
+license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
 authors = [{ name = "Sunip K. Mukherjee" }]
 dependencies = ["numpy>=1.26"]
 # The version is read from crates/refimage-py/Cargo.toml.
 dynamic = ["version"]
+keywords = ["image", "fits", "debayer", "astronomy", "numpy"]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Rust",
     "Topic :: Scientific/Engineering :: Astronomy",
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
+
+[project.urls]
+Repository = "https://github.com/sunipkm/refimage"
+Issues = "https://github.com/sunipkm/refimage/issues"
 
 [project.optional-dependencies]
 test = ["pytest", "scipy", "scikit-image", "astropy", "mypy"]
