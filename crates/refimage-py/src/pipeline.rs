@@ -32,7 +32,9 @@ pub(crate) fn matrix3(obj: &Bound<'_, PyAny>) -> PyResult<[[f64; 3]; 3]> {
 }
 
 /// `(rows, cols, width, height)` from a `(2, H, W)` coordinate array.
-pub(crate) fn coordinate_planes(obj: &Bound<'_, PyAny>) -> PyResult<(Vec<f64>, Vec<f64>, usize, usize)> {
+pub(crate) fn coordinate_planes(
+    obj: &Bound<'_, PyAny>,
+) -> PyResult<(Vec<f64>, Vec<f64>, usize, usize)> {
     let np = obj.py().import("numpy")?;
     let arr = np.call_method1("asarray", (obj, "float64"))?;
     let arr: PyReadonlyArrayDyn<'_, f64> = arr.extract()?;
@@ -46,8 +48,16 @@ pub(crate) fn coordinate_planes(obj: &Bound<'_, PyAny>) -> PyResult<(Vec<f64>, V
         }
     };
     let view = arr.as_array();
-    let rows = view.index_axis(numpy::ndarray::Axis(0), 0).iter().copied().collect();
-    let cols = view.index_axis(numpy::ndarray::Axis(0), 1).iter().copied().collect();
+    let rows = view
+        .index_axis(numpy::ndarray::Axis(0), 0)
+        .iter()
+        .copied()
+        .collect();
+    let cols = view
+        .index_axis(numpy::ndarray::Axis(0), 1)
+        .iter()
+        .copied()
+        .collect();
     Ok((rows, cols, w, h))
 }
 
@@ -59,7 +69,13 @@ pub(crate) fn coordinate_planes(obj: &Bound<'_, PyAny>) -> PyResult<(Vec<f64>, V
 /// runner = p.compile(first_frame)          # allocate once
 /// out = runner.run(frame, out=out)         # then reuse `out` for every frame
 /// ```
-#[pyclass(module = "refimage", name = "Pipeline", frozen, eq, skip_from_py_object)]
+#[pyclass(
+    module = "refimage",
+    name = "Pipeline",
+    frozen,
+    eq,
+    skip_from_py_object
+)]
 #[derive(Clone, PartialEq, Default)]
 pub struct Pipeline {
     pub(crate) inner: rp::Pipeline,
@@ -74,12 +90,15 @@ impl Pipeline {
 }
 
 /// What to compile a [`Pipeline`] against.
-fn spec_of(like: &Bound<'_, PyAny>, color_space: Option<&Bound<'_, PyAny>>) -> PyResult<rp::ImageSpec> {
+fn spec_of(
+    like: &Bound<'_, PyAny>,
+    color_space: Option<&Bound<'_, PyAny>>,
+) -> PyResult<rp::ImageSpec> {
     if let Ok(s) = like.cast::<ImageSpec>() {
         return Ok(s.get().inner.clone());
     }
     if let Ok(img) = like.cast::<Image>() {
-        return Ok(rp::ImageSpec::from_dynamic(&img.borrow().inner));
+        return Ok(rp::ImageSpec::from_dynamic(img.borrow().store.get()));
     }
     let px = NdPixels::extract(like)?;
     let (h, w, c) = px.hwc()?;
@@ -242,7 +261,10 @@ impl Pipeline {
     #[getter]
     fn ops<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyList>> {
         let json = serde_json::to_string(self.inner.ops()).map_err(err)?;
-        Ok(py.import("json")?.call_method1("loads", (json,))?.cast_into::<PyList>()?)
+        Ok(py
+            .import("json")?
+            .call_method1("loads", (json,))?
+            .cast_into::<PyList>()?)
     }
 
     /// The recipe as JSON (the same serde representation Rust uses).
@@ -258,7 +280,10 @@ impl Pipeline {
     }
 
     fn __reduce__<'py>(slf: &Bound<'py, Self>) -> PyResult<(Bound<'py, PyAny>, (String,))> {
-        Ok((slf.get_type().getattr("from_json")?, (slf.get().to_json()?,)))
+        Ok((
+            slf.get_type().getattr("from_json")?,
+            (slf.get().to_json()?,),
+        ))
     }
 
     fn __len__(&self) -> usize {
@@ -271,7 +296,9 @@ impl Pipeline {
             .ops()
             .iter()
             .map(|op| match op {
-                Op::MapCoordinates { width, height, .. } => format!("MapCoordinates({width}x{height})"),
+                Op::MapCoordinates { width, height, .. } => {
+                    format!("MapCoordinates({width}x{height})")
+                }
                 other => format!("{other:?}"),
             })
             .collect();
@@ -289,12 +316,13 @@ impl Pipeline {
     ) -> PyResult<Image> {
         let out = if let Ok(img) = image.cast::<Image>() {
             let img = img.borrow();
-            let src = &img.inner;
-            py.detach(|| self.inner.apply(src))
+            let src = &img.store;
+            py.detach(|| src.apply(&self.inner))
         } else {
             let cs = color_space.map(parse_cspace).transpose()?;
-            let src = Image::from_numpy(image, cs, Metadata::new(now(), Default::default()), None)?.inner;
-            py.detach(|| self.inner.apply(&src))
+            let src =
+                Image::from_numpy(image, cs, Metadata::new(now(), Default::default()), None)?.store;
+            py.detach(|| src.apply(&self.inner))
         };
         Ok(Image::from_inner(out.map_err(err)?))
     }
@@ -319,13 +347,21 @@ impl Pipeline {
     ) -> PyResult<Runner> {
         let spec = spec_of(like, color_space)?;
         let strategy = parse_strategy(strategy, tile_rows, tile_cols, parallel)?;
-        let inner = py.detach(|| self.inner.compile(spec, strategy)).map_err(err)?;
+        let inner = py
+            .detach(|| self.inner.compile(spec, strategy))
+            .map_err(err)?;
         Ok(Runner { inner })
     }
 }
 
 /// The shape and pixel type a pipeline is compiled for.
-#[pyclass(module = "refimage", name = "ImageSpec", frozen, eq, skip_from_py_object)]
+#[pyclass(
+    module = "refimage",
+    name = "ImageSpec",
+    frozen,
+    eq,
+    skip_from_py_object
+)]
 #[derive(Clone, PartialEq)]
 pub struct ImageSpec {
     pub(crate) inner: rp::ImageSpec,
@@ -341,8 +377,14 @@ impl ImageSpec {
         color_space: Option<&Bound<'_, PyAny>>,
         pixel_type: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
-        let cs = color_space.map(parse_cspace).transpose()?.unwrap_or(ColorSpace::Gray);
-        let pt = pixel_type.map(parse_pixel_type).transpose()?.unwrap_or(PixelType::U16);
+        let cs = color_space
+            .map(parse_cspace)
+            .transpose()?
+            .unwrap_or(ColorSpace::Gray);
+        let pt = pixel_type
+            .map(parse_pixel_type)
+            .transpose()?
+            .unwrap_or(PixelType::U16);
         Ok(Self {
             inner: rp::ImageSpec::new(width, height, cs, pt),
         })
@@ -463,12 +505,14 @@ fn finish(
         Some(o) => {
             o.store(result)?;
             if let Some(m) = meta {
-                o.inner.metadata_mut().clone_from(m);
+                o.store.metadata_mut().clone_from(m);
             }
             Ok(None)
         }
         None => {
-            let meta = meta.cloned().unwrap_or_else(|| Metadata::new(now(), Default::default()));
+            let meta = meta
+                .cloned()
+                .unwrap_or_else(|| Metadata::new(now(), Default::default()));
             Ok(Some(GenericImageOwned::with_metadata(meta, result)))
         }
     }
@@ -496,18 +540,18 @@ impl Runner {
                 let mut img = o.borrow_mut();
                 let img = &mut *img;
                 py.detach(|| -> PyResult<()> {
-                    let r = runner.run(img.inner.image()).map_err(err)?;
+                    let r = runner.run(img.store.frame()).map_err(err)?;
                     img.store(&r)
                 })?;
                 return Ok(o.clone());
             }
             let src = src.borrow();
-            let src = &src.inner;
+            let src = &src.store;
             let mut dest = out.as_ref().map(|o| o.borrow_mut());
             let dest_ref = dest.as_deref_mut();
             let fresh = py.detach(|| -> PyResult<_> {
-                let r = runner.run(src.image()).map_err(err)?;
-                finish(&r, dest_ref, Some(src.metadata()))
+                let r = runner.run(src.frame()).map_err(err)?;
+                finish(&r, dest_ref, Some(src.get().metadata()))
             })?;
             drop(dest);
             return match fresh {

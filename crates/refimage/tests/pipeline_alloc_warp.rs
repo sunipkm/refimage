@@ -53,8 +53,12 @@ fn serial_tiled_warp_is_allocation_free() {
             Interpolation::new(InterpOrder::Cubic, BoundaryMode::Nearest, 0.0),
         )
         .map_coordinates(
-            (0..60 * 50).map(|i| (i / 60) as f64 * 1.7).collect::<Vec<_>>(),
-            (0..60 * 50).map(|i| (i % 60) as f64 * 1.9).collect::<Vec<_>>(),
+            (0..60 * 50)
+                .map(|i| (i / 60) as f64 * 1.7)
+                .collect::<Vec<_>>(),
+            (0..60 * 50)
+                .map(|i| (i % 60) as f64 * 1.9)
+                .collect::<Vec<_>>(),
             60,
             50,
             Interpolation::new(InterpOrder::Cubic, BoundaryMode::Reflect, 0.0),
@@ -86,5 +90,8 @@ fn serial_tiled_warp_is_allocation_free() {
     ARMED.store(false, Ordering::Relaxed);
 
     let allocs = COUNT.load(Ordering::Relaxed);
-    assert_eq!(allocs, 0, "serial-tiled warp run allocated {allocs} times over 16 frames");
+    assert_eq!(
+        allocs, 0,
+        "serial-tiled warp run allocated {allocs} times over 16 frames"
+    );
 }

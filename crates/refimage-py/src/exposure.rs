@@ -69,19 +69,19 @@ impl OptimumExposure {
         let res = if let Ok(img) = image.cast::<Image>() {
             let exposure = match exposure {
                 Some(e) => e,
-                None => img.borrow().inner.exposure(),
+                None => img.borrow().store.get().exposure(),
             };
             if in_place {
                 let mut img = img.borrow_mut();
-                let inner = &mut img.inner;
-                py.detach(|| inner.calc_opt_exp(eval, exposure, bin))
+                let store = &mut img.store;
+                py.detach(|| store.calc_opt_exp_in_place(eval, exposure, bin))
             } else {
-                let mut copy = img.borrow().inner.image().clone();
+                let mut copy = img.borrow().store.to_owned_image();
                 py.detach(|| copy.calc_opt_exp(eval, exposure, bin))
             }
         } else {
-            let exposure =
-                exposure.ok_or_else(|| err("exposure is required when evaluating a numpy array"))?;
+            let exposure = exposure
+                .ok_or_else(|| err("exposure is required when evaluating a numpy array"))?;
             match NdPixels::extract(image)? {
                 NdPixels::U8(a) => {
                     let mut v: Vec<u8> = a.as_array().iter().copied().collect();

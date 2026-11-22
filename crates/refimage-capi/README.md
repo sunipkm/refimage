@@ -49,11 +49,19 @@ archive (`$prefix/lib/librefimage_c.a`) and add the `Libs.private` libraries tha
 
 ## Example
 
-The full program is [`examples/c/stream.c`](examples/c/stream.c). This is the core
-of it:
+The full program is [`examples/c/stream.c`](examples/c/stream.c); build it with its
+[`Makefile`](examples/c/Makefile) (`make`, or `PKG_CONFIG_PATH=<prefix>/lib/pkgconfig make`
+for a non-system install), which links it both shared and static.
+[`examples/cpp/stream.cpp`](examples/cpp/stream.cpp) does the same in C++17, with RAII
+handles (`std::unique_ptr` with the `ref_*_free` deleters) and exceptions for errors. It
+builds with CMake through the installed package
+(`cmake -S examples/cpp -B build -DCMAKE_PREFIX_PATH=<prefix>`). This is the core of the C
+version:
 
 ```c
 #include <refimage.h>
+
+#define CHECK(call) do { if ((call) != REF_OK) { fprintf(stderr, "%s\n", ref_last_error()); exit(1); } } while (0)
 
 RefFrame frame = {0};                   /* the caller's pixels; never copied for a run */
 frame.data = raw;                       /* uint16_t[1080][1920] from the camera SDK */
@@ -62,21 +70,18 @@ frame.height = 1080;
 frame.pixel_type = REF_PIXEL_U12;
 frame.color = REF_COLOR_BAYER_RGGB;
 
-RefPipeline *p;
-ref_pipeline_new(&p);
-ref_pipeline_debayer(p, REF_DEMOSAIC_LINEAR);
-ref_pipeline_to_luma(p);
-ref_pipeline_convert(p, REF_PIXEL_U8);
+RefPipeline *p = NULL;
+CHECK(ref_pipeline_new(&p));
+CHECK(ref_pipeline_debayer(p, REF_DEMOSAIC_LINEAR));
+CHECK(ref_pipeline_to_luma(p));
+CHECK(ref_pipeline_convert(p, REF_PIXEL_U8));
 
-RefRunner *runner;
-if (ref_pipeline_compile(p, &frame, NULL, &runner) != REF_OK) {   /* allocates once */
-    fprintf(stderr, "%s\n", ref_last_error());
-    return 1;
-}
+RefRunner *runner = NULL;
+CHECK(ref_pipeline_compile(p, &frame, NULL, &runner));     /* allocates once */
 RefImage *out = NULL;
 for (;;) {
     wait_for_frame(raw);
-    ref_runner_run(runner, &frame, &out);    /* first call creates `out`, then reuses it */
+    CHECK(ref_runner_run(runner, &frame, &out));  /* first call creates `out`, then reuses it */
 }
 ```
 
@@ -86,6 +91,14 @@ for (;;) {
   `ref_last_error()` gives the calling thread's last message. Out-parameters are
   written only on success. A Rust panic becomes `REF_ERR_PANIC` and never crosses
   into C.
+- **Annotations.** Every pointer carries Clang's nullability qualifier, `_Nonnull`
+  or `_Nullable`, so with Clang a literal `NULL` into a required pointer is a
+  `-Wnonnull` warning. On compilers without nullability support the header defines
+  both as nothing. A `NULL` that slips through at run time is still caught and
+  returned as `REF_ERR_NULL`. Every function that returns a value is `_MustUse`, so
+  an ignored `RefStatus` warns. That is `[[nodiscard]]` in C23 and C++17,
+  `warn_unused_result` on GCC and Clang, and `_Check_return_` on MSVC. Define
+  `_MustUse` before including the header to override it.
 - **Handles.** `RefImage`, `RefPipeline` and `RefRunner` are opaque. Each has a
   `*_free` that accepts `NULL`. A handle may move between threads, but must not be
   used by two threads at once.
@@ -124,6 +137,13 @@ same number, so a program never loads an incompatible library.
 cargo test -p refimage-capi                                   # Rust tests + the C test program
 REFIMAGE_BLESS=1 cargo test -p refimage-capi --test header   # regenerate include/refimage.h
 ```
+
+The header generator in [`tests/header.rs`](tests/header.rs) adds the nullability
+annotations. A parameter is `_Nullable` when its doc comment says "`name` may be
+`NULL`", and a field when its doc says "May be `NULL`". A few fixed rules cover
+`*_free` arguments, string-out buffers and handle out-slots. Everything else is
+`_Nonnull`. Test-only compile checks confirm that an ignored status, and (with
+Clang) a `NULL` passed to a required pointer, each fail to compile.
 
 `tests/c_api.rs` compiles [`tests/c/test_api.c`](tests/c/test_api.c) with `$CC`
 against the libraries that were just built, both static and shared. On Linux it also

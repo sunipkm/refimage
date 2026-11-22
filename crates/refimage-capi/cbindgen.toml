@@ -1,5 +1,6 @@
 # cbindgen settings for include/refimage.h. Regenerate with
 #   REFIMAGE_BLESS=1 cargo test -p refimage-capi --test header
+# tests/header.rs then adds _Nonnull / _Nullable to every pointer (see there).
 language = "C"
 cpp_compat = true
 include_guard = "REFIMAGE_H"
@@ -26,8 +27,47 @@ header = """
  * SPDX-License-Identifier: MIT OR Apache-2.0
  */"""
 after_includes = """
-/** Library version this header was generated from. */
-#define REF_VERSION_STRING "@VERSION@"
+/*
+ * Annotations. Every pointer in this header carries Clang's nullability qualifier,
+ * _Nonnull or _Nullable; compilers without them see empty definitions. A NULL passed
+ * where _Nonnull is declared is a contract violation that Clang diagnoses; the library
+ * still checks and returns REF_ERR_NULL.
+ *
+ * _MustUse marks functions whose result must not be ignored (every RefStatus):
+ * [[nodiscard]] in C23 / C++17, warn_unused_result on GCC and Clang, _Check_return_ on
+ * MSVC. Define _MustUse before including this header to override it.
+ */
+#if !defined(__clang__) || !defined(__has_feature)
+#  define REF_HAS_NULLABILITY_ 0
+#elif __has_feature(nullability)
+#  define REF_HAS_NULLABILITY_ 1
+#else
+#  define REF_HAS_NULLABILITY_ 0
+#endif
+#if !REF_HAS_NULLABILITY_
+#  ifndef _Nonnull
+#    define _Nonnull
+#  endif
+#  ifndef _Nullable
+#    define _Nullable
+#  endif
+#endif
+#undef REF_HAS_NULLABILITY_
+
+#ifndef _MustUse
+#  if defined(__cplusplus) && __cplusplus >= 201703L
+#    define _MustUse [[nodiscard]]
+#  elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
+#    define _MustUse [[nodiscard]]
+#  elif defined(__GNUC__) || defined(__clang__)
+#    define _MustUse __attribute__((warn_unused_result))
+#  elif defined(_MSC_VER)
+#    include <sal.h>
+#    define _MustUse _Check_return_
+#  else
+#    define _MustUse
+#  endif
+#endif
 """
 
 [export]
@@ -39,6 +79,7 @@ prefix_with_name = false
 
 [fn]
 args = "horizontal"
+must_use = "_MustUse"
 
 [parse]
 parse_deps = false

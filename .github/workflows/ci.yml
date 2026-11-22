@@ -1,0 +1,170 @@
+name: CI
+
+# Every push and pull request, and the gate of every release: the release workflow calls this
+# (on a version tag) and publishes nothing unless it passes. It can also be run by hand from
+# the Actions tab.
+on:
+  push:
+    branches: [master, development]
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      # Not --all-targets: the benches need a nightly toolchain.
+      - run: cargo clippy --workspace --all-features --lib --tests --examples -- -D warnings
+      - run: cargo clippy -p refimage --lib --no-default-features -- -D warnings
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p refimage --all-features
+      - run: cargo test -p refimage --no-default-features --lib --tests
+
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-bindgen-test-runner
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen-cli
+      - name: Build (all feature sets that support wasm)
+        run: |
+          cargo build -p refimage --target wasm32-unknown-unknown --no-default-features
+          cargo build -p refimage --target wasm32-unknown-unknown
+          cargo build -p refimage --target wasm32-unknown-unknown --no-default-features --features image,grow
+      - name: Test
+        run: cargo test -p refimage --target wasm32-unknown-unknown --no-default-features --lib --tests
+
+  capi:
+    name: capi (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Header freshness, zero-allocation runs, and tests/c/test_api.c compiled against the
+      # static and shared libraries (plus ASan/LSan/UBSan on Linux).
+      - run: cargo test -p refimage-capi
+      - name: System libraries a static link needs
+        run: cargo rustc -p refimage-capi --release --lib --crate-type staticlib -- --print native-static-libs 2>&1 | grep native-static-libs
+      - name: Install, then build and run the example (make, shared and static)
+        run: |
+          prefix="$RUNNER_TEMP/prefix"
+          crates/refimage-capi/install.sh "$prefix"
+          cp -R crates/refimage-capi/examples/c "$RUNNER_TEMP/example"
+          cd "$RUNNER_TEMP/example"
+          PKG_CONFIG_PATH="$prefix/lib/pkgconfig" make run CFLAGS="-std=c11 -O2 -Wall -Wextra -Werror"
+      - name: Build and run the C++ example (CMake package, shared and static)
+        run: |
+          prefix="$RUNNER_TEMP/prefix"
+          cmake -S crates/refimage-capi/examples/cpp -B "$RUNNER_TEMP/cpp" \
+            -DCMAKE_PREFIX_PATH="$prefix" -DCMAKE_BUILD_RPATH="$prefix/lib" \
+            -DCMAKE_CXX_FLAGS="-Wall -Wextra -Werror"
+          cmake --build "$RUNNER_TEMP/cpp"
+          cd "$RUNNER_TEMP/cpp"
+          ./stream
+          ./stream_static
+
+  capi-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p refimage-capi
+      - name: Build the libraries
+        run: |
+          cargo build --release -p refimage-capi
+          cargo rustc -p refimage-capi --release --lib --crate-type staticlib -- --print native-static-libs
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Compile and run the C test against the DLL and the static library
+        shell: cmd
+        run: |
+          set INC=/I crates\refimage-capi\include
+          set SRC=crates\refimage-capi\tests\c\test_api.c
+          cl /nologo /W3 /std:c11 /MD %INC% %SRC% target\release\refimage_c.dll.lib /Fe:capi_shared.exe || exit /b 1
+          cl /nologo /W3 /std:c11 /MD %INC% %SRC% target\release\refimage_c.lib kernel32.lib advapi32.lib ntdll.lib userenv.lib ws2_32.lib dbghelp.lib bcrypt.lib /Fe:capi_static.exe || exit /b 1
+          set PATH=%CD%\target\release;%PATH%
+          capi_shared.exe %TEMP% || exit /b 1
+          capi_static.exe %TEMP% || exit /b 1
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build and install the bindings
+        working-directory: python
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install maturin
+          .venv/bin/maturin build --release --out dist
+          .venv/bin/pip install "$(ls dist/*.whl)[test]"
+      # Run from outside python/ so `import refimage` resolves to the installed wheel rather
+      # than the (uncompiled) source package.
+      - name: Test
+        working-directory: ${{ runner.temp }}
+        run: $GITHUB_WORKSPACE/python/.venv/bin/python -m pytest -q $GITHUB_WORKSPACE/python/tests
+      - name: Check the type stub against the compiled module
+        working-directory: ${{ runner.temp }}
+        run: >-
+          $GITHUB_WORKSPACE/python/.venv/bin/python -m mypy.stubtest refimage._native
+          --allowlist $GITHUB_WORKSPACE/python/stubtest-allowlist.txt
+      # A downstream extension module built on refimage-pyo3 (tests/ext), exchanging images
+      # with the installed refimage package.
+      - name: Build and install the refimage-pyo3 test extension
+        run: |
+          python/.venv/bin/maturin build --release -m crates/refimage-pyo3/tests/ext/Cargo.toml --out dist-ext
+          python/.venv/bin/pip install --no-deps dist-ext/*.whl
+      - name: Test refimage-pyo3 interop
+        working-directory: ${{ runner.temp }}
+        run: $GITHUB_WORKSPACE/python/.venv/bin/python -m pytest -q $GITHUB_WORKSPACE/crates/refimage-pyo3/tests
+
+  # The crates as crates.io would get them: packaged together at this commit's development
+  # version (refimage-pyo3 is verified against the packaged refimage, not the one on
+  # crates.io), and the publishing order.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: python3 tools/version.py --write
+      - run: cargo package -p refimage -p refimage-pyo3 --allow-dirty
+      - run: python3 tools/publish_crates.py --dry-run

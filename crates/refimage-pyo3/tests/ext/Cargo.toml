@@ -1,0 +1,22 @@
+[package]
+name = "refimage-pyo3-test"
+description = "A test extension module for refimage-pyo3: refimage images through another extension's Rust"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "refimage_pyo3_test"
+crate-type = ["cdylib"]
+test = false
+doctest = false
+
+[features]
+extension-module = ["pyo3/extension-module"]
+
+[dependencies]
+refimage.workspace = true
+refimage-pyo3.workspace = true
+# The extension, not refimage-pyo3, chooses PyO3's features.
+pyo3 = { workspace = true, features = ["abi3-py312"] }

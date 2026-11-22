@@ -15,8 +15,8 @@ use crate::frame::{RefFrame, RefImageInfo};
 use crate::{
     Context, Error, REF_FITS_GZIP, REF_FITS_HCOMPRESS, REF_FITS_NONE, REF_FITS_RICE,
     REF_VALUE_COLOR_SPACE, REF_VALUE_DURATION, REF_VALUE_INT, REF_VALUE_REAL, REF_VALUE_STRING,
-    REF_VALUE_TIMESTAMP, RefBuffer, RefFitsCompression, RefValueKind, Result, as_mut, as_ref,
-    cstr, ffi, free_handle, opt_cstr, put, put_buffer, put_handle, put_str, slice,
+    REF_VALUE_TIMESTAMP, RefBuffer, RefFitsCompression, RefValueKind, Result, as_mut, as_ref, cstr,
+    ffi, free_handle, opt_cstr, put, put_buffer, put_handle, put_str, slice,
 };
 
 /// An image: pixels plus metadata (timestamp, exposure, frame id and named
@@ -55,7 +55,10 @@ pub(crate) fn store(dst: &mut GenericImageOwned, src: &DynamicImageRef<'_>) {
 }
 
 /// An owned image of `spec` holding `bytes` (packed), or zeros when `bytes` is `None`.
-pub(crate) fn owned(spec: &refimage::pipeline::ImageSpec, bytes: Option<&[u8]>) -> Result<DynamicImageOwned> {
+pub(crate) fn owned(
+    spec: &refimage::pipeline::ImageSpec,
+    bytes: Option<&[u8]>,
+) -> Result<DynamicImageOwned> {
     let (w, h, cs) = (spec.width, spec.height, spec.cspace.clone());
     let n = spec.elems();
     let fill = |dst: &mut [u8]| {
@@ -67,7 +70,9 @@ pub(crate) fn owned(spec: &refimage::pipeline::ImageSpec, bytes: Option<&[u8]>) 
         PixelType::U8 => {
             let mut v = vec![0u8; n];
             fill(&mut v);
-            ImageOwned::from_owned(v, w, h, cs).status(REF_ERR_IMAGE)?.into()
+            ImageOwned::from_owned(v, w, h, cs)
+                .status(REF_ERR_IMAGE)?
+                .into()
         }
         PixelType::U16 => {
             let mut v = vec![0u16; n];
@@ -81,19 +86,27 @@ pub(crate) fn owned(spec: &refimage::pipeline::ImageSpec, bytes: Option<&[u8]>) 
         _ => {
             let mut v = vec![0f32; n];
             fill(bytemuck::cast_slice_mut(&mut v));
-            ImageOwned::from_owned(v, w, h, cs).status(REF_ERR_IMAGE)?.into()
+            ImageOwned::from_owned(v, w, h, cs)
+                .status(REF_ERR_IMAGE)?
+                .into()
         }
     })
 }
 
 pub(crate) fn duration(seconds: f64, what: &str) -> Result<Duration> {
-    Duration::try_from_secs_f64(seconds)
-        .map_err(|_| Error::invalid(format!("{what} must be finite and non-negative, not {seconds}")))
+    Duration::try_from_secs_f64(seconds).map_err(|_| {
+        Error::invalid(format!(
+            "{what} must be finite and non-negative, not {seconds}"
+        ))
+    })
 }
 
 fn timestamp(ns: i64) -> Result<DateTime<Utc>> {
-    DateTime::from_timestamp(ns.div_euclid(1_000_000_000), ns.rem_euclid(1_000_000_000) as u32)
-        .ok_or_else(|| Error::invalid(format!("timestamp {ns} ns is out of range")))
+    DateTime::from_timestamp(
+        ns.div_euclid(1_000_000_000),
+        ns.rem_euclid(1_000_000_000) as u32,
+    )
+    .ok_or_else(|| Error::invalid(format!("timestamp {ns} ns is out of range")))
 }
 
 fn timestamp_ns(t: DateTime<Utc>) -> Result<i64> {
@@ -105,8 +118,12 @@ fn timestamp_ns(t: DateTime<Utc>) -> Result<i64> {
 
 /// Create an image from `frame`, copying its pixels (or zero-filled when
 /// `frame->data` is `NULL`). The timestamp is now, the exposure 0.
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_image_new(frame: *const RefFrame, out: *mut *mut RefImage) -> RefStatus {
+pub unsafe extern "C" fn ref_image_new(
+    frame: *const RefFrame,
+    out: *mut *mut RefImage,
+) -> RefStatus {
     ffi! {
         let frame = as_ref(frame, "frame")?;
         let spec = frame.spec()?;
@@ -123,8 +140,12 @@ pub unsafe extern "C" fn ref_image_new(frame: *const RefFrame, out: *mut *mut Re
 }
 
 /// A deep copy (pixels and metadata).
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_image_clone(img: *const RefImage, out: *mut *mut RefImage) -> RefStatus {
+pub unsafe extern "C" fn ref_image_clone(
+    img: *const RefImage,
+    out: *mut *mut RefImage,
+) -> RefStatus {
     ffi! {
         let img = as_ref(img, "img")?;
         put_handle(out, RefImage::new(img.inner.clone()), "out")
@@ -139,8 +160,12 @@ pub unsafe extern "C" fn ref_image_free(img: *mut RefImage) {
 
 /// Copy `src`'s pixels and metadata into `dst`, reusing `dst`'s pixel buffer when the
 /// shape and type match (no allocation).
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_image_copy_from(dst: *mut RefImage, src: *const RefImage) -> RefStatus {
+pub unsafe extern "C" fn ref_image_copy_from(
+    dst: *mut RefImage,
+    src: *const RefImage,
+) -> RefStatus {
     ffi! {
         if std::ptr::eq(dst, src) {
             return Ok(());
@@ -163,8 +188,13 @@ pub unsafe extern "C" fn ref_image_copy_from(dst: *mut RefImage, src: *const Ref
 }
 
 /// `*out = true` when both images have identical pixels and metadata.
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_image_equal(a: *const RefImage, b: *const RefImage, out: *mut bool) -> RefStatus {
+pub unsafe extern "C" fn ref_image_equal(
+    a: *const RefImage,
+    b: *const RefImage,
+    out: *mut bool,
+) -> RefStatus {
     ffi! {
         let (a, b) = (as_ref(a, "a")?, as_ref(b, "b")?);
         put(out, a.inner == b.inner, "out")
@@ -174,6 +204,7 @@ pub unsafe extern "C" fn ref_image_equal(a: *const RefImage, b: *const RefImage,
 // --- Pixels and shape -----------------------------------------------------------
 
 /// Shape and pixel type.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_info(img: *const RefImage, out: *mut RefImageInfo) -> RefStatus {
     ffi! {
@@ -184,6 +215,7 @@ pub unsafe extern "C" fn ref_image_info(img: *const RefImage, out: *mut RefImage
 
 /// The color space's name: `"gray"`, `"rgb"`, `"rggb"`, `"bggr"`, `"gbrg"`, `"grbg"`,
 /// or a custom space's own name. String-out convention.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_color_name(
     img: *const RefImage,
@@ -199,8 +231,14 @@ pub unsafe extern "C" fn ref_image_color_name(
 
 /// A writable pointer to the packed pixels and their size in bytes. Valid until the
 /// image is freed or reshaped (by a run or copy that changes its shape or type).
+/// `nbytes` may be `NULL`.
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_image_data(img: *mut RefImage, data: *mut *mut c_void, nbytes: *mut usize) -> RefStatus {
+pub unsafe extern "C" fn ref_image_data(
+    img: *mut RefImage,
+    data: *mut *mut c_void,
+    nbytes: *mut usize,
+) -> RefStatus {
     ffi! {
         let raw = as_mut(img, "img")?.inner.image_mut().as_mut_raw_u8();
         let (p, n) = (raw.as_mut_ptr(), raw.len());
@@ -212,7 +250,9 @@ pub unsafe extern "C" fn ref_image_data(img: *mut RefImage, data: *mut *mut c_vo
     }
 }
 
-/// A read-only pointer to the packed pixels and their size in bytes.
+/// A read-only pointer to the packed pixels and their size in bytes. `nbytes` may be
+/// `NULL`.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_data_const(
     img: *const RefImage,
@@ -231,8 +271,12 @@ pub unsafe extern "C" fn ref_image_data_const(
 
 /// Re-tag 16-bit storage as `REF_PIXEL_U10` / `U12` / `U14` / `U16` (values are not
 /// changed). Fails on 8-bit and float images.
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_image_set_pixel_type(img: *mut RefImage, pixel_type: crate::RefPixelType) -> RefStatus {
+pub unsafe extern "C" fn ref_image_set_pixel_type(
+    img: *mut RefImage,
+    pixel_type: crate::RefPixelType,
+) -> RefStatus {
     ffi! {
         let pt = crate::pixel_type(pixel_type)?;
         let img = as_mut(img, "img")?;
@@ -249,12 +293,14 @@ pub unsafe extern "C" fn ref_image_set_pixel_type(img: *mut RefImage, pixel_type
 // --- Standard metadata ----------------------------------------------------------
 
 /// Acquisition time, in nanoseconds since 1970-01-01T00:00:00Z.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_timestamp(img: *const RefImage, ns: *mut i64) -> RefStatus {
     ffi! { put(ns, timestamp_ns(as_ref(img, "img")?.inner.timestamp())?, "ns") }
 }
 
 /// Set the acquisition time (nanoseconds since the Unix epoch).
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_set_timestamp(img: *mut RefImage, ns: i64) -> RefStatus {
     ffi! {
@@ -265,12 +311,14 @@ pub unsafe extern "C" fn ref_image_set_timestamp(img: *mut RefImage, ns: i64) ->
 }
 
 /// Exposure in seconds (`0` when unknown).
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_exposure(img: *const RefImage, seconds: *mut f64) -> RefStatus {
     ffi! { put(seconds, as_ref(img, "img")?.inner.exposure().as_secs_f64(), "seconds") }
 }
 
 /// Set the exposure (finite, non-negative seconds).
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_set_exposure(img: *mut RefImage, seconds: f64) -> RefStatus {
     ffi! {
@@ -281,6 +329,7 @@ pub unsafe extern "C" fn ref_image_set_exposure(img: *mut RefImage, seconds: f64
 }
 
 /// The acquisition frame counter; `REF_ERR_NOT_FOUND` when none was set.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_frame_id(img: *const RefImage, id: *mut u32) -> RefStatus {
     ffi! {
@@ -293,6 +342,7 @@ pub unsafe extern "C" fn ref_image_frame_id(img: *const RefImage, id: *mut u32) 
 }
 
 /// Set the acquisition frame counter.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_set_frame_id(img: *mut RefImage, id: u32) -> RefStatus {
     ffi! {
@@ -343,6 +393,7 @@ where
 }
 
 /// Number of metadata cards (not counting timestamp, exposure and frame id).
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_key_count(img: *const RefImage, count: *mut usize) -> RefStatus {
     ffi! { put(count, as_ref(img, "img")?.inner.metadata().len(), "count") }
@@ -350,6 +401,7 @@ pub unsafe extern "C" fn ref_image_key_count(img: *const RefImage, count: *mut u
 
 /// The name of card `index` (`0 .. ref_image_key_count`), in insertion order.
 /// String-out convention; `REF_ERR_NOT_FOUND` past the end.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_key_at(
     img: *const RefImage,
@@ -371,6 +423,7 @@ pub unsafe extern "C" fn ref_image_key_at(
 }
 
 /// The type of card `key` (keys are case-insensitive). `REF_ERR_NOT_FOUND` if absent.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_value_kind(
     img: *const RefImage,
@@ -391,8 +444,13 @@ pub unsafe extern "C" fn ref_image_value_kind(
 }
 
 /// An integer card. `REF_ERR_TYPE` if it holds anything else.
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_image_get_int(img: *const RefImage, key: *const c_char, value: *mut i64) -> RefStatus {
+pub unsafe extern "C" fn ref_image_get_int(
+    img: *const RefImage,
+    key: *const c_char,
+    value: *mut i64,
+) -> RefStatus {
     ffi! {
         let key = cstr(key, "key")?;
         match card(as_ref(img, "img")?, key)? {
@@ -403,8 +461,13 @@ pub unsafe extern "C" fn ref_image_get_int(img: *const RefImage, key: *const c_c
 }
 
 /// A real card; integer cards are converted.
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_image_get_real(img: *const RefImage, key: *const c_char, value: *mut f64) -> RefStatus {
+pub unsafe extern "C" fn ref_image_get_real(
+    img: *const RefImage,
+    key: *const c_char,
+    value: *mut f64,
+) -> RefStatus {
     ffi! {
         let key = cstr(key, "key")?;
         match card(as_ref(img, "img")?, key)? {
@@ -416,6 +479,7 @@ pub unsafe extern "C" fn ref_image_get_real(img: *const RefImage, key: *const c_
 }
 
 /// A string card (or a color-space card, as its name). String-out convention.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_get_string(
     img: *const RefImage,
@@ -435,8 +499,13 @@ pub unsafe extern "C" fn ref_image_get_string(
 }
 
 /// A timestamp card, in nanoseconds since the Unix epoch.
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_image_get_timestamp(img: *const RefImage, key: *const c_char, ns: *mut i64) -> RefStatus {
+pub unsafe extern "C" fn ref_image_get_timestamp(
+    img: *const RefImage,
+    key: *const c_char,
+    ns: *mut i64,
+) -> RefStatus {
     ffi! {
         let key = cstr(key, "key")?;
         match card(as_ref(img, "img")?, key)? {
@@ -447,8 +516,13 @@ pub unsafe extern "C" fn ref_image_get_timestamp(img: *const RefImage, key: *con
 }
 
 /// A duration card, in seconds.
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_image_get_duration(img: *const RefImage, key: *const c_char, seconds: *mut f64) -> RefStatus {
+pub unsafe extern "C" fn ref_image_get_duration(
+    img: *const RefImage,
+    key: *const c_char,
+    seconds: *mut f64,
+) -> RefStatus {
     ffi! {
         let key = cstr(key, "key")?;
         match card(as_ref(img, "img")?, key)? {
@@ -460,6 +534,7 @@ pub unsafe extern "C" fn ref_image_get_duration(img: *const RefImage, key: *cons
 
 /// The comment of card `key`. String-out convention; an empty string when the card
 /// has no comment, `REF_ERR_NOT_FOUND` when the card does not exist.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_get_comment(
     img: *const RefImage,
@@ -481,6 +556,7 @@ pub unsafe extern "C" fn ref_image_get_comment(
 /// Insert or replace an integer card. Keys are stored upper-case, at most 80
 /// characters; `TIMESTAMP`, `EXPOSURE` and `FRAMEID` are reserved (use the dedicated
 /// setters). `comment` may be `NULL`.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_set_int(
     img: *mut RefImage,
@@ -491,7 +567,8 @@ pub unsafe extern "C" fn ref_image_set_int(
     ffi! { set_card(img, key, comment, value) }
 }
 
-/// Insert or replace a real card (see `ref_image_set_int`).
+/// Insert or replace a real card (see `ref_image_set_int`). `comment` may be `NULL`.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_set_real(
     img: *mut RefImage,
@@ -502,7 +579,8 @@ pub unsafe extern "C" fn ref_image_set_real(
     ffi! { set_card(img, key, comment, value) }
 }
 
-/// Insert or replace a string card (see `ref_image_set_int`).
+/// Insert or replace a string card (see `ref_image_set_int`). `comment` may be `NULL`.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_set_string(
     img: *mut RefImage,
@@ -516,7 +594,9 @@ pub unsafe extern "C" fn ref_image_set_string(
     }
 }
 
-/// Insert or replace a timestamp card, nanoseconds since the Unix epoch.
+/// Insert or replace a timestamp card, nanoseconds since the Unix epoch. `comment` may
+/// be `NULL`.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_set_timestamp_key(
     img: *mut RefImage,
@@ -527,7 +607,8 @@ pub unsafe extern "C" fn ref_image_set_timestamp_key(
     ffi! { set_card(img, key, comment, timestamp(ns)?) }
 }
 
-/// Insert or replace a duration card, in seconds.
+/// Insert or replace a duration card, in seconds. `comment` may be `NULL`.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_set_duration(
     img: *mut RefImage,
@@ -539,6 +620,7 @@ pub unsafe extern "C" fn ref_image_set_duration(
 }
 
 /// Remove card `key`. `REF_ERR_NOT_FOUND` if absent.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_remove_key(img: *mut RefImage, key: *const c_char) -> RefStatus {
     ffi! {
@@ -556,8 +638,12 @@ pub unsafe extern "C" fn ref_image_remove_key(img: *mut RefImage, key: *const c_
 
 /// Serialize pixels and metadata (bincode; the same bytes as Rust's
 /// `bincode::serialize(&GenericImageOwned)` and Python's `Image.to_bytes()`).
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_image_to_bytes(img: *const RefImage, out: *mut RefBuffer) -> RefStatus {
+pub unsafe extern "C" fn ref_image_to_bytes(
+    img: *const RefImage,
+    out: *mut RefBuffer,
+) -> RefStatus {
     ffi! {
         let bytes = bincode::serialize(&as_ref(img, "img")?.inner).status(REF_ERR_IMAGE)?;
         put_buffer(out, bytes)
@@ -565,8 +651,14 @@ pub unsafe extern "C" fn ref_image_to_bytes(img: *const RefImage, out: *mut RefB
 }
 
 /// Decode an image written by `ref_image_to_bytes` (or the Rust / Python equivalents).
+/// `data` may be `NULL` when `len` is 0 (which fails to decode).
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_image_from_bytes(data: *const u8, len: usize, out: *mut *mut RefImage) -> RefStatus {
+pub unsafe extern "C" fn ref_image_from_bytes(
+    data: *const u8,
+    len: usize,
+    out: *mut *mut RefImage,
+) -> RefStatus {
     ffi! {
         let bytes = slice(data, len, "data")?;
         let inner: GenericImageOwned = bincode::deserialize(bytes)
@@ -596,6 +688,7 @@ pub struct RefFitsOptions {
 }
 
 /// Uncompressed, with every tuning field at its default.
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn ref_fits_options_default() -> RefFitsOptions {
     RefFitsOptions {
@@ -617,7 +710,10 @@ fn fits_compression(o: Option<&RefFitsOptions>) -> Result<FitsCompression> {
     } else if o.quantize_level == 0.0 {
         Quantize::new()
     } else {
-        return Err(Error::invalid(format!("quantize_level must be >= 0, not {}", o.quantize_level)));
+        return Err(Error::invalid(format!(
+            "quantize_level must be >= 0, not {}",
+            o.quantize_level
+        )));
     };
     let tiles = (o.tile_rows > 0).then_some(o.tile_rows);
     Ok(match o.compression {
@@ -626,7 +722,11 @@ fn fits_compression(o: Option<&RefFitsOptions>) -> Result<FitsCompression> {
             let g = match o.gzip_level {
                 -1 => Gzip::new(),
                 l @ 0..=9 => Gzip::new().level(l as u8),
-                l => return Err(Error::invalid(format!("gzip_level must be 0-9 or -1, not {l}"))),
+                l => {
+                    return Err(Error::invalid(format!(
+                        "gzip_level must be 0-9 or -1, not {l}"
+                    )));
+                }
             };
             match tiles {
                 Some(t) => g.tile_rows(t).into(),
@@ -663,6 +763,7 @@ fn fits_err(e: FitsError) -> Error {
 
 /// Write the image and its metadata to a FITS file. `options` may be `NULL`
 /// (uncompressed). Without `overwrite`, an existing file is an `REF_ERR_IO` error.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_write_fits(
     img: *const RefImage,
@@ -679,7 +780,9 @@ pub unsafe extern "C" fn ref_image_write_fits(
     }
 }
 
-/// The FITS file `ref_image_write_fits` would write, in memory.
+/// The FITS file `ref_image_write_fits` would write, in memory. `options` may be `NULL`
+/// (uncompressed).
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_image_fits_bytes(
     img: *const RefImage,

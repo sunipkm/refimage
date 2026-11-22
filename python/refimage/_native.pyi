@@ -842,3 +842,26 @@ class OptimumExposure:
             For a zero exposure, an empty image, or a ``pixel_exclusion`` that leaves
             no pixels.
         """
+
+# --- Exchange with other extension modules (refimage-pyo3) ------------------------------
+#
+# Private: called by the ``refimage-pyo3`` Rust crate, through which other PyO3 extension
+# modules create and read refimage objects without copying pixels. Not for direct use; the
+# format is versioned by ``_interop_protocol()``.
+
+def _interop_protocol() -> int:
+    """The version of the exchange format refimage-pyo3 speaks."""
+
+def _image_from_parts(parts: dict[str, Any]) -> Image:
+    """An :class:`Image` from ``{"header": bytes, "pixels": ndarray}``.
+
+    A C-contiguous, aligned, writable pixel array is adopted as the image's buffer
+    without copying; any other array is copied once.
+    """
+
+def _image_to_parts(img: Image) -> dict[str, Any]:
+    """``{"header": bytes, "pixels": ndarray}`` of ``img``; the pixels are a writable view
+    of its buffer, not a copy."""
+
+def _image_set_metadata(img: Image, metadata: bytes) -> None:
+    """Replace ``img``'s metadata with bincode-encoded refimage ``Metadata``."""

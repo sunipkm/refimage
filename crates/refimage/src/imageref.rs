@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use crate::{
-    imagetraits::ImageProps, CalcOptExp, ColorSpace, ExposureResult, ImageError, OptimumExposure,
-    OptimumExposureResult, PixelStor, PixelType,
+    CalcOptExp, ColorSpace, ExposureResult, ImageError, OptimumExposure, OptimumExposureResult,
+    PixelStor, PixelType, imagetraits::ImageProps,
 };
 use bytemuck::{AnyBitPattern, PodCastError};
 
@@ -83,13 +83,20 @@ impl<'a, T: PixelStor> ImageRef<'a, T> {
     /// [`PixelType::U10`](crate::PixelType::U10) etc. Only valid on a
     /// `u16`-backed image (`8` / `16` / `0` / `None` clear the tag).
     pub fn with_bit_depth(mut self, bits: impl Into<Option<u8>>) -> Self {
+        self.set_bit_depth(bits);
+        self
+    }
+
+    /// In-place [`with_bit_depth`](Self::with_bit_depth): re-tag the meaningful bit
+    /// depth without touching the samples. Anything other than `10` / `12` / `14` on a
+    /// `u16` image clears the tag.
+    pub fn set_bit_depth(&mut self, bits: impl Into<Option<u8>>) {
         self.bit_depth = match bits.into() {
             Some(b @ (10 | 12 | 14)) if T::PIXEL_TYPE == PixelType::U16 => {
                 core::num::NonZeroU8::new(b)
             }
             _ => None,
         };
-        self
     }
 
     /// Create a new [`ImageRef`] from a mutable slice of data.

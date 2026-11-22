@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use chrono::Utc;
 use image::DynamicImage;
-use refimage::pipeline::Pipeline;
 use refimage::OptimumExposureBuilder;
+use refimage::pipeline::Pipeline;
 use refimage::{
     BayerPattern, ColorSpace, DemosaicMethod, DynamicImageRef, FitsCompression, FitsWrite,
     GenericImageRef, ImageProps, ImageRef, PixelData,

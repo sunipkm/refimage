@@ -27,7 +27,11 @@ pub(super) fn simplify(mut ops: Vec<Op>) -> Vec<Op> {
 }
 
 fn simplify_once(ops: &[Op]) -> Vec<Op> {
-    let no_nops: Vec<Op> = ops.iter().filter(|o| !matches!(o, Op::Nop)).cloned().collect();
+    let no_nops: Vec<Op> = ops
+        .iter()
+        .filter(|o| !matches!(o, Op::Nop))
+        .cloned()
+        .collect();
     let folded = coalesce_dihedral(no_nops);
     peephole(folded)
 }
@@ -168,9 +172,7 @@ fn decide(prev: Option<&Op>, op: &Op) -> Act {
         // Nested crops compose exactly: the inner origin is relative to the
         // outer one, and the inner size is the final size.
         (
-            Some(Op::Crop {
-                x: ox, y: oy, ..
-            }),
+            Some(Op::Crop { x: ox, y: oy, .. }),
             Op::Crop {
                 x: ix,
                 y: iy,

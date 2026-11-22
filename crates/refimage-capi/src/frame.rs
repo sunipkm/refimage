@@ -6,7 +6,9 @@ use refimage::pipeline::{Frame, ImageSpec};
 use refimage::{ColorSpace, ImageProps, PixelType};
 
 use crate::RefStatus::*;
-use crate::{Error, RefColor, RefPixelType, Result, color_code, item_size, opt_cstr, pixel_type_code};
+use crate::{
+    Error, RefColor, RefPixelType, Result, color_code, item_size, opt_cstr, pixel_type_code,
+};
 
 /// Pixels owned by the caller, described for the library to read (or, with
 /// `data = NULL`, just a shape to allocate or compile for).
@@ -16,7 +18,7 @@ use crate::{Error, RefColor, RefPixelType, Result, color_code, item_size, opt_cs
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct RefFrame {
-    /// First byte of the top row, or `NULL` when only the shape is needed.
+    /// First byte of the top row. May be `NULL` when only the shape is needed.
     pub data: *const c_void,
     /// Width in pixels.
     pub width: usize,
@@ -32,7 +34,8 @@ pub struct RefFrame {
     pub color: RefColor,
     /// Channels per pixel; read only for `REF_COLOR_CUSTOM`.
     pub channels: u8,
-    /// Name of a `REF_COLOR_CUSTOM` color space (`NULL` = `"custom"`); otherwise ignored.
+    /// Name of a `REF_COLOR_CUSTOM` color space; otherwise ignored. May be `NULL`
+    /// (meaning `"custom"`).
     pub color_name: *const c_char,
 }
 
@@ -86,7 +89,10 @@ impl RefFrame {
         let name = unsafe { opt_cstr(self.color_name, "frame.color_name") }?;
         let cs = crate::color_space(self.color, self.channels, name)?;
         if self.width == 0 || self.height == 0 {
-            return Err(Error::new(REF_ERR_INVALID_ARG, "frame width and height must be non-zero"));
+            return Err(Error::new(
+                REF_ERR_INVALID_ARG,
+                "frame width and height must be non-zero",
+            ));
         }
         Ok(ImageSpec::new(self.width, self.height, cs, pt))
     }

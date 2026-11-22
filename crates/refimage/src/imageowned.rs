@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use crate::{
-    imagetraits::ImageProps, CalcOptExp, ColorSpace, ExposureResult, ImageError, ImageRef,
-    OptimumExposure, OptimumExposureResult, PixelStor, PixelType,
+    CalcOptExp, ColorSpace, ExposureResult, ImageError, ImageRef, OptimumExposure,
+    OptimumExposureResult, PixelStor, PixelType, imagetraits::ImageProps,
 };
 use bytemuck::AnyBitPattern;
 
@@ -147,11 +147,9 @@ impl<T: PixelStor> ImageOwned<T> {
         self.data.as_mut_slice()
     }
 
-    /// Get the underlying data as a vector.
-    ///
-    /// Note: This function returns a copy of the data.
+    /// The samples as a vector, moved out of the image (no copy).
     pub fn into_vec(self) -> Vec<T> {
-        self.data.clone()
+        self.data
     }
 
     /// Get a raw pointer to the data.

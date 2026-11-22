@@ -7,8 +7,8 @@
 use std::time::Duration;
 
 use chrono::DateTime;
-use fitsio::hdu::HduInfo;
 use fitsio::FitsFile;
+use fitsio::hdu::HduInfo;
 use refimage::{
     ColorSpace, DynamicImageOwned, FitsCompression, FitsWrite, GenericImageOwned, Gzip, Hcompress,
     ImageOwned, ImageProps, Rice,
@@ -33,9 +33,10 @@ fn image_hdu(f: &mut FitsFile) -> fitsio::hdu::FitsHdu {
     for i in 0.. {
         let Ok(hdu) = f.hdu(i) else { break };
         if let HduInfo::ImageInfo { ref shape, .. } = hdu.info
-            && !shape.is_empty() {
-                return hdu;
-            }
+            && !shape.is_empty()
+        {
+            return hdu;
+        }
     }
     panic!("no image HDU");
 }

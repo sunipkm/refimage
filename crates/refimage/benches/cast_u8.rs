@@ -5,7 +5,7 @@ mod tests {
     extern crate test;
     use rand::{RngExt as _, rng};
     use refimage::PixelStor;
-    use test::{black_box, Bencher};
+    use test::{Bencher, black_box};
 
     #[bench]
     /// [`PixelStor::cast_u8`] to convert a single `u16` value to `u8`.

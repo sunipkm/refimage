@@ -6,12 +6,16 @@
 //! - [`pipeline::Pipeline`] / [`pipeline::Runner`] wrap the `refimage::pipeline` recipe and
 //!   its compiled, buffer-reusing runner, including the warp / map-coordinates ops.
 //! - [`exposure::OptimumExposure`] wraps the optimum-exposure calculator.
+//! - [`interop`] serves the `refimage-pyo3` crate, through which other extension modules
+//!   create and read these objects without copying pixels.
 //!
 //! Every pixel-processing call releases the GIL.
 
 mod exposure;
 mod image;
+mod interop;
 mod pipeline;
+mod store;
 
 use numpy::{PyReadonlyArrayDyn, PyUntypedArrayMethods};
 use pyo3::exceptions::PyValueError;
@@ -72,7 +76,9 @@ pub(crate) fn cspace_to_py<'py>(py: Python<'py>, cs: &ColorSpace) -> PyResult<Bo
         ColorSpace::Bayer(BayerPattern::Bggr) => "bggr",
         ColorSpace::Bayer(BayerPattern::Gbrg) => "gbrg",
         ColorSpace::Bayer(BayerPattern::Grbg) => "grbg",
-        ColorSpace::Custom(n, name) => return Ok((*n, name.as_str()).into_pyobject(py)?.into_any()),
+        ColorSpace::Custom(n, name) => {
+            return Ok((*n, name.as_str()).into_pyobject(py)?.into_any());
+        }
         other => return Ok(PyString::new(py, &format!("{other:?}")).into_any()),
     };
     Ok(PyString::new(py, name).into_any())
@@ -152,7 +158,12 @@ pub(crate) fn parse_filter(s: &str) -> PyResult<ResizeFilter> {
     })
 }
 
-pub(crate) fn parse_interp(order: u8, mode: &str, cval: f64, prefilter: bool) -> PyResult<Interpolation> {
+pub(crate) fn parse_interp(
+    order: u8,
+    mode: &str,
+    cval: f64,
+    prefilter: bool,
+) -> PyResult<Interpolation> {
     let order = InterpOrder::from_u8(order).map_err(err)?;
     let mode: BoundaryMode = mode.parse().map_err(err)?;
     Ok(Interpolation::new(order, mode, cval).with_prefilter(prefilter))
@@ -233,7 +244,10 @@ impl<'py> NdPixels<'py> {
             ($a:expr) => {
                 match $a.as_slice() {
                     Ok(s) => Cow::Borrowed(bytemuck::cast_slice(s)),
-                    Err(_) => Cow::Owned(bytemuck::cast_slice(&$a.as_array().iter().copied().collect::<Vec<_>>()).to_vec()),
+                    Err(_) => Cow::Owned(
+                        bytemuck::cast_slice(&$a.as_array().iter().copied().collect::<Vec<_>>())
+                            .to_vec(),
+                    ),
                 }
             };
         }
@@ -273,5 +287,10 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<pipeline::Runner>()?;
     m.add_class::<exposure::OptimumExposure>()?;
     m.add_class::<exposure::ExposureResult>()?;
+    // The exchange format of refimage-pyo3 (other extension modules' images).
+    m.add_function(wrap_pyfunction!(interop::_interop_protocol, m)?)?;
+    m.add_function(wrap_pyfunction!(interop::_image_from_parts, m)?)?;
+    m.add_function(wrap_pyfunction!(interop::_image_to_parts, m)?)?;
+    m.add_function(wrap_pyfunction!(interop::_image_set_metadata, m)?)?;
     Ok(())
 }

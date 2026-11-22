@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::demosaic::demosaic_serial_scratch_len;
 use crate::{DemosaicMethod, PixelType};
 
-use super::plan::{build_tail_phases, f32_cap, resolve_exec, Exec, Plan, StepKind, TailPhase};
+use super::plan::{Exec, Plan, StepKind, TailPhase, build_tail_phases, f32_cap, resolve_exec};
 use super::{
     ApplyInput, ImageSpec, Interpolation, Op, PipelineError, ResizeFilter, Runner, ScaleFactor,
     Strategy,
@@ -268,7 +268,13 @@ impl Pipeline {
         // Warp steps: one shared scratch sized for the hungriest, and rows only
         // fan out over rayon when the strategy is not explicitly serial-tiled (so a
         // serial-tiled runner keeps its zero-allocation guarantee).
-        let serial = matches!(strategy, Strategy::Tiled { parallel: false, .. });
+        let serial = matches!(
+            strategy,
+            Strategy::Tiled {
+                parallel: false,
+                ..
+            }
+        );
         let mut warp_cap = 0usize;
         for (i, step) in plan.steps.iter_mut().enumerate() {
             if let StepKind::Warp {

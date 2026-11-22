@@ -1518,7 +1518,9 @@ fn optimize_keeps_arithmetic_stages_unfused() {
 const IDENTITY: [[f64; 3]; 3] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
 
 fn rgb8(w: usize, h: usize) -> Vec<u8> {
-    (0..w * h * 3).map(|i| ((i * 37 + 11) % 256) as u8).collect()
+    (0..w * h * 3)
+        .map(|i| ((i * 37 + 11) % 256) as u8)
+        .collect()
 }
 
 /// A 17-degree rotation about the image centre, plus a small shift.
@@ -1538,7 +1540,10 @@ fn warp_identity_returns_the_image_and_a_shift_moves_it() {
     let mut data = rgb8(w, h);
     let img = DynamicImageRef::from(ImageRef::new(&mut data, w, h, ColorSpace::Rgb).unwrap());
     let lin = Interpolation::default();
-    let same = Pipeline::new().warp(IDENTITY, w, h, lin).apply(&img).unwrap();
+    let same = Pipeline::new()
+        .warp(IDENTITY, w, h, lin)
+        .apply(&img)
+        .unwrap();
     assert_eq!(same.as_raw_u8(), img.as_raw_u8());
 
     // Output (col, row) samples the input one column to the right; the last
@@ -1572,10 +1577,17 @@ fn warp_equals_map_coordinates_with_the_same_points() {
     }
     let mut data = sample16(w * h);
     let img = gray16(w, h, &mut data);
-    for order in [InterpOrder::Nearest, InterpOrder::Linear, InterpOrder::Cubic] {
+    for order in [
+        InterpOrder::Nearest,
+        InterpOrder::Linear,
+        InterpOrder::Cubic,
+    ] {
         for mode in ["constant", "nearest", "mirror", "reflect", "wrap"] {
             let interp = Interpolation::new(order, mode.parse().unwrap(), 9.0);
-            let a = Pipeline::new().warp(inv, ow, oh, interp).apply(&img).unwrap();
+            let a = Pipeline::new()
+                .warp(inv, ow, oh, interp)
+                .apply(&img)
+                .unwrap();
             let b = Pipeline::new()
                 .map_coordinates(rows.clone(), cols.clone(), ow, oh, interp)
                 .apply(&img)
@@ -1593,7 +1605,11 @@ fn warp_rgb_matches_per_channel_gray() {
     let (w, h) = (31usize, 26usize);
     let mut data = rgb8(w, h);
     let inv = rotation(w, h);
-    for mode in [BoundaryMode::Nearest, BoundaryMode::Reflect, BoundaryMode::Constant] {
+    for mode in [
+        BoundaryMode::Nearest,
+        BoundaryMode::Reflect,
+        BoundaryMode::Constant,
+    ] {
         let interp = Interpolation::new(InterpOrder::Cubic, mode, 40.0);
         let img = DynamicImageRef::from(ImageRef::new(&mut data, w, h, ColorSpace::Rgb).unwrap());
         let rgb = Pipeline::new().warp(inv, w, h, interp).apply(&img).unwrap();
@@ -1601,7 +1617,10 @@ fn warp_rgb_matches_per_channel_gray() {
             let mut plane: Vec<u8> = data.iter().skip(c).step_by(3).copied().collect();
             let gray =
                 DynamicImageRef::from(ImageRef::new(&mut plane, w, h, ColorSpace::Gray).unwrap());
-            let one = Pipeline::new().warp(inv, w, h, interp).apply(&gray).unwrap();
+            let one = Pipeline::new()
+                .warp(inv, w, h, interp)
+                .apply(&gray)
+                .unwrap();
             let want = one.as_raw_u8();
             let got: Vec<u8> = rgb.as_raw_u8().iter().skip(c).step_by(3).copied().collect();
             assert_eq!(&got[..], want, "channel {c}, {mode:?}");
@@ -1656,7 +1675,11 @@ fn warp_tiles_and_parallelises_identically() {
     ] {
         let mut runner = pipe.compile(spec.clone(), strategy).unwrap();
         assert!(runner.is_tiled());
-        assert_eq!(runner.tiled_pass_count(), 2, "tiles on both sides of the warp");
+        assert_eq!(
+            runner.tiled_pass_count(),
+            2,
+            "tiles on both sides of the warp"
+        );
         let img = bayer_frame(w, h, pat, &mut data);
         let out = runner.run(&img).unwrap();
         assert_eq!((out.width(), out.height()), (70, 90));
@@ -1727,7 +1750,13 @@ fn warp_pipeline_round_trips_through_json() {
             9,
             Interpolation::new(InterpOrder::Cubic, BoundaryMode::Wrap, 3.5).with_prefilter(false),
         )
-        .map_coordinates(vec![0.5, 1.5], vec![2.0, 3.0], 2, 1, Interpolation::default());
+        .map_coordinates(
+            vec![0.5, 1.5],
+            vec![2.0, 3.0],
+            2,
+            1,
+            Interpolation::default(),
+        );
     let json = serde_json::to_string(&p).unwrap();
     assert_eq!(serde_json::from_str::<Pipeline>(&json).unwrap(), p);
 }

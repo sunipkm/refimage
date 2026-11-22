@@ -223,11 +223,12 @@ fn u8_slice_as_f32(buf: &[u8]) -> ByteResult<DtypeContainer<'_, f32>> {
             match err {
                 bytemuck::PodCastError::TargetAlignmentGreaterAndInputNotAligned => {
                     // If the buffer is not aligned for a f32 slice, copy the buffer into a new Vec<f32>
-                    let mut vec = vec![0.0; buf.len() / 4];
-                    for (i, chunk) in buf.chunks_exact(4).enumerate() {
-                        let f32_val = f32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-                        vec[i] = f32_val;
-                    }
+                    let vec = buf
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .map(|c| f32::from_ne_bytes(*c))
+                        .collect();
                     Ok(DtypeContainer::Vec(vec))
                 }
                 _ => Err(crate::imageref::cast_msg(err)),
@@ -243,12 +244,13 @@ fn u8_slice_as_u16(buf: &[u8]) -> ByteResult<DtypeContainer<'_, u16>> {
         Err(err) => {
             match err {
                 bytemuck::PodCastError::TargetAlignmentGreaterAndInputNotAligned => {
-                    // If the buffer is not aligned for a f32 slice, copy the buffer into a new Vec<f32>
-                    let mut vec = vec![0; buf.len() / 2];
-                    for (i, chunk) in buf.chunks_exact(2).enumerate() {
-                        let u16_val = u16::from_ne_bytes([chunk[0], chunk[1]]);
-                        vec[i] = u16_val;
-                    }
+                    // If the buffer is not aligned for a u16 slice, copy the buffer into a new Vec<u16>
+                    let vec = buf
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
+                        .map(|c| u16::from_ne_bytes(*c))
+                        .collect();
                     Ok(DtypeContainer::Vec(vec))
                 }
                 _ => Err(crate::imageref::cast_msg(err)),
@@ -295,7 +297,10 @@ mod test {
         let bytes = g.fits_bytes(FitsCompression::NONE).unwrap();
         let text = String::from_utf8_lossy(&bytes);
         assert!(text.contains("BITADC"), "BITADC card missing");
-        assert!(text.contains("BITADC  =                   10"), "BITADC value wrong");
+        assert!(
+            text.contains("BITADC  =                   10"),
+            "BITADC value wrong"
+        );
     }
 
     #[test]

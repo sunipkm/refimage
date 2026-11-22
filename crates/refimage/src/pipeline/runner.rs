@@ -5,7 +5,7 @@ use bytemuck::{cast_slice, cast_slice_mut};
 
 use crate::{DynamicImageOwned, DynamicImageRef, ImageProps, PixelData};
 
-use super::exec::{current, fill_tiled, run_chain, view, TileGeom};
+use super::exec::{TileGeom, current, fill_tiled, run_chain, view};
 use super::kernels::Demosaic;
 use super::plan::{Exec, Step, TailPhase};
 use super::{Frame, ImageSpec, Pipeline, PipelineError, Strategy};

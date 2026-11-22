@@ -77,11 +77,11 @@ use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-use crate::{GenericLineItem, GenericValue, Metadata, EXPOSURE_KEY, FRAMEID_KEY};
+use crate::{EXPOSURE_KEY, FRAMEID_KEY, GenericLineItem, GenericValue, Metadata};
 
 use card::Header;
 use config::Method;
-use hdu::{bayer_pattern, colorspace_str, ImageView};
+use hdu::{ImageView, bayer_pattern, colorspace_str};
 
 pub use config::{
     AutoTile, DitherSeed, FitsCompression, FitsCompressionKind, FixedTile, Gzip, Hcompress,
@@ -357,7 +357,11 @@ fn write_uncompressed<W: Write>(
         h.integer("BSCALE", 1, None)?;
     }
     if let Some(bits) = view.adc_bits {
-        h.integer("BITADC", bits as i64, Some("meaningful ADC bits per sample"))?;
+        h.integer(
+            "BITADC",
+            bits as i64,
+            Some("meaningful ADC bits per sample"),
+        )?;
     }
 
     write_common_cards(&mut h, view, meta.timestamp())?;
@@ -437,7 +441,11 @@ fn write_compressed<W: Write>(
         h.integer("BSCALE", 1, None)?;
     }
     if let Some(bits) = view.adc_bits {
-        h.integer("BITADC", bits as i64, Some("meaningful ADC bits per sample"))?;
+        h.integer(
+            "BITADC",
+            bits as i64,
+            Some("meaningful ADC bits per sample"),
+        )?;
     }
 
     write_common_cards(&mut h, view, meta.timestamp())?;

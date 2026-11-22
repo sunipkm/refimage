@@ -905,7 +905,30 @@ dependencies = [
  "numpy",
  "pyo3",
  "refimage",
+ "refimage-pyo3",
  "serde_json",
+]
+
+[[package]]
+name = "refimage-pyo3"
+version = "1.0.0-pre6"
+dependencies = [
+ "bincode",
+ "bytemuck",
+ "numpy",
+ "pyo3",
+ "refimage",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "refimage-pyo3-test"
+version = "0.0.0"
+dependencies = [
+ "pyo3",
+ "refimage",
+ "refimage-pyo3",
 ]
 
 [[package]]

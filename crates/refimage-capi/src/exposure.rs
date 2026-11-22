@@ -3,7 +3,9 @@
 use std::ffi::c_void;
 use std::time::Duration;
 
-use refimage::{CalcOptExp, OptimumExposure, OptimumExposureBuilder, OptimumExposureResult, PixelType};
+use refimage::{
+    CalcOptExp, OptimumExposure, OptimumExposureBuilder, OptimumExposureResult, PixelType,
+};
 
 use crate::RefStatus::{self, *};
 use crate::frame::RefFrame;
@@ -54,6 +56,7 @@ pub struct RefExposureResult {
 
 /// 99.5th percentile, target 40000/65536 +/- 5000/65536, 100 excluded pixels,
 /// 1 ms - 10 s, no binning.
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn ref_exposure_options_default() -> RefExposureOptions {
     RefExposureOptions {
@@ -93,11 +96,16 @@ fn result(r: OptimumExposureResult) -> RefExposureResult {
 
 /// The exposure to evaluate at: `seconds` when positive, else the image's own.
 fn exposure_or(seconds: f64, own: Duration) -> Result<Duration> {
-    if seconds > 0.0 { duration(seconds, "exposure") } else { Ok(own) }
+    if seconds > 0.0 {
+        duration(seconds, "exposure")
+    } else {
+        Ok(own)
+    }
 }
 
 /// Evaluate `img`, taken at `exposure` seconds (`<= 0` uses the image's own exposure)
 /// and binning `bin`. Works on a copy; `img` is unchanged. `options` may be `NULL`.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_exposure_calculate(
     options: *const RefExposureOptions,
@@ -117,7 +125,9 @@ pub unsafe extern "C" fn ref_exposure_calculate(
 }
 
 /// `ref_exposure_calculate` without the copy: the percentile search **reorders
-/// `img`'s pixels**. Use it only on a frame about to be discarded.
+/// `img`'s pixels**. Use it only on a frame about to be discarded. `options` may
+/// be `NULL` for `ref_exposure_options_default`.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_exposure_calculate_in_place(
     options: *const RefExposureOptions,
@@ -135,7 +145,9 @@ pub unsafe extern "C" fn ref_exposure_calculate_in_place(
     }
 }
 
-/// Evaluate a caller frame taken at `exposure` seconds (> 0). The frame is copied.
+/// Evaluate a caller frame taken at `exposure` seconds (> 0). The frame is copied. `options` may
+/// be `NULL` for `ref_exposure_options_default`.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_exposure_calculate_frame(
     options: *const RefExposureOptions,
@@ -158,7 +170,9 @@ pub unsafe extern "C" fn ref_exposure_calculate_frame(
 }
 
 /// Evaluate `count` samples of `pixel_type` at `data` in place, with no copy: the
-/// samples are **reordered**. `data` must be aligned for the sample type.
+/// samples are **reordered**. `data` must be aligned for the sample type. `options` may
+/// be `NULL` for `ref_exposure_options_default`.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_exposure_calculate_buffer(
     options: *const RefExposureOptions,

@@ -23,7 +23,7 @@
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
-use crate::coretraits::{do_div_float, do_prod, get_mean, large_to_f64, Enlargeable};
+use crate::coretraits::{Enlargeable, do_div_float, do_prod, get_mean, large_to_f64};
 use crate::demosaic::{BayerError, BayerRead, BayerResult, ColorFilterArray, RasterMut};
 
 #[cfg(feature = "rayon")]

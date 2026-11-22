@@ -15,7 +15,7 @@
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
-use crate::coretraits::{get_mean, Enlargeable};
+use crate::coretraits::{Enlargeable, get_mean};
 use crate::demosaic::border_replicate::*;
 use crate::demosaic::{BayerError, BayerRead, BayerResult, ColorFilterArray, RasterMut};
 use crate::{ImageProps, ImageRef, PixelStor};

@@ -4,9 +4,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    genericimageref::GenericImageRef, metadata::InsertValue, CalcOptExp, DynamicImageOwned,
-    ExposureResult, GenericLineItem, ImageProps, Metadata, OptimumExposure, OptimumExposureResult,
-    PixelData,
+    CalcOptExp, DynamicImageOwned, ExposureResult, GenericLineItem, ImageProps, Metadata,
+    OptimumExposure, OptimumExposureResult, PixelData, genericimageref::GenericImageRef,
+    metadata::InsertValue,
 };
 
 #[allow(unused_imports)]
@@ -78,6 +78,12 @@ impl GenericImageOwned {
             metadata,
             image: image.into(),
         }
+    }
+
+    /// Split into the metadata and the pixels, without copying either: the inverse of
+    /// [`with_metadata`](Self::with_metadata).
+    pub fn into_parts(self) -> (Metadata, DynamicImageOwned) {
+        (self.metadata, self.image)
     }
 
     /// The UTC timestamp of the image.

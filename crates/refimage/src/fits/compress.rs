@@ -15,7 +15,7 @@
 
 use super::config::{DitherSeed, Method, Quantize, Tiling};
 use super::hdu::{ImageView, Tile};
-use super::{gzip, hcompress, quantize, rice, FitsError, FitsResult};
+use super::{FitsError, FitsResult, gzip, hcompress, quantize, rice};
 
 /// Everything `mod.rs` needs to emit a compressed image HDU.
 pub(super) struct Compressed {

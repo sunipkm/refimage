@@ -109,7 +109,9 @@ impl Plan {
                         filter: *filter,
                     }
                 }
-                Op::Warp { inverse, interp, .. } => {
+                Op::Warp {
+                    inverse, interp, ..
+                } => {
                     step.coeff_idx = coeffs.len();
                     coeffs.push(inverse.iter().flatten().copied().collect());
                     step.kind = StepKind::Warp {

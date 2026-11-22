@@ -1,0 +1,236 @@
+name: Release
+
+# Pushing a tag vX.Y.Z (or vX.Y.Z-preN) publishes that version: the Rust crates (refimage,
+# refimage-pyo3) to crates.io, the Python package to PyPI, and a GitHub release (marked as a
+# pre-release for -preN tags). The version comes from the tag (tools/version.py).
+#
+# The full CI (ci.yml) runs first, and every release job waits for it. Nothing is published
+# until everything is built and tested: every wheel (and its tests on the oldest and newest
+# Pythons) and the sdist. Only then do the crates go to crates.io, then the package to PyPI,
+# so a failure anywhere before leaves both registries untouched.
+#
+# Needs: a CARGO_REGISTRY_TOKEN secret, and this workflow registered as a trusted publisher
+# for the `refimage` project on PyPI (environment `pypi`).
+
+on:
+  push:
+    tags: ["v[0-9]*"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  # Only once every distribution is built and tested (see the top).
+  crates:
+    needs: [ci, wheels, test-wheels, sdist]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - run: python3 tools/version.py --release
+      # In dependency order, each available before the next; versions already on crates.io
+      # are skipped and crates.io's new-crate rate limit is waited out, so re-running this job
+      # finishes a release that stopped part-way.
+      - run: python3 tools/publish_crates.py
+        timeout-minutes: 120
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  wheels:
+    name: wheel ${{ matrix.platform.name }}
+    needs: [ci]
+    strategy:
+      matrix:
+        platform:
+          - { name: manylinux-x86_64, runner: ubuntu-latest, target: x86_64, manylinux: "2_28" }
+          - { name: manylinux-aarch64, runner: ubuntu-24.04-arm, target: aarch64, manylinux: "2_28" }
+          - { name: musllinux-x86_64, runner: ubuntu-latest, target: x86_64, manylinux: musllinux_1_2 }
+          - { name: musllinux-aarch64, runner: ubuntu-24.04-arm, target: aarch64, manylinux: musllinux_1_2 }
+          - { name: macos-x86_64, runner: macos-latest, target: x86_64-apple-darwin }
+          - { name: macos-arm64, runner: macos-latest, target: aarch64-apple-darwin }
+          - { name: windows-x64, runner: windows-latest, target: x64 }
+          - { name: windows-arm64, runner: windows-11-arm, target: aarch64-pc-windows-msvc }
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python tools/version.py --release
+      # One abi3 wheel per platform (pyo3's `abi3-py312`): it serves CPython 3.12 and later.
+      - uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: "1.16.0"
+          target: ${{ matrix.platform.target }}
+          manylinux: ${{ matrix.platform.manylinux || 'auto' }}
+          args: --release --out dist
+          working-directory: python
+      # GitHub's artifact service sometimes times out past the action's own retries (five,
+      # within a minute): two more tries, after one and then two minutes, before the job fails.
+      - id: upload-wheels-1
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: wheels-${{ matrix.platform.name }}
+          path: python/dist
+      - if: steps.upload-wheels-1.outcome == 'failure'
+        run: sleep 60
+      - id: upload-wheels-2
+        if: steps.upload-wheels-1.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: wheels-${{ matrix.platform.name }}
+          path: python/dist
+          overwrite: true
+      - if: steps.upload-wheels-2.outcome == 'failure'
+        run: sleep 120
+      - if: steps.upload-wheels-2.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.platform.name }}
+          path: python/dist
+          overwrite: true
+
+  # The wheels (not the source tree) on the oldest and newest supported Pythons, with every
+  # optional test dependency, before anything is published.
+  test-wheels:
+    name: test ${{ matrix.os }} / py${{ matrix.python }}
+    needs: [wheels]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+        python: ["3.12", "3.14"]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+      - name: Install the wheel
+        run: |
+          python -m pip install --upgrade pip
+          # --no-index so a refimage already on PyPI can't shadow the wheel built here.
+          python -m pip install --only-binary=:all: --no-index --no-deps --find-links dist refimage
+          python -m pip install numpy pytest scipy scikit-image astropy mypy
+          python -m pip check
+      # From outside python/, so `import refimage` is the installed wheel, not the source.
+      - name: Test
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -m pytest -q "$GITHUB_WORKSPACE/python/tests"
+          python -m mypy.stubtest refimage._native \
+            --allowlist "$GITHUB_WORKSPACE/python/stubtest-allowlist.txt"
+
+  sdist:
+    needs: [ci]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python3 tools/version.py --release
+      - uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: "1.16.0"
+          command: sdist
+          args: --out dist
+          working-directory: python
+      # As for the wheels: two more tries before the job fails.
+      - id: upload-sdist-1
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: sdist
+          path: python/dist
+      - if: steps.upload-sdist-1.outcome == 'failure'
+        run: sleep 60
+      - id: upload-sdist-2
+        if: steps.upload-sdist-1.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: sdist
+          path: python/dist
+          overwrite: true
+      - if: steps.upload-sdist-2.outcome == 'failure'
+        run: sleep 120
+      - if: steps.upload-sdist-2.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: python/dist
+          overwrite: true
+
+  # After the crates, so a release never reaches PyPI with its crates missing.
+  pypi:
+    needs: [ci, crates, wheels, sdist, test-wheels]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/refimage
+    permissions:
+      id-token: write # trusted publishing (and PEP 740 attestations)
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  # A GitHub release for the tag, with the wheels and sdist, once both registries have the
+  # version. Pre-release tags (vX.Y.Z-preN) are marked as pre-releases and never become the
+  # "Latest" release; crates.io (semver `-preN`) and PyPI (PEP 440 `rcN`) already treat those
+  # versions as pre-releases, so `cargo add` and `pip install` skip them unless asked.
+  github-release:
+    needs: [crates, pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "$TAG" == *-pre* ]]; then
+            kind=(--prerelease --latest=false)
+          else
+            kind=(--latest)
+          fi
+          gh release create "$TAG" dist/* \
+            --repo "${{ github.repository }}" \
+            --verify-tag \
+            --title "$TAG" \
+            --generate-notes \
+            "${kind[@]}"

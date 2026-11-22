@@ -2,8 +2,8 @@
 use rayon::{iter::ParallelIterator, slice::ParallelSliceMut};
 
 use crate::{
-    demosaic::ColorFilterArray, BayerError, BayerPattern, ColorSpace, ImageError, PixelStor,
-    PixelType,
+    BayerError, BayerPattern, ColorSpace, ImageError, PixelStor, PixelType,
+    demosaic::ColorFilterArray,
 };
 
 impl TryFrom<i8> for PixelType {

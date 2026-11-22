@@ -1,6 +1,6 @@
 [package]
 name = "refimage"
-version = "1.0.0-pre6"
+version.workspace = true
 edition.workspace = true
 
 license.workspace = true

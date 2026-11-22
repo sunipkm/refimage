@@ -43,6 +43,7 @@ pub struct RefInterpolation {
 }
 
 /// Bilinear, constant boundary, `cval = 0`, prefilter on.
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn ref_interpolation_default() -> RefInterpolation {
     RefInterpolation {
@@ -69,6 +70,7 @@ pub struct RefStrategy {
 }
 
 /// Tiled, automatic band height, full-width bands, parallel.
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn ref_strategy_default() -> RefStrategy {
     RefStrategy {
@@ -82,14 +84,19 @@ pub extern "C" fn ref_strategy_default() -> RefStrategy {
 // --- Lifecycle ------------------------------------------------------------------
 
 /// Create an empty (identity) pipeline.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_pipeline_new(out: *mut *mut RefPipeline) -> RefStatus {
     ffi! { put_handle(out, RefPipeline { inner: rp::Pipeline::new() }, "out") }
 }
 
 /// Copy a pipeline.
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_pipeline_clone(p: *const RefPipeline, out: *mut *mut RefPipeline) -> RefStatus {
+pub unsafe extern "C" fn ref_pipeline_clone(
+    p: *const RefPipeline,
+    out: *mut *mut RefPipeline,
+) -> RefStatus {
     ffi! {
         let p = as_ref(p, "pipeline")?;
         put_handle(out, RefPipeline { inner: p.inner.clone() }, "out")
@@ -104,8 +111,12 @@ pub unsafe extern "C" fn ref_pipeline_free(p: *mut RefPipeline) {
 
 /// Parse a pipeline from JSON (the serde form Rust and Python use; see
 /// `ref_pipeline_to_json`). Every op is available this way.
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_pipeline_from_json(json: *const c_char, out: *mut *mut RefPipeline) -> RefStatus {
+pub unsafe extern "C" fn ref_pipeline_from_json(
+    json: *const c_char,
+    out: *mut *mut RefPipeline,
+) -> RefStatus {
     ffi! {
         let inner: rp::Pipeline = serde_json::from_str(cstr(json, "json")?).status(REF_ERR_DECODE)?;
         put_handle(out, RefPipeline { inner }, "out")
@@ -113,8 +124,12 @@ pub unsafe extern "C" fn ref_pipeline_from_json(json: *const c_char, out: *mut *
 }
 
 /// The pipeline as JSON, NUL-terminated in `out` (release with `ref_buffer_free`).
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_pipeline_to_json(p: *const RefPipeline, out: *mut RefBuffer) -> RefStatus {
+pub unsafe extern "C" fn ref_pipeline_to_json(
+    p: *const RefPipeline,
+    out: *mut RefBuffer,
+) -> RefStatus {
     ffi! {
         let json = serde_json::to_vec(&as_ref(p, "pipeline")?.inner).status(REF_ERR_PIPELINE)?;
         put_buffer(out, json)
@@ -122,6 +137,7 @@ pub unsafe extern "C" fn ref_pipeline_to_json(p: *const RefPipeline, out: *mut R
 }
 
 /// Number of ops.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_pipeline_len(p: *const RefPipeline, len: *mut usize) -> RefStatus {
     ffi! { put(len, as_ref(p, "pipeline")?.inner.ops().len(), "len") }
@@ -129,6 +145,7 @@ pub unsafe extern "C" fn ref_pipeline_len(p: *const RefPipeline, len: *mut usize
 
 /// Drop no-ops, fold flip/rotation runs and merge nested crops, in place. The output
 /// is unchanged.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_pipeline_optimize(p: *mut RefPipeline) -> RefStatus {
     ffi! {
@@ -147,12 +164,17 @@ unsafe fn push(p: *mut RefPipeline, op: impl FnOnce() -> Result<Op>) -> Result<(
 }
 
 /// Demosaic a Bayer image to RGB (a `REF_DEMOSAIC_*` constant).
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_pipeline_debayer(p: *mut RefPipeline, method: RefDemosaic) -> RefStatus {
+pub unsafe extern "C" fn ref_pipeline_debayer(
+    p: *mut RefPipeline,
+    method: RefDemosaic,
+) -> RefStatus {
     ffi! { push(p, || Ok(Op::Debayer(crate::demosaic(method)?))) }
 }
 
 /// Convert to luma (Rec.601 weights); the image becomes gray.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_pipeline_to_luma(p: *mut RefPipeline) -> RefStatus {
     ffi! { push(p, || Ok(Op::ToLuma)) }
@@ -160,6 +182,7 @@ pub unsafe extern "C" fn ref_pipeline_to_luma(p: *mut RefPipeline) -> RefStatus 
 
 /// Convert to luma with one weight per input channel (`count` must match the
 /// channel count at compile time).
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_pipeline_to_luma_weights(
     p: *mut RefPipeline,
@@ -173,30 +196,46 @@ pub unsafe extern "C" fn ref_pipeline_to_luma_weights(
 }
 
 /// `y = x * gain + offset` on the raw stored value, saturated into the pixel type.
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_pipeline_scale(p: *mut RefPipeline, gain: f64, offset: f64) -> RefStatus {
+pub unsafe extern "C" fn ref_pipeline_scale(
+    p: *mut RefPipeline,
+    gain: f64,
+    offset: f64,
+) -> RefStatus {
     ffi! { push(p, || Ok(Op::Scale { gain, offset })) }
 }
 
 /// `y = round(x * num / den)`, exact on integer images.
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_pipeline_scale_rational(p: *mut RefPipeline, num: i64, den: i64) -> RefStatus {
+pub unsafe extern "C" fn ref_pipeline_scale_rational(
+    p: *mut RefPipeline,
+    num: i64,
+    den: i64,
+) -> RefStatus {
     ffi! { push(p, || Ok(Op::ScalePixels(ScaleFactor::Rational { num, den }))) }
 }
 
 /// `y = x * factor`, saturated into the pixel type.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_pipeline_scale_by(p: *mut RefPipeline, factor: f64) -> RefStatus {
     ffi! { push(p, || Ok(Op::ScalePixels(ScaleFactor::Float(factor)))) }
 }
 
 /// Rescale into another pixel type (a `REF_PIXEL_*` constant).
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_pipeline_convert(p: *mut RefPipeline, pixel_type: RefPixelType) -> RefStatus {
+pub unsafe extern "C" fn ref_pipeline_convert(
+    p: *mut RefPipeline,
+    pixel_type: RefPixelType,
+) -> RefStatus {
     ffi! { push(p, || Ok(Op::Convert(crate::pixel_type(pixel_type)?))) }
 }
 
 /// Keep the `width` x `height` rectangle at (`x`, `y`); it must lie inside the image.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_pipeline_crop(
     p: *mut RefPipeline,
@@ -209,6 +248,7 @@ pub unsafe extern "C" fn ref_pipeline_crop(
 }
 
 /// Like `ref_pipeline_crop`, but overhang past the edge is zero-filled.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_pipeline_roi(
     p: *mut RefPipeline,
@@ -221,30 +261,35 @@ pub unsafe extern "C" fn ref_pipeline_roi(
 }
 
 /// Mirror left to right (Bayer patterns are re-phased).
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_pipeline_flip_horizontal(p: *mut RefPipeline) -> RefStatus {
     ffi! { push(p, || Ok(Op::FlipHorizontal)) }
 }
 
 /// Mirror top to bottom (Bayer patterns are re-phased).
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_pipeline_flip_vertical(p: *mut RefPipeline) -> RefStatus {
     ffi! { push(p, || Ok(Op::FlipVertical)) }
 }
 
 /// Rotate 90 degrees clockwise.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_pipeline_rotate_90(p: *mut RefPipeline) -> RefStatus {
     ffi! { push(p, || Ok(Op::Rotate90)) }
 }
 
 /// Rotate 180 degrees.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_pipeline_rotate_180(p: *mut RefPipeline) -> RefStatus {
     ffi! { push(p, || Ok(Op::Rotate180)) }
 }
 
 /// Rotate 90 degrees counter-clockwise.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_pipeline_rotate_270(p: *mut RefPipeline) -> RefStatus {
     ffi! { push(p, || Ok(Op::Rotate270)) }
@@ -252,6 +297,7 @@ pub unsafe extern "C" fn ref_pipeline_rotate_270(p: *mut RefPipeline) -> RefStat
 
 /// Resample to the largest size inside `max_width` x `max_height` at the same aspect
 /// ratio (a `REF_RESIZE_*` filter).
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_pipeline_resize_to_fit(
     p: *mut RefPipeline,
@@ -269,6 +315,7 @@ pub unsafe extern "C" fn ref_pipeline_resize_to_fit(
 /// Warp through `inverse`, a row-major 3x3 homography taking `(column, row, 1)` of an
 /// output pixel to the input (scikit-image's `warp` convention), into a
 /// `width` x `height` output. `interp` may be `NULL` for `ref_interpolation_default`.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_pipeline_warp(
     p: *mut RefPipeline,
@@ -287,7 +334,9 @@ pub unsafe extern "C" fn ref_pipeline_warp(
 
 /// Sample the input at explicit coordinates (scipy's `map_coordinates`): output pixel
 /// `(y, x)` reads input row `rows[y * width + x]`, column `cols[y * width + x]`. Both
-/// arrays hold `width * height` values and are copied.
+/// arrays hold `width * height` values and are copied. `interp` may be `NULL` for
+/// `ref_interpolation_default`.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_pipeline_map_coordinates(
     p: *mut RefPipeline,
@@ -312,6 +361,7 @@ pub unsafe extern "C" fn ref_pipeline_map_coordinates(
 
 /// Run the pipeline once over `img` into a new image carrying `img`'s metadata.
 /// Allocates; for a stream of frames compile a runner instead.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_pipeline_apply(
     p: *const RefPipeline,
@@ -336,6 +386,7 @@ pub struct RefRunner {
 
 /// Validate the pipeline against frames shaped like `like` (its `data` is ignored)
 /// and allocate every buffer. `strategy` may be `NULL` for `ref_strategy_default`.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_pipeline_compile(
     p: *const RefPipeline,
@@ -359,8 +410,12 @@ pub unsafe extern "C" fn ref_runner_free(r: *mut RefRunner) {
 }
 
 /// Rebuild the plan and buffers for frames shaped like `like`.
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_runner_recompile(r: *mut RefRunner, like: *const RefFrame) -> RefStatus {
+pub unsafe extern "C" fn ref_runner_recompile(
+    r: *mut RefRunner,
+    like: *const RefFrame,
+) -> RefStatus {
     ffi! {
         let spec = as_ref(like, "like")?.spec()?;
         as_mut(r, "runner")?.inner.recompile(spec).status(REF_ERR_PIPELINE)
@@ -373,6 +428,7 @@ pub unsafe extern "C" fn ref_runner_recompile(r: *mut RefRunner, like: *const Re
 /// allocation) and keeping its metadata.
 ///
 /// A frame of a different shape than the runner was compiled for recompiles it.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_runner_run(
     r: *mut RefRunner,
@@ -399,6 +455,7 @@ pub unsafe extern "C" fn ref_runner_run(
 
 /// Like `ref_runner_run` for an image input: the result also receives `img`'s
 /// metadata. `*out` may be `img` itself (processed in place).
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_runner_run_image(
     r: *mut RefRunner,
@@ -438,6 +495,7 @@ pub unsafe extern "C" fn ref_runner_run_image(
 /// rows `dst_row_stride` bytes apart (`0` = packed). Needs at least
 /// `(height - 1) * stride + row_bytes` bytes of the output (see
 /// `ref_runner_output_info`); never allocates on the caller's side.
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_runner_run_into(
     r: *mut RefRunner,
@@ -477,20 +535,28 @@ pub unsafe extern "C" fn ref_runner_run_into(
     }
 }
 
-
 /// The input shape the runner is compiled for.
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_runner_input_info(r: *const RefRunner, out: *mut RefImageInfo) -> RefStatus {
+pub unsafe extern "C" fn ref_runner_input_info(
+    r: *const RefRunner,
+    out: *mut RefImageInfo,
+) -> RefStatus {
     ffi! { put(out, RefImageInfo::of_spec(as_ref(r, "runner")?.inner.input_spec()), "out") }
 }
 
 /// The output shape `ref_runner_run` produces.
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_runner_output_info(r: *const RefRunner, out: *mut RefImageInfo) -> RefStatus {
+pub unsafe extern "C" fn ref_runner_output_info(
+    r: *const RefRunner,
+    out: *mut RefImageInfo,
+) -> RefStatus {
     ffi! { put(out, RefImageInfo::of_spec(as_ref(r, "runner")?.inner.output_spec()), "out") }
 }
 
 /// Whether runs cut frames into tiles (`false` when tiling cannot help).
+#[must_use]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ref_runner_is_tiled(r: *const RefRunner, out: *mut bool) -> RefStatus {
     ffi! { put(out, as_ref(r, "runner")?.inner.is_tiled(), "out") }
@@ -498,15 +564,22 @@ pub unsafe extern "C" fn ref_runner_is_tiled(r: *const RefRunner, out: *mut bool
 
 /// Independently tiled passes (0 when not tiled; more when a geometric op splits the
 /// chain).
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_runner_tiled_pass_count(r: *const RefRunner, out: *mut usize) -> RefStatus {
+pub unsafe extern "C" fn ref_runner_tiled_pass_count(
+    r: *const RefRunner,
+    out: *mut usize,
+) -> RefStatus {
     ffi! { put(out, as_ref(r, "runner")?.inner.tiled_pass_count(), "out") }
 }
 
 /// Scratch memory held by the runner, in bytes (excluding the padded-frame staging
 /// buffer).
+#[must_use]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ref_runner_scratch_bytes(r: *const RefRunner, out: *mut usize) -> RefStatus {
+pub unsafe extern "C" fn ref_runner_scratch_bytes(
+    r: *const RefRunner,
+    out: *mut usize,
+) -> RefStatus {
     ffi! { put(out, as_ref(r, "runner")?.inner.scratch_bytes(), "out") }
 }
-

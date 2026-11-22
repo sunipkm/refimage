@@ -1,0 +1,16 @@
+# A test extension module for refimage-pyo3 (not published): refimage images crossing
+# between Python and another extension's Rust. Build it with maturin and run
+# crates/refimage-pyo3/tests/test_interop.py.
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+[project]
+name = "refimage-pyo3-test"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = ["refimage", "numpy"]
+
+[tool.maturin]
+module-name = "refimage_pyo3_test"
+features = ["extension-module"]

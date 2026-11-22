@@ -31,9 +31,12 @@
 //!
 //! # Safety
 //!
-//! Every pointer argument must be `NULL` (reported as `REF_ERR_NULL` where a value is
-//! required) or valid for the access the function documents; handles must come from
-//! this library and not have been freed.
+//! Every pointer argument must be `NULL` or valid for the access the function
+//! documents, and handles must come from this library and not have been freed. The
+//! header marks each pointer `_Nonnull` / `_Nullable` (Clang's `_Nonnull` /
+//! `_Nullable`); a `NULL` passed to a `_Nonnull` parameter is still detected and
+//! reported as `REF_ERR_NULL`. A parameter is nullable exactly when its docs say
+//! "`name` may be `NULL`" (see tests/header.rs).
 
 #![allow(clippy::missing_safety_doc)]
 mod exposure;
@@ -214,7 +217,12 @@ pub(crate) unsafe fn opt_cstr<'a>(p: *const c_char, what: &str) -> Result<Option
 }
 
 /// Copy `s` into a caller buffer (see the crate docs for the convention).
-pub(crate) unsafe fn put_str(s: &str, buf: *mut c_char, buf_len: usize, out_len: *mut usize) -> Result<()> {
+pub(crate) unsafe fn put_str(
+    s: &str,
+    buf: *mut c_char,
+    buf_len: usize,
+    out_len: *mut usize,
+) -> Result<()> {
     if !out_len.is_null() {
         // SAFETY: non-null; the caller guarantees it is writable.
         unsafe { out_len.write(s.len()) };
@@ -228,7 +236,10 @@ pub(crate) unsafe fn put_str(s: &str, buf: *mut c_char, buf_len: usize, out_len:
     if buf_len <= s.len() {
         return Err(Error::new(
             REF_ERR_BUFFER_TOO_SMALL,
-            format!("buffer of {buf_len} bytes cannot hold {} bytes plus NUL", s.len()),
+            format!(
+                "buffer of {buf_len} bytes cannot hold {} bytes plus NUL",
+                s.len()
+            ),
         ));
     }
     // SAFETY: `buf` is valid for `buf_len > s.len()` bytes.
@@ -276,12 +287,14 @@ pub(crate) unsafe fn free_handle<T>(p: *mut T) {
 pub const REF_ABI_VERSION: u32 = 1;
 
 /// The library version string (e.g. `"1.0.0-pre6"`). Static; do not free.
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn ref_version() -> *const c_char {
     concat!(env!("CARGO_PKG_VERSION"), "\0").as_ptr().cast()
 }
 
 /// The ABI version the library was built with (`REF_ABI_VERSION` of its header).
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn ref_abi_version() -> u32 {
     REF_ABI_VERSION
@@ -289,6 +302,7 @@ pub extern "C" fn ref_abi_version() -> u32 {
 
 /// The message of the calling thread's most recent error, or `""` if there was none.
 /// Valid until that thread's next failing call; do not free.
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn ref_last_error() -> *const c_char {
     LAST_ERROR.with(|e| match &*e.borrow() {
@@ -298,6 +312,7 @@ pub extern "C" fn ref_last_error() -> *const c_char {
 }
 
 /// The constant's name for a status code (`"REF_ERR_IO"`, ...). Static; do not free.
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn ref_status_name(status: c_int) -> *const c_char {
     let s: &CStr = match status {
@@ -328,7 +343,7 @@ pub extern "C" fn ref_status_name(status: c_int) -> *const c_char {
 #[repr(C)]
 #[derive(Debug)]
 pub struct RefBuffer {
-    /// The bytes (`NULL` after `ref_buffer_free`).
+    /// The bytes. May be `NULL` (after `ref_buffer_free`).
     pub data: *mut u8,
     /// Number of bytes, not counting the trailing NUL.
     pub len: usize,
@@ -513,7 +528,9 @@ pub(crate) fn color_space(kind: RefColor, channels: u8, name: Option<&str>) -> R
         REF_COLOR_BAYER_GRBG => ColorSpace::Bayer(BayerPattern::Grbg),
         REF_COLOR_CUSTOM => {
             if channels == 0 {
-                return Err(Error::invalid("a custom color space needs at least one channel"));
+                return Err(Error::invalid(
+                    "a custom color space needs at least one channel",
+                ));
             }
             ColorSpace::Custom(channels, name.unwrap_or("custom").to_owned())
         }
@@ -586,7 +603,9 @@ pub(crate) fn interpolation(i: Option<&RefInterpolation>) -> Result<Interpolatio
 }
 
 pub(crate) fn strategy(s: Option<&RefStrategy>) -> Result<Strategy> {
-    let s = s.copied().unwrap_or_else(|| pipeline::ref_strategy_default());
+    let s = s
+        .copied()
+        .unwrap_or_else(|| pipeline::ref_strategy_default());
     match s.kind {
         REF_STRATEGY_TILED => Ok(Strategy::Tiled {
             tile_rows: s.tile_rows,
@@ -602,6 +621,9 @@ pub(crate) fn strategy(s: Option<&RefStrategy>) -> Result<Strategy> {
 mod tests {
     #[test]
     fn soname_matches_abi_version() {
-        assert_eq!(env!("REFIMAGE_SONAME_ABI"), super::REF_ABI_VERSION.to_string());
+        assert_eq!(
+            env!("REFIMAGE_SONAME_ABI"),
+            super::REF_ABI_VERSION.to_string()
+        );
     }
 }

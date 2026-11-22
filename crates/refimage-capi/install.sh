@@ -18,7 +18,13 @@ root=$(cd "$here/../.." && pwd)
 cargo build --release -p refimage-capi --manifest-path "$root/Cargo.toml"
 target=${CARGO_TARGET_DIR:-$root/target}/release
 
-version=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$here/Cargo.toml" | head -n 1)
+# The workspace version (every crate inherits it; a release stamps the tag's version there).
+version=$(awk '/^\[workspace\.package\]/ { in_pkg = 1; next } /^\[/ { in_pkg = 0 }
+    in_pkg && /^version *=/ { gsub(/[" ]/, "", $0); sub(/^version=/, ""); print; exit }' "$root/Cargo.toml")
+if [ -z "$version" ]; then
+    echo "install.sh: no version in [workspace.package] of $root/Cargo.toml" >&2
+    exit 1
+fi
 abi=$(sed -n 's/^const ABI: &str = "\(.*\)";$/\1/p' "$here/build.rs")
 dest=${DESTDIR:-}$prefix
 

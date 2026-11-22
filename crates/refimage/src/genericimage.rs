@@ -5,11 +5,11 @@ use serde::Serialize;
 
 use crate::imagetraits::ImageProps;
 use crate::metadata::InsertValue;
-use crate::{genericimageowned::GenericImageOwned, genericimageref::GenericImageRef};
 use crate::{
     CalcOptExp, ColorSpace, DynamicImageView, ExposureResult, GenericLineItem, Metadata,
     OptimumExposure, OptimumExposureResult, PixelData, PixelType,
 };
+use crate::{genericimageowned::GenericImageOwned, genericimageref::GenericImageRef};
 
 #[derive(Debug, PartialEq, Serialize)]
 /// A serializable, generic image with metadata, backed by either

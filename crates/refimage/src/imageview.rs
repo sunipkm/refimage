@@ -256,11 +256,11 @@ mod tests {
             ImageRef::new(&mut buf, 3, 2, ColorSpace::Gray).unwrap(),
         ));
 
-        assert_eq!(g_owned.image().as_slice_u8(), Some(&[1u8, 2, 3, 4, 5, 6][..]));
         assert_eq!(
             g_owned.image().as_slice_u8(),
-            g_ref.image().as_slice_u8(),
+            Some(&[1u8, 2, 3, 4, 5, 6][..])
         );
+        assert_eq!(g_owned.image().as_slice_u8(), g_ref.image().as_slice_u8(),);
         assert_eq!(g_ref.image().width(), 3);
     }
 }

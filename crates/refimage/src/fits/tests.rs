@@ -59,9 +59,11 @@ fn uncompressed_primary_structure() {
     assert!(find_card(&bytes, "COLORSPC").unwrap().contains("GRAY"));
     // Duration split into _S / _NS plus a float base card.
     assert!(find_card(&bytes, "EXPOSURE_S").unwrap().contains("1"));
-    assert!(find_card(&bytes, "EXPOSURE_NS")
-        .unwrap()
-        .contains("500000000"));
+    assert!(
+        find_card(&bytes, "EXPOSURE_NS")
+            .unwrap()
+            .contains("500000000")
+    );
     // header + 8*4*2 = 64 data bytes -> 2 blocks
     assert_eq!(bytes.len(), 2880 * 2);
 }
@@ -125,9 +127,11 @@ fn hcompress_is_bintable_with_scale_cards() {
     let bytes = g.fits_bytes(Hcompress::new()).unwrap();
     assert!(is_block_aligned(&bytes));
     assert!(bytes.starts_with(b"SIMPLE  =                    T"));
-    assert!(find_card(&bytes, "ZCMPTYPE")
-        .unwrap()
-        .contains("HCOMPRESS_1"));
+    assert!(
+        find_card(&bytes, "ZCMPTYPE")
+            .unwrap()
+            .contains("HCOMPRESS_1")
+    );
     assert!(find_card(&bytes, "ZNAME1").unwrap().contains("SCALE"));
     assert!(find_card(&bytes, "ZNAME2").unwrap().contains("SMOOTH"));
     // Whole image is one tile: ZTILE1 == ZNAXIS1.
@@ -160,9 +164,11 @@ fn float_compresses_both_ways() {
 
     // Rice: quantized, so ZQUANTIZ / ZDITHER0 / ZSCALE column appear.
     let rc = g.fits_bytes(Rice::new()).unwrap();
-    assert!(find_card(&rc, "ZQUANTIZ")
-        .unwrap()
-        .contains("SUBTRACTIVE_DITHER_1"));
+    assert!(
+        find_card(&rc, "ZQUANTIZ")
+            .unwrap()
+            .contains("SUBTRACTIVE_DITHER_1")
+    );
     assert!(find_card(&rc, "ZDITHER0").is_some());
     assert!(find_card(&rc, "TTYPE2").unwrap().contains("ZSCALE"));
     assert!(find_card(&rc, "ZBITPIX").unwrap().contains("-32"));

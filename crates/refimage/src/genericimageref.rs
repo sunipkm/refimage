@@ -4,8 +4,8 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::{
-    metadata::InsertValue, CalcOptExp, DynamicImageRef, ExposureResult, GenericLineItem,
-    ImageProps, Metadata, MetadataError, OptimumExposure, OptimumExposureResult, PixelData,
+    CalcOptExp, DynamicImageRef, ExposureResult, GenericLineItem, ImageProps, Metadata,
+    MetadataError, OptimumExposure, OptimumExposureResult, PixelData, metadata::InsertValue,
 };
 
 #[allow(unused_imports)]

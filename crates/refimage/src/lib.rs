@@ -55,7 +55,7 @@
 //!
 //! # FITS
 //! [`GenericImageRef`] / [`GenericImageOwned`] can be written to the [Flexible Image Transport
-//! System](https://fits.gsfc.nasa.gov/fits_standard.html) via the [`FitsWrite`] trait. 
+//! System](https://fits.gsfc.nasa.gov/fits_standard.html) via the [`FitsWrite`] trait.
 //! It supports uncompressed output and the
 //! tile-compression convention with `GZIP_1` and `RICE_1`.
 //!
@@ -100,8 +100,8 @@ pub use dynamicimage_interop::{InteropError, InteropResult};
 pub use dynamicimage_serde::{SerdeError, SerdeResult};
 pub use error::{ImageError, ImageResult};
 pub use fits::{
-    create_fits, create_fits_to, AutoTile, DitherSeed, FitsCompression, FitsCompressionKind,
-    FitsError, FitsResult, FitsWrite, FitsWriter, FixedTile, Gzip, Hcompress, Quantize, Rice,
+    AutoTile, DitherSeed, FitsCompression, FitsCompressionKind, FitsError, FitsResult, FitsWrite,
+    FitsWriter, FixedTile, Gzip, Hcompress, Quantize, Rice, create_fits, create_fits_to,
 };
 pub use genericimage::GenericImage;
 pub use genericimageowned::GenericImageOwned;
@@ -114,8 +114,8 @@ pub use imageref::ImageRef;
 pub use imagetraits::{BayerShift, ImageProps, PixelData};
 pub use imageview::{DynamicImageView, ImageView};
 pub use metadata::{
-    GenericLineItem, GenericValue, InsertValue, MetaCollection, Metadata, MetadataError,
-    MetadataResult, CAMERANAME_KEY, EXPOSURE_KEY, FRAMEID_KEY, PROGRAMNAME_KEY, TIMESTAMP_KEY,
+    CAMERANAME_KEY, EXPOSURE_KEY, FRAMEID_KEY, GenericLineItem, GenericValue, InsertValue,
+    MetaCollection, Metadata, MetadataError, MetadataResult, PROGRAMNAME_KEY, TIMESTAMP_KEY,
 };
 pub use optimumexposure::{
     CalcOptExp, ExposureError, ExposureResult, OptimumExposure, OptimumExposureBuilder,

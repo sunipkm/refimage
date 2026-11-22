@@ -11,8 +11,8 @@ use super::kernels::{
 };
 use super::plan::{Step, StepKind};
 use super::resample::geo_resize;
-use super::warp::{Coords, geo_warp};
 use super::spec::pixel_size;
+use super::warp::{Coords, geo_warp};
 use super::{ImageSpec, PipelineError};
 
 /// Execute every step over an image whose input (shape `w * h`) already sits in

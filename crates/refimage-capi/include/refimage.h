@@ -19,8 +19,47 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-/** Library version this header was generated from. */
-#define REF_VERSION_STRING "1.0.0-pre6"
+/*
+ * Annotations. Every pointer in this header carries Clang's nullability qualifier,
+ * _Nonnull or _Nullable; compilers without them see empty definitions. A NULL passed
+ * where _Nonnull is declared is a contract violation that Clang diagnoses; the library
+ * still checks and returns REF_ERR_NULL.
+ *
+ * _MustUse marks functions whose result must not be ignored (every RefStatus):
+ * [[nodiscard]] in C23 / C++17, warn_unused_result on GCC and Clang, _Check_return_ on
+ * MSVC. Define _MustUse before including this header to override it.
+ */
+#if !defined(__clang__) || !defined(__has_feature)
+#  define REF_HAS_NULLABILITY_ 0
+#elif __has_feature(nullability)
+#  define REF_HAS_NULLABILITY_ 1
+#else
+#  define REF_HAS_NULLABILITY_ 0
+#endif
+#if !REF_HAS_NULLABILITY_
+#  ifndef _Nonnull
+#    define _Nonnull
+#  endif
+#  ifndef _Nullable
+#    define _Nullable
+#  endif
+#endif
+#undef REF_HAS_NULLABILITY_
+
+#ifndef _MustUse
+#  if defined(__cplusplus) && __cplusplus >= 201703L
+#    define _MustUse [[nodiscard]]
+#  elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
+#    define _MustUse [[nodiscard]]
+#  elif defined(__GNUC__) || defined(__clang__)
+#    define _MustUse __attribute__((warn_unused_result))
+#  elif defined(_MSC_VER)
+#    include <sal.h>
+#    define _MustUse _Check_return_
+#  else
+#    define _MustUse
+#  endif
+#endif
 
 
 /**
@@ -121,9 +160,9 @@ typedef struct RefRunner RefRunner;
  */
 typedef struct {
   /**
-   * The bytes (`NULL` after `ref_buffer_free`).
+   * The bytes. May be `NULL` (after `ref_buffer_free`).
    */
-  uint8_t *data;
+  uint8_t *_Nullable data;
   /**
    * Number of bytes, not counting the trailing NUL.
    */
@@ -216,9 +255,9 @@ typedef uint32_t RefColor;
  */
 typedef struct {
   /**
-   * First byte of the top row, or `NULL` when only the shape is needed.
+   * First byte of the top row. May be `NULL` when only the shape is needed.
    */
-  const void *data;
+  const void *_Nullable data;
   /**
    * Width in pixels.
    */
@@ -246,9 +285,10 @@ typedef struct {
    */
   uint8_t channels;
   /**
-   * Name of a `REF_COLOR_CUSTOM` color space (`NULL` = `"custom"`); otherwise ignored.
+   * Name of a `REF_COLOR_CUSTOM` color space; otherwise ignored. May be `NULL`
+   * (meaning `"custom"`).
    */
-  const char *color_name;
+  const char *_Nullable color_name;
 } RefFrame;
 
 /**
@@ -586,409 +626,418 @@ extern "C" {
 /**
  * The library version string (e.g. `"1.0.0-pre6"`). Static; do not free.
  */
-const char *ref_version(void);
+_MustUse const char *_Nonnull ref_version(void);
 
 /**
  * The ABI version the library was built with (`REF_ABI_VERSION` of its header).
  */
-uint32_t ref_abi_version(void);
+_MustUse uint32_t ref_abi_version(void);
 
 /**
  * The message of the calling thread's most recent error, or `""` if there was none.
  * Valid until that thread's next failing call; do not free.
  */
-const char *ref_last_error(void);
+_MustUse const char *_Nonnull ref_last_error(void);
 
 /**
  * The constant's name for a status code (`"REF_ERR_IO"`, ...). Static; do not free.
  */
-const char *ref_status_name(int status);
+_MustUse const char *_Nonnull ref_status_name(int status);
 
 /**
  * Free a `RefBuffer`'s bytes and reset it to `{NULL, 0}`. `NULL` / an already
  * freed buffer is a no-op.
  */
-void ref_buffer_free(RefBuffer *buf);
+void ref_buffer_free(RefBuffer *_Nullable buf);
 
 /**
  * 99.5th percentile, target 40000/65536 +/- 5000/65536, 100 excluded pixels,
  * 1 ms - 10 s, no binning.
  */
-RefExposureOptions ref_exposure_options_default(void);
+_MustUse RefExposureOptions ref_exposure_options_default(void);
 
 /**
  * Evaluate `img`, taken at `exposure` seconds (`<= 0` uses the image's own exposure)
  * and binning `bin`. Works on a copy; `img` is unchanged. `options` may be `NULL`.
  */
-RefStatus ref_exposure_calculate(const RefExposureOptions *options, const RefImage *img, double exposure, uint16_t bin, RefExposureResult *out);
+_MustUse RefStatus ref_exposure_calculate(const RefExposureOptions *_Nullable options, const RefImage *_Nonnull img, double exposure, uint16_t bin, RefExposureResult *_Nonnull out);
 
 /**
  * `ref_exposure_calculate` without the copy: the percentile search **reorders
- * `img`'s pixels**. Use it only on a frame about to be discarded.
+ * `img`'s pixels**. Use it only on a frame about to be discarded. `options` may
+ * be `NULL` for `ref_exposure_options_default`.
  */
-RefStatus ref_exposure_calculate_in_place(const RefExposureOptions *options, RefImage *img, double exposure, uint16_t bin, RefExposureResult *out);
+_MustUse RefStatus ref_exposure_calculate_in_place(const RefExposureOptions *_Nullable options, RefImage *_Nonnull img, double exposure, uint16_t bin, RefExposureResult *_Nonnull out);
 
 /**
- * Evaluate a caller frame taken at `exposure` seconds (> 0). The frame is copied.
+ * Evaluate a caller frame taken at `exposure` seconds (> 0). The frame is copied. `options` may
+ * be `NULL` for `ref_exposure_options_default`.
  */
-RefStatus ref_exposure_calculate_frame(const RefExposureOptions *options, const RefFrame *frame, double exposure, uint16_t bin, RefExposureResult *out);
+_MustUse RefStatus ref_exposure_calculate_frame(const RefExposureOptions *_Nullable options, const RefFrame *_Nonnull frame, double exposure, uint16_t bin, RefExposureResult *_Nonnull out);
 
 /**
  * Evaluate `count` samples of `pixel_type` at `data` in place, with no copy: the
- * samples are **reordered**. `data` must be aligned for the sample type.
+ * samples are **reordered**. `data` must be aligned for the sample type. `options` may
+ * be `NULL` for `ref_exposure_options_default`.
  */
-RefStatus ref_exposure_calculate_buffer(const RefExposureOptions *options, void *data, size_t count, RefPixelType pixel_type, double exposure, uint16_t bin, RefExposureResult *out);
+_MustUse RefStatus ref_exposure_calculate_buffer(const RefExposureOptions *_Nullable options, void *_Nonnull data, size_t count, RefPixelType pixel_type, double exposure, uint16_t bin, RefExposureResult *_Nonnull out);
 
 /**
  * Create an image from `frame`, copying its pixels (or zero-filled when
  * `frame->data` is `NULL`). The timestamp is now, the exposure 0.
  */
-RefStatus ref_image_new(const RefFrame *frame, RefImage **out);
+_MustUse RefStatus ref_image_new(const RefFrame *_Nonnull frame, RefImage *_Nullable *_Nonnull out);
 
 /**
  * A deep copy (pixels and metadata).
  */
-RefStatus ref_image_clone(const RefImage *img, RefImage **out);
+_MustUse RefStatus ref_image_clone(const RefImage *_Nonnull img, RefImage *_Nullable *_Nonnull out);
 
 /**
  * Free an image (`NULL` is a no-op).
  */
-void ref_image_free(RefImage *img);
+void ref_image_free(RefImage *_Nullable img);
 
 /**
  * Copy `src`'s pixels and metadata into `dst`, reusing `dst`'s pixel buffer when the
  * shape and type match (no allocation).
  */
-RefStatus ref_image_copy_from(RefImage *dst, const RefImage *src);
+_MustUse RefStatus ref_image_copy_from(RefImage *_Nonnull dst, const RefImage *_Nonnull src);
 
 /**
  * `*out = true` when both images have identical pixels and metadata.
  */
-RefStatus ref_image_equal(const RefImage *a, const RefImage *b, bool *out);
+_MustUse RefStatus ref_image_equal(const RefImage *_Nonnull a, const RefImage *_Nonnull b, bool *_Nonnull out);
 
 /**
  * Shape and pixel type.
  */
-RefStatus ref_image_info(const RefImage *img, RefImageInfo *out);
+_MustUse RefStatus ref_image_info(const RefImage *_Nonnull img, RefImageInfo *_Nonnull out);
 
 /**
  * The color space's name: `"gray"`, `"rgb"`, `"rggb"`, `"bggr"`, `"gbrg"`, `"grbg"`,
  * or a custom space's own name. String-out convention.
  */
-RefStatus ref_image_color_name(const RefImage *img, char *buf, size_t buf_len, size_t *out_len);
+_MustUse RefStatus ref_image_color_name(const RefImage *_Nonnull img, char *_Nullable buf, size_t buf_len, size_t *_Nullable out_len);
 
 /**
  * A writable pointer to the packed pixels and their size in bytes. Valid until the
  * image is freed or reshaped (by a run or copy that changes its shape or type).
+ * `nbytes` may be `NULL`.
  */
-RefStatus ref_image_data(RefImage *img, void **data, size_t *nbytes);
+_MustUse RefStatus ref_image_data(RefImage *_Nonnull img, void *_Nonnull *_Nonnull data, size_t *_Nullable nbytes);
 
 /**
- * A read-only pointer to the packed pixels and their size in bytes.
+ * A read-only pointer to the packed pixels and their size in bytes. `nbytes` may be
+ * `NULL`.
  */
-RefStatus ref_image_data_const(const RefImage *img, const void **data, size_t *nbytes);
+_MustUse RefStatus ref_image_data_const(const RefImage *_Nonnull img, const void *_Nonnull *_Nonnull data, size_t *_Nullable nbytes);
 
 /**
  * Re-tag 16-bit storage as `REF_PIXEL_U10` / `U12` / `U14` / `U16` (values are not
  * changed). Fails on 8-bit and float images.
  */
-RefStatus ref_image_set_pixel_type(RefImage *img, RefPixelType pixel_type);
+_MustUse RefStatus ref_image_set_pixel_type(RefImage *_Nonnull img, RefPixelType pixel_type);
 
 /**
  * Acquisition time, in nanoseconds since 1970-01-01T00:00:00Z.
  */
-RefStatus ref_image_timestamp(const RefImage *img, int64_t *ns);
+_MustUse RefStatus ref_image_timestamp(const RefImage *_Nonnull img, int64_t *_Nonnull ns);
 
 /**
  * Set the acquisition time (nanoseconds since the Unix epoch).
  */
-RefStatus ref_image_set_timestamp(RefImage *img, int64_t ns);
+_MustUse RefStatus ref_image_set_timestamp(RefImage *_Nonnull img, int64_t ns);
 
 /**
  * Exposure in seconds (`0` when unknown).
  */
-RefStatus ref_image_exposure(const RefImage *img, double *seconds);
+_MustUse RefStatus ref_image_exposure(const RefImage *_Nonnull img, double *_Nonnull seconds);
 
 /**
  * Set the exposure (finite, non-negative seconds).
  */
-RefStatus ref_image_set_exposure(RefImage *img, double seconds);
+_MustUse RefStatus ref_image_set_exposure(RefImage *_Nonnull img, double seconds);
 
 /**
  * The acquisition frame counter; `REF_ERR_NOT_FOUND` when none was set.
  */
-RefStatus ref_image_frame_id(const RefImage *img, uint32_t *id);
+_MustUse RefStatus ref_image_frame_id(const RefImage *_Nonnull img, uint32_t *_Nonnull id);
 
 /**
  * Set the acquisition frame counter.
  */
-RefStatus ref_image_set_frame_id(RefImage *img, uint32_t id);
+_MustUse RefStatus ref_image_set_frame_id(RefImage *_Nonnull img, uint32_t id);
 
 /**
  * Number of metadata cards (not counting timestamp, exposure and frame id).
  */
-RefStatus ref_image_key_count(const RefImage *img, size_t *count);
+_MustUse RefStatus ref_image_key_count(const RefImage *_Nonnull img, size_t *_Nonnull count);
 
 /**
  * The name of card `index` (`0 .. ref_image_key_count`), in insertion order.
  * String-out convention; `REF_ERR_NOT_FOUND` past the end.
  */
-RefStatus ref_image_key_at(const RefImage *img, size_t index, char *buf, size_t buf_len, size_t *out_len);
+_MustUse RefStatus ref_image_key_at(const RefImage *_Nonnull img, size_t index, char *_Nullable buf, size_t buf_len, size_t *_Nullable out_len);
 
 /**
  * The type of card `key` (keys are case-insensitive). `REF_ERR_NOT_FOUND` if absent.
  */
-RefStatus ref_image_value_kind(const RefImage *img, const char *key, RefValueKind *kind);
+_MustUse RefStatus ref_image_value_kind(const RefImage *_Nonnull img, const char *_Nonnull key, RefValueKind *_Nonnull kind);
 
 /**
  * An integer card. `REF_ERR_TYPE` if it holds anything else.
  */
-RefStatus ref_image_get_int(const RefImage *img, const char *key, int64_t *value);
+_MustUse RefStatus ref_image_get_int(const RefImage *_Nonnull img, const char *_Nonnull key, int64_t *_Nonnull value);
 
 /**
  * A real card; integer cards are converted.
  */
-RefStatus ref_image_get_real(const RefImage *img, const char *key, double *value);
+_MustUse RefStatus ref_image_get_real(const RefImage *_Nonnull img, const char *_Nonnull key, double *_Nonnull value);
 
 /**
  * A string card (or a color-space card, as its name). String-out convention.
  */
-RefStatus ref_image_get_string(const RefImage *img, const char *key, char *buf, size_t buf_len, size_t *out_len);
+_MustUse RefStatus ref_image_get_string(const RefImage *_Nonnull img, const char *_Nonnull key, char *_Nullable buf, size_t buf_len, size_t *_Nullable out_len);
 
 /**
  * A timestamp card, in nanoseconds since the Unix epoch.
  */
-RefStatus ref_image_get_timestamp(const RefImage *img, const char *key, int64_t *ns);
+_MustUse RefStatus ref_image_get_timestamp(const RefImage *_Nonnull img, const char *_Nonnull key, int64_t *_Nonnull ns);
 
 /**
  * A duration card, in seconds.
  */
-RefStatus ref_image_get_duration(const RefImage *img, const char *key, double *seconds);
+_MustUse RefStatus ref_image_get_duration(const RefImage *_Nonnull img, const char *_Nonnull key, double *_Nonnull seconds);
 
 /**
  * The comment of card `key`. String-out convention; an empty string when the card
  * has no comment, `REF_ERR_NOT_FOUND` when the card does not exist.
  */
-RefStatus ref_image_get_comment(const RefImage *img, const char *key, char *buf, size_t buf_len, size_t *out_len);
+_MustUse RefStatus ref_image_get_comment(const RefImage *_Nonnull img, const char *_Nonnull key, char *_Nullable buf, size_t buf_len, size_t *_Nullable out_len);
 
 /**
  * Insert or replace an integer card. Keys are stored upper-case, at most 80
  * characters; `TIMESTAMP`, `EXPOSURE` and `FRAMEID` are reserved (use the dedicated
  * setters). `comment` may be `NULL`.
  */
-RefStatus ref_image_set_int(RefImage *img, const char *key, int64_t value, const char *comment);
+_MustUse RefStatus ref_image_set_int(RefImage *_Nonnull img, const char *_Nonnull key, int64_t value, const char *_Nullable comment);
 
 /**
- * Insert or replace a real card (see `ref_image_set_int`).
+ * Insert or replace a real card (see `ref_image_set_int`). `comment` may be `NULL`.
  */
-RefStatus ref_image_set_real(RefImage *img, const char *key, double value, const char *comment);
+_MustUse RefStatus ref_image_set_real(RefImage *_Nonnull img, const char *_Nonnull key, double value, const char *_Nullable comment);
 
 /**
- * Insert or replace a string card (see `ref_image_set_int`).
+ * Insert or replace a string card (see `ref_image_set_int`). `comment` may be `NULL`.
  */
-RefStatus ref_image_set_string(RefImage *img, const char *key, const char *value, const char *comment);
+_MustUse RefStatus ref_image_set_string(RefImage *_Nonnull img, const char *_Nonnull key, const char *_Nonnull value, const char *_Nullable comment);
 
 /**
- * Insert or replace a timestamp card, nanoseconds since the Unix epoch.
+ * Insert or replace a timestamp card, nanoseconds since the Unix epoch. `comment` may
+ * be `NULL`.
  */
-RefStatus ref_image_set_timestamp_key(RefImage *img, const char *key, int64_t ns, const char *comment);
+_MustUse RefStatus ref_image_set_timestamp_key(RefImage *_Nonnull img, const char *_Nonnull key, int64_t ns, const char *_Nullable comment);
 
 /**
- * Insert or replace a duration card, in seconds.
+ * Insert or replace a duration card, in seconds. `comment` may be `NULL`.
  */
-RefStatus ref_image_set_duration(RefImage *img, const char *key, double seconds, const char *comment);
+_MustUse RefStatus ref_image_set_duration(RefImage *_Nonnull img, const char *_Nonnull key, double seconds, const char *_Nullable comment);
 
 /**
  * Remove card `key`. `REF_ERR_NOT_FOUND` if absent.
  */
-RefStatus ref_image_remove_key(RefImage *img, const char *key);
+_MustUse RefStatus ref_image_remove_key(RefImage *_Nonnull img, const char *_Nonnull key);
 
 /**
  * Serialize pixels and metadata (bincode; the same bytes as Rust's
  * `bincode::serialize(&GenericImageOwned)` and Python's `Image.to_bytes()`).
  */
-RefStatus ref_image_to_bytes(const RefImage *img, RefBuffer *out);
+_MustUse RefStatus ref_image_to_bytes(const RefImage *_Nonnull img, RefBuffer *_Nonnull out);
 
 /**
  * Decode an image written by `ref_image_to_bytes` (or the Rust / Python equivalents).
+ * `data` may be `NULL` when `len` is 0 (which fails to decode).
  */
-RefStatus ref_image_from_bytes(const uint8_t *data, size_t len, RefImage **out);
+_MustUse RefStatus ref_image_from_bytes(const uint8_t *_Nullable data, size_t len, RefImage *_Nullable *_Nonnull out);
 
 /**
  * Uncompressed, with every tuning field at its default.
  */
-RefFitsOptions ref_fits_options_default(void);
+_MustUse RefFitsOptions ref_fits_options_default(void);
 
 /**
  * Write the image and its metadata to a FITS file. `options` may be `NULL`
  * (uncompressed). Without `overwrite`, an existing file is an `REF_ERR_IO` error.
  */
-RefStatus ref_image_write_fits(const RefImage *img, const char *path, const RefFitsOptions *options, bool overwrite);
+_MustUse RefStatus ref_image_write_fits(const RefImage *_Nonnull img, const char *_Nonnull path, const RefFitsOptions *_Nullable options, bool overwrite);
 
 /**
- * The FITS file `ref_image_write_fits` would write, in memory.
+ * The FITS file `ref_image_write_fits` would write, in memory. `options` may be `NULL`
+ * (uncompressed).
  */
-RefStatus ref_image_fits_bytes(const RefImage *img, const RefFitsOptions *options, RefBuffer *out);
+_MustUse RefStatus ref_image_fits_bytes(const RefImage *_Nonnull img, const RefFitsOptions *_Nullable options, RefBuffer *_Nonnull out);
 
 /**
  * Bilinear, constant boundary, `cval = 0`, prefilter on.
  */
-RefInterpolation ref_interpolation_default(void);
+_MustUse RefInterpolation ref_interpolation_default(void);
 
 /**
  * Tiled, automatic band height, full-width bands, parallel.
  */
-RefStrategy ref_strategy_default(void);
+_MustUse RefStrategy ref_strategy_default(void);
 
 /**
  * Create an empty (identity) pipeline.
  */
-RefStatus ref_pipeline_new(RefPipeline **out);
+_MustUse RefStatus ref_pipeline_new(RefPipeline *_Nullable *_Nonnull out);
 
 /**
  * Copy a pipeline.
  */
-RefStatus ref_pipeline_clone(const RefPipeline *p, RefPipeline **out);
+_MustUse RefStatus ref_pipeline_clone(const RefPipeline *_Nonnull p, RefPipeline *_Nullable *_Nonnull out);
 
 /**
  * Free a pipeline (`NULL` is a no-op).
  */
-void ref_pipeline_free(RefPipeline *p);
+void ref_pipeline_free(RefPipeline *_Nullable p);
 
 /**
  * Parse a pipeline from JSON (the serde form Rust and Python use; see
  * `ref_pipeline_to_json`). Every op is available this way.
  */
-RefStatus ref_pipeline_from_json(const char *json, RefPipeline **out);
+_MustUse RefStatus ref_pipeline_from_json(const char *_Nonnull json, RefPipeline *_Nullable *_Nonnull out);
 
 /**
  * The pipeline as JSON, NUL-terminated in `out` (release with `ref_buffer_free`).
  */
-RefStatus ref_pipeline_to_json(const RefPipeline *p, RefBuffer *out);
+_MustUse RefStatus ref_pipeline_to_json(const RefPipeline *_Nonnull p, RefBuffer *_Nonnull out);
 
 /**
  * Number of ops.
  */
-RefStatus ref_pipeline_len(const RefPipeline *p, size_t *len);
+_MustUse RefStatus ref_pipeline_len(const RefPipeline *_Nonnull p, size_t *_Nonnull len);
 
 /**
  * Drop no-ops, fold flip/rotation runs and merge nested crops, in place. The output
  * is unchanged.
  */
-RefStatus ref_pipeline_optimize(RefPipeline *p);
+_MustUse RefStatus ref_pipeline_optimize(RefPipeline *_Nonnull p);
 
 /**
  * Demosaic a Bayer image to RGB (a `REF_DEMOSAIC_*` constant).
  */
-RefStatus ref_pipeline_debayer(RefPipeline *p, RefDemosaic method);
+_MustUse RefStatus ref_pipeline_debayer(RefPipeline *_Nonnull p, RefDemosaic method);
 
 /**
  * Convert to luma (Rec.601 weights); the image becomes gray.
  */
-RefStatus ref_pipeline_to_luma(RefPipeline *p);
+_MustUse RefStatus ref_pipeline_to_luma(RefPipeline *_Nonnull p);
 
 /**
  * Convert to luma with one weight per input channel (`count` must match the
  * channel count at compile time).
  */
-RefStatus ref_pipeline_to_luma_weights(RefPipeline *p, const double *weights, size_t count);
+_MustUse RefStatus ref_pipeline_to_luma_weights(RefPipeline *_Nonnull p, const double *_Nonnull weights, size_t count);
 
 /**
  * `y = x * gain + offset` on the raw stored value, saturated into the pixel type.
  */
-RefStatus ref_pipeline_scale(RefPipeline *p, double gain, double offset);
+_MustUse RefStatus ref_pipeline_scale(RefPipeline *_Nonnull p, double gain, double offset);
 
 /**
  * `y = round(x * num / den)`, exact on integer images.
  */
-RefStatus ref_pipeline_scale_rational(RefPipeline *p, int64_t num, int64_t den);
+_MustUse RefStatus ref_pipeline_scale_rational(RefPipeline *_Nonnull p, int64_t num, int64_t den);
 
 /**
  * `y = x * factor`, saturated into the pixel type.
  */
-RefStatus ref_pipeline_scale_by(RefPipeline *p, double factor);
+_MustUse RefStatus ref_pipeline_scale_by(RefPipeline *_Nonnull p, double factor);
 
 /**
  * Rescale into another pixel type (a `REF_PIXEL_*` constant).
  */
-RefStatus ref_pipeline_convert(RefPipeline *p, RefPixelType pixel_type);
+_MustUse RefStatus ref_pipeline_convert(RefPipeline *_Nonnull p, RefPixelType pixel_type);
 
 /**
  * Keep the `width` x `height` rectangle at (`x`, `y`); it must lie inside the image.
  */
-RefStatus ref_pipeline_crop(RefPipeline *p, size_t x, size_t y, size_t width, size_t height);
+_MustUse RefStatus ref_pipeline_crop(RefPipeline *_Nonnull p, size_t x, size_t y, size_t width, size_t height);
 
 /**
  * Like `ref_pipeline_crop`, but overhang past the edge is zero-filled.
  */
-RefStatus ref_pipeline_roi(RefPipeline *p, size_t x, size_t y, size_t width, size_t height);
+_MustUse RefStatus ref_pipeline_roi(RefPipeline *_Nonnull p, size_t x, size_t y, size_t width, size_t height);
 
 /**
  * Mirror left to right (Bayer patterns are re-phased).
  */
-RefStatus ref_pipeline_flip_horizontal(RefPipeline *p);
+_MustUse RefStatus ref_pipeline_flip_horizontal(RefPipeline *_Nonnull p);
 
 /**
  * Mirror top to bottom (Bayer patterns are re-phased).
  */
-RefStatus ref_pipeline_flip_vertical(RefPipeline *p);
+_MustUse RefStatus ref_pipeline_flip_vertical(RefPipeline *_Nonnull p);
 
 /**
  * Rotate 90 degrees clockwise.
  */
-RefStatus ref_pipeline_rotate_90(RefPipeline *p);
+_MustUse RefStatus ref_pipeline_rotate_90(RefPipeline *_Nonnull p);
 
 /**
  * Rotate 180 degrees.
  */
-RefStatus ref_pipeline_rotate_180(RefPipeline *p);
+_MustUse RefStatus ref_pipeline_rotate_180(RefPipeline *_Nonnull p);
 
 /**
  * Rotate 90 degrees counter-clockwise.
  */
-RefStatus ref_pipeline_rotate_270(RefPipeline *p);
+_MustUse RefStatus ref_pipeline_rotate_270(RefPipeline *_Nonnull p);
 
 /**
  * Resample to the largest size inside `max_width` x `max_height` at the same aspect
  * ratio (a `REF_RESIZE_*` filter).
  */
-RefStatus ref_pipeline_resize_to_fit(RefPipeline *p, size_t max_width, size_t max_height, RefResizeFilter filter);
+_MustUse RefStatus ref_pipeline_resize_to_fit(RefPipeline *_Nonnull p, size_t max_width, size_t max_height, RefResizeFilter filter);
 
 /**
  * Warp through `inverse`, a row-major 3x3 homography taking `(column, row, 1)` of an
  * output pixel to the input (scikit-image's `warp` convention), into a
  * `width` x `height` output. `interp` may be `NULL` for `ref_interpolation_default`.
  */
-RefStatus ref_pipeline_warp(RefPipeline *p, const double *inverse, size_t width, size_t height, const RefInterpolation *interp);
+_MustUse RefStatus ref_pipeline_warp(RefPipeline *_Nonnull p, const double *_Nonnull inverse, size_t width, size_t height, const RefInterpolation *_Nullable interp);
 
 /**
  * Sample the input at explicit coordinates (scipy's `map_coordinates`): output pixel
  * `(y, x)` reads input row `rows[y * width + x]`, column `cols[y * width + x]`. Both
- * arrays hold `width * height` values and are copied.
+ * arrays hold `width * height` values and are copied. `interp` may be `NULL` for
+ * `ref_interpolation_default`.
  */
-RefStatus ref_pipeline_map_coordinates(RefPipeline *p, const double *rows, const double *cols, size_t width, size_t height, const RefInterpolation *interp);
+_MustUse RefStatus ref_pipeline_map_coordinates(RefPipeline *_Nonnull p, const double *_Nonnull rows, const double *_Nonnull cols, size_t width, size_t height, const RefInterpolation *_Nullable interp);
 
 /**
  * Run the pipeline once over `img` into a new image carrying `img`'s metadata.
  * Allocates; for a stream of frames compile a runner instead.
  */
-RefStatus ref_pipeline_apply(const RefPipeline *p, const RefImage *img, RefImage **out);
+_MustUse RefStatus ref_pipeline_apply(const RefPipeline *_Nonnull p, const RefImage *_Nonnull img, RefImage *_Nullable *_Nonnull out);
 
 /**
  * Validate the pipeline against frames shaped like `like` (its `data` is ignored)
  * and allocate every buffer. `strategy` may be `NULL` for `ref_strategy_default`.
  */
-RefStatus ref_pipeline_compile(const RefPipeline *p, const RefFrame *like, const RefStrategy *strategy, RefRunner **out);
+_MustUse RefStatus ref_pipeline_compile(const RefPipeline *_Nonnull p, const RefFrame *_Nonnull like, const RefStrategy *_Nullable strategy, RefRunner *_Nullable *_Nonnull out);
 
 /**
  * Free a runner (`NULL` is a no-op).
  */
-void ref_runner_free(RefRunner *r);
+void ref_runner_free(RefRunner *_Nullable r);
 
 /**
  * Rebuild the plan and buffers for frames shaped like `like`.
  */
-RefStatus ref_runner_recompile(RefRunner *r, const RefFrame *like);
+_MustUse RefStatus ref_runner_recompile(RefRunner *_Nonnull r, const RefFrame *_Nonnull like);
 
 /**
  * Write the result for a frame into `*out`: when `*out` is `NULL` a new image is
@@ -998,13 +1047,13 @@ RefStatus ref_runner_recompile(RefRunner *r, const RefFrame *like);
  *
  * A frame of a different shape than the runner was compiled for recompiles it.
  */
-RefStatus ref_runner_run(RefRunner *r, const RefFrame *frame, RefImage **out);
+_MustUse RefStatus ref_runner_run(RefRunner *_Nonnull r, const RefFrame *_Nonnull frame, RefImage *_Nullable *_Nonnull out);
 
 /**
  * Like `ref_runner_run` for an image input: the result also receives `img`'s
  * metadata. `*out` may be `img` itself (processed in place).
  */
-RefStatus ref_runner_run_image(RefRunner *r, const RefImage *img, RefImage **out);
+_MustUse RefStatus ref_runner_run_image(RefRunner *_Nonnull r, const RefImage *_Nonnull img, RefImage *_Nullable *_Nonnull out);
 
 /**
  * Run a frame and copy the result into caller memory: `dst` holds `dst_len` bytes,
@@ -1012,34 +1061,34 @@ RefStatus ref_runner_run_image(RefRunner *r, const RefImage *img, RefImage **out
  * `(height - 1) * stride + row_bytes` bytes of the output (see
  * `ref_runner_output_info`); never allocates on the caller's side.
  */
-RefStatus ref_runner_run_into(RefRunner *r, const RefFrame *frame, void *dst, size_t dst_len, size_t dst_row_stride);
+_MustUse RefStatus ref_runner_run_into(RefRunner *_Nonnull r, const RefFrame *_Nonnull frame, void *_Nonnull dst, size_t dst_len, size_t dst_row_stride);
 
 /**
  * The input shape the runner is compiled for.
  */
-RefStatus ref_runner_input_info(const RefRunner *r, RefImageInfo *out);
+_MustUse RefStatus ref_runner_input_info(const RefRunner *_Nonnull r, RefImageInfo *_Nonnull out);
 
 /**
  * The output shape `ref_runner_run` produces.
  */
-RefStatus ref_runner_output_info(const RefRunner *r, RefImageInfo *out);
+_MustUse RefStatus ref_runner_output_info(const RefRunner *_Nonnull r, RefImageInfo *_Nonnull out);
 
 /**
  * Whether runs cut frames into tiles (`false` when tiling cannot help).
  */
-RefStatus ref_runner_is_tiled(const RefRunner *r, bool *out);
+_MustUse RefStatus ref_runner_is_tiled(const RefRunner *_Nonnull r, bool *_Nonnull out);
 
 /**
  * Independently tiled passes (0 when not tiled; more when a geometric op splits the
  * chain).
  */
-RefStatus ref_runner_tiled_pass_count(const RefRunner *r, size_t *out);
+_MustUse RefStatus ref_runner_tiled_pass_count(const RefRunner *_Nonnull r, size_t *_Nonnull out);
 
 /**
  * Scratch memory held by the runner, in bytes (excluding the padded-frame staging
  * buffer).
  */
-RefStatus ref_runner_scratch_bytes(const RefRunner *r, size_t *out);
+_MustUse RefStatus ref_runner_scratch_bytes(const RefRunner *_Nonnull r, size_t *_Nonnull out);
 
 #ifdef __cplusplus
 }  // extern "C"

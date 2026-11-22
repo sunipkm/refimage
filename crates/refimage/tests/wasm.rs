@@ -116,8 +116,7 @@ fn generic_image_carries_metadata() {
 
     assert_eq!(g.timestamp(), stamp);
     assert_eq!(
-        g.key("GAIN")
-            .and_then(|it| it.value().value_u16()),
+        g.key("GAIN").and_then(|it| it.value().value_u16()),
         Some(42)
     );
 }

@@ -113,7 +113,13 @@ fn running_frames_does_not_allocate() {
             for _ in 0..8 {
                 ok(ref_runner_run(r, &frame, &mut out));
                 ok(ref_runner_run(r, &padded_frame, &mut out));
-                ok(ref_runner_run_into(r, &frame, user.as_mut_ptr().cast(), user.len(), 0));
+                ok(ref_runner_run_into(
+                    r,
+                    &frame,
+                    user.as_mut_ptr().cast(),
+                    user.len(),
+                    0,
+                ));
                 ok(ref_runner_run_image(r, src, &mut out));
             }
         });

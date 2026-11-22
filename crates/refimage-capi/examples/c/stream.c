@@ -3,6 +3,7 @@
  * 8-bit luma and half-size, reusing every buffer, then save the last raw frame as
  * FITS and suggest the next exposure.
  *
+ *   make && ./stream          (see Makefile; or by hand:)
  *   cc stream.c $(pkg-config --cflags --libs refimage) -o stream && ./stream
  */
 #include <refimage.h>
@@ -10,25 +11,34 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define CHECK(call)                                                               \
-    do {                                                                          \
-        RefStatus s_ = (call);                                                    \
-        if (s_ != REF_OK) {                                                       \
-            fprintf(stderr, "%s failed: %s (%s)\n", #call, ref_last_error(),      \
-                    ref_status_name(s_));                                         \
-            exit(1);                                                              \
-        }                                                                         \
+#define CHECK(call)                                                          \
+    do                                                                       \
+    {                                                                        \
+        RefStatus s_ = (call);                                               \
+        if (s_ != REF_OK)                                                    \
+        {                                                                    \
+            fprintf(stderr, "%s failed: %s (%s)\n", #call, ref_last_error(), \
+                    ref_status_name(s_));                                    \
+            exit(1);                                                         \
+        }                                                                    \
     } while (0)
 
-enum { W = 1920, H = 1080 };
+enum
+{
+    W = 1920,
+    H = 1080
+};
 
 /* Stand-in for a camera SDK callback: a 12-bit RGGB frame. */
-static void capture(uint16_t *buf, int n) {
+static void capture(uint16_t *buf, int n)
+{
     for (int y = 0; y < H; y++)
-        for (int x = 0; x < W; x++) buf[y * W + x] = (uint16_t)((x + y + n * 16) % 4096);
+        for (int x = 0; x < W; x++)
+            buf[y * W + x] = (uint16_t)((x + y + n * 16) % 4096);
 }
 
-int main(void) {
+int main(void)
+{
     printf("refimage %s (ABI %u)\n", ref_version(), ref_abi_version());
     uint16_t *raw = malloc(sizeof(uint16_t) * W * H);
 
@@ -56,7 +66,8 @@ int main(void) {
 
     /* ... and run it for every frame, straight into a display buffer. */
     uint8_t *display = malloc(out.nbytes);
-    for (int n = 0; n < 30; n++) {
+    for (int n = 0; n < 30; n++)
+    {
         capture(raw, n);
         CHECK(ref_runner_run_into(runner, &frame, display, out.nbytes, 0));
     }

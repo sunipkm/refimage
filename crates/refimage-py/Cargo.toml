@@ -1,7 +1,7 @@
 [package]
 name = "refimage-py"
 description = "Python bindings (refimage._native) for refimage"
-version = "1.0.0-pre6"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -18,11 +18,13 @@ doctest = false
 extension-module = ["pyo3/extension-module"]
 
 [dependencies]
-refimage = { path = "../refimage" }
+refimage.workspace = true
+# The exchange format other extension modules use (the same code on both sides).
+refimage-pyo3.workspace = true
 bincode.workspace = true
 bytemuck = "1.23"
 # `Image()` timestamps default to `Utc::now()`, which needs the `clock` feature.
 chrono = { workspace = true, features = ["clock"] }
 numpy.workspace = true
-pyo3.workspace = true
+pyo3 = { workspace = true, features = ["abi3-py312", "chrono"] }
 serde_json.workspace = true

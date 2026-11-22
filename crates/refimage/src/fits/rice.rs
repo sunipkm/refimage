@@ -119,11 +119,7 @@ fn mask(n: i32) -> u32 {
 /// `x << k`, yielding 0 when `k >= 32` (C's `int` shift wraps; the callers only care
 /// about the low 8 bits they subsequently mask).
 fn shl(x: u32, k: i32) -> u32 {
-    if !(0..32).contains(&k) {
-        0
-    } else {
-        x << k
-    }
+    if !(0..32).contains(&k) { 0 } else { x << k }
 }
 
 struct BitWriter {

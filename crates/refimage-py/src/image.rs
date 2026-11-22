@@ -1,5 +1,6 @@
-//! `refimage.Image`: a `GenericImageOwned` (pixels + metadata) with a buffer-protocol
-//! export so numpy can view the pixels without copying.
+//! `refimage.Image`: pixels + metadata (a [`Store`]: owned, or adopted from another
+//! extension module's numpy array) with a buffer-protocol export so numpy can view the
+//! pixels without copying.
 
 use std::ffi::{CStr, c_int};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -13,9 +14,11 @@ use refimage::chrono::{DateTime, Utc};
 use refimage::pipeline::Pipeline;
 use refimage::{
     ColorSpace, DynamicImageOwned, DynamicImageRef, FitsCompression, FitsWrite, GenericImageOwned,
-    GenericValue, Gzip, Hcompress, ImageOwned, ImageProps, InsertValue, Metadata, PixelData,
-    PixelType, Quantize, Rice,
+    GenericValue, Gzip, Hcompress, ImageOwned, ImageProps, InsertValue, Metadata, PixelType,
+    Quantize, Rice,
 };
+
+use crate::store::Store;
 
 use crate::{
     NdPixels, cspace_to_py, dtype_name, err, infer_cspace, parse_cspace, parse_interp,
@@ -30,7 +33,7 @@ use crate::{
 /// shaped `(height, width)` for one channel or `(height, width, channels)`.
 #[pyclass(module = "refimage", name = "Image")]
 pub struct Image {
-    pub(crate) inner: GenericImageOwned,
+    pub(crate) store: Store,
     /// Live buffer-protocol exports. While non-zero the pixel buffer must not be
     /// reallocated, because numpy arrays point into it.
     exports: AtomicUsize,
@@ -55,8 +58,12 @@ impl Exposure {
 
 impl Image {
     pub(crate) fn from_inner(inner: GenericImageOwned) -> Self {
+        Self::from_store(Store::owned(inner))
+    }
+
+    pub(crate) fn from_store(store: Store) -> Self {
         Self {
-            inner,
+            store,
             exports: AtomicUsize::new(0),
         }
     }
@@ -65,18 +72,8 @@ impl Image {
     /// already match (no allocation); otherwise replace it, which is refused while numpy
     /// views of the old buffer exist.
     pub(crate) fn store(&mut self, src: &DynamicImageRef<'_>) -> PyResult<()> {
-        let dest = self.inner.image();
-        let fits = dest.width() == src.width()
-            && dest.height() == src.height()
-            && dest.color_space() == src.color_space()
-            && dest.pixel_type().storage() == src.pixel_type().storage();
-        if fits {
-            let bytes = src.as_raw_u8();
-            self.inner.image_mut().as_mut_raw_u8()[..bytes.len()].copy_from_slice(bytes);
-            // Same storage, maybe a different bit-depth tag: re-tag in place.
-            if let DynamicImageOwned::U16(i) = self.inner.image_mut() {
-                i.set_bit_depth(src.pixel_type().bit_depth());
-            }
+        // Same shape and storage: copied in place (into an adopted buffer too).
+        if self.store.write(src).is_ok() {
             return Ok(());
         }
         if self.exports.load(Ordering::Acquire) > 0 {
@@ -85,7 +82,7 @@ impl Image {
                  pixels; drop them (or pass a fresh `out`) first",
             ));
         }
-        *self.inner.image_mut() = DynamicImageOwned::from(src);
+        self.store.replace(src);
         Ok(())
     }
 
@@ -99,25 +96,33 @@ impl Image {
         let (h, w, c) = px.hwc()?;
         let cs = infer_cspace(c, cspace)?;
         let owned: DynamicImageOwned = match &px {
-            NdPixels::U8(a) => ImageOwned::from_owned(a.as_array().iter().copied().collect(), w, h, cs)
-                .map_err(err)?
-                .into(),
-            NdPixels::U16(a) => ImageOwned::from_owned(a.as_array().iter().copied().collect(), w, h, cs)
-                .map_err(err)?
-                .with_bit_depth(bit_depth)
-                .into(),
-            NdPixels::F32(a) => ImageOwned::from_owned(a.as_array().iter().copied().collect(), w, h, cs)
-                .map_err(err)?
-                .into(),
+            NdPixels::U8(a) => {
+                ImageOwned::from_owned(a.as_array().iter().copied().collect(), w, h, cs)
+                    .map_err(err)?
+                    .into()
+            }
+            NdPixels::U16(a) => {
+                ImageOwned::from_owned(a.as_array().iter().copied().collect(), w, h, cs)
+                    .map_err(err)?
+                    .with_bit_depth(bit_depth)
+                    .into()
+            }
+            NdPixels::F32(a) => {
+                ImageOwned::from_owned(a.as_array().iter().copied().collect(), w, h, cs)
+                    .map_err(err)?
+                    .into()
+            }
         };
         if bit_depth.is_some() && px.storage() != PixelType::U16 {
             return Err(err("bit_depth only applies to uint16 images"));
         }
-        Ok(Self::from_inner(GenericImageOwned::with_metadata(metadata, owned)))
+        Ok(Self::from_inner(GenericImageOwned::with_metadata(
+            metadata, owned,
+        )))
     }
 
     fn item_size(&self) -> usize {
-        match self.inner.pixel_type().storage() {
+        match self.store.get().pixel_type().storage() {
             PixelType::U8 => 1,
             PixelType::U16 => 2,
             _ => 4,
@@ -151,7 +156,12 @@ fn put<T: InsertValue>(meta: &mut Metadata, key: &str, value: T) -> PyResult<()>
 }
 
 /// Insert or replace `key`, with an optional comment.
-fn set_key(meta: &mut Metadata, key: &str, value: &Bound<'_, PyAny>, comment: Option<&str>) -> PyResult<()> {
+fn set_key(
+    meta: &mut Metadata,
+    key: &str,
+    value: &Bound<'_, PyAny>,
+    comment: Option<&str>,
+) -> PyResult<()> {
     macro_rules! put {
         ($v:expr) => {
             match comment {
@@ -237,7 +247,10 @@ impl Image {
         frame_id: Option<u32>,
     ) -> PyResult<Self> {
         let cs = color_space.map(parse_cspace).transpose()?;
-        let exposure = exposure.map(Exposure::duration).transpose()?.unwrap_or_default();
+        let exposure = exposure
+            .map(Exposure::duration)
+            .transpose()?
+            .unwrap_or_default();
         let mut meta = Metadata::new(timestamp.unwrap_or_else(now), exposure);
         if let Some(id) = frame_id {
             meta.set_frame_id(id);
@@ -258,18 +271,21 @@ impl Image {
     /// Serialize pixels and metadata (bincode, the same bytes Rust's
     /// `bincode::serialize(&generic_image)` produces).
     fn to_bytes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
-        let bytes = py.detach(|| bincode::serialize(&self.inner)).map_err(err)?;
+        let store = &self.store;
+        let bytes = py.detach(|| store.serialize()).map_err(err)?;
         Ok(PyBytes::new(py, &bytes))
     }
 
-    fn __reduce__<'py>(slf: &Bound<'py, Self>) -> PyResult<(Bound<'py, PyAny>, (Bound<'py, PyBytes>,))> {
+    fn __reduce__<'py>(
+        slf: &Bound<'py, Self>,
+    ) -> PyResult<(Bound<'py, PyAny>, (Bound<'py, PyBytes>,))> {
         let ctor = slf.get_type().getattr("from_bytes")?;
         Ok((ctor, (slf.borrow().to_bytes(slf.py())?,)))
     }
 
     /// A deep copy (pixels and metadata).
     fn copy(&self) -> Self {
-        Self::from_inner(self.inner.clone())
+        Self::from_inner(self.store.to_owned_image())
     }
 
     fn __copy__(&self) -> Self {
@@ -283,23 +299,23 @@ impl Image {
     fn __eq__(&self, other: &Bound<'_, PyAny>) -> bool {
         other
             .cast::<Image>()
-            .is_ok_and(|o| o.borrow().inner == self.inner)
+            .is_ok_and(|o| o.borrow().store.same(&self.store))
     }
 
     fn __repr__(&self) -> String {
-        let cs = match self.inner.color_space() {
+        let cs = match self.store.get().color_space() {
             ColorSpace::Custom(n, name) => format!("{name}[{n}]"),
             ColorSpace::Bayer(p) => format!("{p:?}").to_lowercase(),
             other => format!("{other:?}").to_lowercase(),
         };
         format!(
             "Image({}x{} {} {}, exposure={}s, timestamp={})",
-            self.inner.width(),
-            self.inner.height(),
+            self.store.get().width(),
+            self.store.get().height(),
             cs,
-            pixel_type_name(self.inner.pixel_type()),
-            self.inner.exposure().as_secs_f64(),
-            self.inner.timestamp().to_rfc3339(),
+            pixel_type_name(self.store.get().pixel_type()),
+            self.store.get().exposure().as_secs_f64(),
+            self.store.get().timestamp().to_rfc3339(),
         )
     }
 
@@ -311,98 +327,106 @@ impl Image {
     /// Width in pixels.
     #[getter]
     fn width(&self) -> usize {
-        self.inner.width()
+        self.store.get().width()
     }
 
     /// Height in pixels.
     #[getter]
     fn height(&self) -> usize {
-        self.inner.height()
+        self.store.get().height()
     }
 
     /// Interleaved channels per pixel (1 for gray and Bayer, 3 for RGB).
     #[getter]
     fn channels(&self) -> u8 {
-        self.inner.channels()
+        self.store.get().channels()
     }
 
     /// The numpy shape: `(height, width)` or `(height, width, channels)`.
     #[getter]
     fn shape(&self) -> Vec<usize> {
-        let (h, w, c) = (self.inner.height(), self.inner.width(), self.inner.channels());
-        if c == 1 { vec![h, w] } else { vec![h, w, c as usize] }
+        let (h, w, c) = (
+            self.store.get().height(),
+            self.store.get().width(),
+            self.store.get().channels(),
+        );
+        if c == 1 {
+            vec![h, w]
+        } else {
+            vec![h, w, c as usize]
+        }
     }
 
     /// The numpy dtype of the pixels.
     #[getter]
     fn dtype<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         py.import("numpy")?
-            .call_method1("dtype", (dtype_name(self.inner.pixel_type()),))
+            .call_method1("dtype", (dtype_name(self.store.get().pixel_type()),))
     }
 
     /// `"u8"`, `"u10"`, `"u12"`, `"u14"`, `"u16"` or `"f32"`.
     #[getter]
     fn pixel_type(&self) -> &'static str {
-        pixel_type_name(self.inner.pixel_type())
+        pixel_type_name(self.store.get().pixel_type())
     }
 
     /// Meaningful bits per sample (10/12/14 for tagged `uint16` data).
     #[getter]
     fn bit_depth(&self) -> u8 {
-        self.inner.pixel_type().bit_depth()
+        self.store.get().pixel_type().bit_depth()
     }
 
     /// `"gray"`, `"rgb"`, a Bayer pattern (`"rggb"`, `"bggr"`, `"gbrg"`, `"grbg"`) or a `(channels, name)` tuple.
     #[getter]
     fn color_space<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        cspace_to_py(py, &self.inner.color_space())
+        cspace_to_py(py, &self.store.get().color_space())
     }
 
     /// Size of the pixel data in bytes.
     #[getter]
     fn nbytes(&self) -> usize {
-        self.inner.len() * self.item_size()
+        self.store.get().len() * self.item_size()
     }
 
     /// Acquisition time (UTC `datetime`).
     #[getter]
     fn timestamp(&self) -> DateTime<Utc> {
-        self.inner.timestamp()
+        self.store.get().timestamp()
     }
 
     #[setter]
     fn set_timestamp(&mut self, ts: DateTime<Utc>) {
-        self.inner.metadata_mut().set_timestamp(ts);
+        self.store.metadata_mut().set_timestamp(ts);
     }
 
     /// Exposure in seconds (`0.0` when unknown). Set with seconds or a `timedelta`.
     #[getter]
     fn exposure(&self) -> f64 {
-        self.inner.exposure().as_secs_f64()
+        self.store.get().exposure().as_secs_f64()
     }
 
     #[setter]
     fn set_exposure(&mut self, exposure: Exposure) -> PyResult<()> {
-        self.inner.set_exposure(exposure.duration()?);
+        self.store.metadata_mut().set_exposure(exposure.duration()?);
         Ok(())
     }
 
     /// Acquisition frame counter, or `None`.
     #[getter]
     fn frame_id(&self) -> Option<u32> {
-        self.inner.frame_id()
+        self.store.get().frame_id()
     }
 
     #[setter]
     fn set_frame_id(&mut self, id: u32) {
-        self.inner.set_frame_id(id);
+        self.store.metadata_mut().set_frame_id(id);
     }
 
     /// The extra metadata cards as an ordered `{KEY: value}` dict (a copy).
     #[getter]
     fn metadata<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let d = PyDict::new(py);
-        for (k, item) in self.inner.metadata().iter() {
+        for (k, item) in self.store.get().metadata().iter() {
             d.set_item(k, value_to_py(py, item.value())?)?;
         }
         Ok(d)
@@ -416,7 +440,7 @@ impl Image {
         key: &str,
         default: Option<Bound<'py, PyAny>>,
     ) -> PyResult<Option<Bound<'py, PyAny>>> {
-        match self.inner.key(key) {
+        match self.store.get().key(key) {
             Some(item) => Ok(Some(value_to_py(py, item.value())?)),
             None => Ok(default),
         }
@@ -424,29 +448,35 @@ impl Image {
 
     /// The comment of metadata card `key`, or `None`.
     fn get_comment(&self, key: &str) -> Option<String> {
-        self.inner.key(key)?.comment().map(str::to_owned)
+        self.store.get().key(key)?.comment().map(str::to_owned)
     }
 
     /// Insert or replace metadata card `key` (stored upper-case; at most 80 characters)
     /// with an int, float, str, aware datetime or timedelta, and an optional comment.
     /// `TIMESTAMP`, `EXPOSURE` and `FRAMEID` are reserved: use the properties.
     #[pyo3(signature = (key, value, comment = None))]
-    fn set_key(&mut self, key: &str, value: &Bound<'_, PyAny>, comment: Option<&str>) -> PyResult<()> {
-        set_key(self.inner.metadata_mut(), key, value, comment)
+    fn set_key(
+        &mut self,
+        key: &str,
+        value: &Bound<'_, PyAny>,
+        comment: Option<&str>,
+    ) -> PyResult<()> {
+        set_key(self.store.metadata_mut(), key, value, comment)
     }
 
     /// Remove metadata card `key` and return its value.
     fn remove_key<'py>(&mut self, py: Python<'py>, key: &str) -> PyResult<Bound<'py, PyAny>> {
-        if self.inner.key(key).is_none() {
+        if self.store.get().key(key).is_none() {
             return Err(PyKeyError::new_err(key.to_owned()));
         }
-        let item = self.inner.remove_key(key).map_err(err)?;
+        let item = self.store.metadata_mut().remove(key).map_err(err)?;
         value_to_py(py, item.value())
     }
 
     /// Run `pipeline` once and return a new image with this image's metadata.
     fn apply(&self, py: Python<'_>, pipeline: &crate::pipeline::Pipeline) -> PyResult<Self> {
-        let out = py.detach(|| pipeline.inner.apply(&self.inner)).map_err(err)?;
+        let store = &self.store;
+        let out = py.detach(|| store.apply(&pipeline.inner)).map_err(err)?;
         Ok(Self::from_inner(out))
     }
 
@@ -469,10 +499,12 @@ impl Image {
         prefilter: bool,
     ) -> PyResult<Self> {
         let inverse = crate::pipeline::matrix3(inverse_map)?;
-        let (rows, cols) = output_shape.unwrap_or((self.inner.height(), self.inner.width()));
+        let (rows, cols) =
+            output_shape.unwrap_or((self.store.get().height(), self.store.get().width()));
         let interp = parse_interp(order, mode, cval, prefilter)?;
         let p = Pipeline::new().warp(inverse, cols, rows, interp);
-        let out = py.detach(|| p.apply(&self.inner)).map_err(err)?;
+        let store = &self.store;
+        let out = py.detach(|| store.apply(&p)).map_err(err)?;
         Ok(Self::from_inner(out))
     }
 
@@ -492,7 +524,8 @@ impl Image {
         let (rows, cols, w, h) = crate::pipeline::coordinate_planes(coordinates)?;
         let interp = parse_interp(order, mode, cval, prefilter)?;
         let p = Pipeline::new().map_coordinates(rows, cols, w, h, interp);
-        let out = py.detach(|| p.apply(&self.inner)).map_err(err)?;
+        let store = &self.store;
+        let out = py.detach(|| store.apply(&p)).map_err(err)?;
         Ok(Self::from_inner(out))
     }
 
@@ -515,11 +548,17 @@ impl Image {
         quantize: Option<f64>,
     ) -> PyResult<std::path::PathBuf> {
         let c = self::compression(compression, level, tile_rows, scale, smooth, quantize)?;
-        py.detach(|| self.inner.write_fits(&path, c, overwrite))
-            .map_err(|e| match e {
-                refimage::FitsError::Io(io) => PyErr::from(io),
-                other => err(other),
-            })
+        let store = &self.store;
+        py.detach(|| {
+            store.with_generic(
+                |g| g.write_fits(&path, c.clone(), overwrite),
+                |g| g.write_fits(&path, c.clone(), overwrite),
+            )
+        })
+        .map_err(|e| match e {
+            refimage::FitsError::Io(io) => PyErr::from(io),
+            other => err(other),
+        })
     }
 
     /// The FITS file `write_fits` would write, as bytes.
@@ -536,12 +575,19 @@ impl Image {
         quantize: Option<f64>,
     ) -> PyResult<Bound<'py, PyBytes>> {
         let c = self::compression(compression, level, tile_rows, scale, smooth, quantize)?;
-        let bytes = py.detach(|| self.inner.fits_bytes(c)).map_err(err)?;
+        let store = &self.store;
+        let bytes = py
+            .detach(|| store.with_generic(|g| g.fits_bytes(c.clone()), |g| g.fits_bytes(c.clone())))
+            .map_err(err)?;
         Ok(PyBytes::new(py, &bytes))
     }
 
     /// Export the pixels as a C-contiguous, writable buffer.
-    unsafe fn __getbuffer__(slf: Bound<'_, Self>, view: *mut ffi::Py_buffer, flags: c_int) -> PyResult<()> {
+    unsafe fn __getbuffer__(
+        slf: Bound<'_, Self>,
+        view: *mut ffi::Py_buffer,
+        flags: c_int,
+    ) -> PyResult<()> {
         if view.is_null() {
             return Err(PyBufferError::new_err("null Py_buffer"));
         }
@@ -549,26 +595,30 @@ impl Image {
             && flags & ffi::PyBUF_C_CONTIGUOUS != ffi::PyBUF_C_CONTIGUOUS
         {
             let me = slf.borrow();
-            if me.inner.width() > 1 && me.inner.height() > 1 {
-                return Err(PyBufferError::new_err("image pixels are C-contiguous, not Fortran"));
+            if me.store.get().width() > 1 && me.store.get().height() > 1 {
+                return Err(PyBufferError::new_err(
+                    "image pixels are C-contiguous, not Fortran",
+                ));
             }
         }
         let mut me = slf.borrow_mut();
         let (h, w, c) = (
-            me.inner.height(),
-            me.inner.width(),
-            me.inner.channels() as usize,
+            me.store.get().height(),
+            me.store.get().width(),
+            me.store.get().channels() as usize,
         );
         let item = me.item_size();
-        let format: &'static CStr = match me.inner.pixel_type().storage() {
+        let format: &'static CStr = match me.store.get().pixel_type().storage() {
             PixelType::U8 => c"B",
             PixelType::U16 => c"H",
             _ => c"f",
         };
         let len = h * w * c * item;
-        let raw = me.inner.image_mut().as_mut_raw_u8();
+        let raw = me.store.bytes_mut();
         if raw.len() < len {
-            return Err(PyBufferError::new_err("pixel buffer shorter than its shape"));
+            return Err(PyBufferError::new_err(
+                "pixel buffer shorter than its shape",
+            ));
         }
         let buf = raw.as_mut_ptr();
         // shape[0..3], strides[3..6]; freed in __releasebuffer__.
@@ -616,7 +666,9 @@ impl Image {
     unsafe fn __releasebuffer__(&self, view: *mut ffi::Py_buffer) {
         // SAFETY: `internal` is the box `__getbuffer__` leaked for this export.
         unsafe {
-            drop(Box::from_raw((*view).internal.cast::<[ffi::Py_ssize_t; 6]>()));
+            drop(Box::from_raw(
+                (*view).internal.cast::<[ffi::Py_ssize_t; 6]>(),
+            ));
         }
         self.exports.fetch_sub(1, Ordering::AcqRel);
     }

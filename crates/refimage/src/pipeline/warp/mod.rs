@@ -169,7 +169,13 @@ struct Taps {
 
 /// Footprint for coordinate `coord` along an axis of length `len` (of the possibly padded
 /// sample plane), or `None` when the point is outside the image and takes the fill value.
-fn taps(coord: f64, len: usize, order: InterpOrder, mode: BoundaryMode, pad: usize) -> Option<Taps> {
+fn taps(
+    coord: f64,
+    len: usize,
+    order: InterpOrder,
+    mode: BoundaryMode,
+    pad: usize,
+) -> Option<Taps> {
     // NaN takes the fill value as in SciPy; so does +-inf (a homography's `w == 0`),
     // which SciPy would turn into garbage indices.
     if !coord.is_finite() {
@@ -298,7 +304,14 @@ pub(super) fn geo_warp(
     };
     macro_rules! typed {
         ($t:ty) => {
-            warp_typed::<$t>(cast_slice(src), cast_slice_mut(dst), g, interp, coords, scratch)
+            warp_typed::<$t>(
+                cast_slice(src),
+                cast_slice_mut(dst),
+                g,
+                interp,
+                coords,
+                scratch,
+            )
         };
     }
     match pt {
@@ -446,7 +459,13 @@ mod tests {
     }
 
     /// The same path `warp_typed` takes, but kept in `f64` end to end.
-    fn sample(data: &[f64], ny: usize, nx: usize, coords: &[f64], interp: &Interpolation) -> Vec<f64> {
+    fn sample(
+        data: &[f64],
+        ny: usize,
+        nx: usize,
+        coords: &[f64],
+        interp: &Interpolation,
+    ) -> Vec<f64> {
         let n = coords.len() / 2;
         let (rows, cols) = coords.split_at(n);
         let mut scratch = vec![0.0; scratch_len(interp, nx, ny, 1)];
@@ -462,17 +481,29 @@ mod tests {
             let (plane, line) = scratch.split_at_mut(py * px);
             for y in 0..py {
                 for x in 0..px {
-                    plane[y * px + x] =
-                        data[y.saturating_sub(pad).min(ny - 1) * nx + x.saturating_sub(pad).min(nx - 1)];
+                    plane[y * px + x] = data[y.saturating_sub(pad).min(ny - 1) * nx
+                        + x.saturating_sub(pad).min(nx - 1)];
                 }
             }
             spline::spline_filter(plane, py, px, 1, interp.mode.filter_extension(), line);
             let plane: &[f64] = plane;
             let get = |i: usize| plane[i];
-            eval(&Plane { get: &get, ny: py, nx: px, ch: 1, pad });
+            eval(&Plane {
+                get: &get,
+                ny: py,
+                nx: px,
+                ch: 1,
+                pad,
+            });
         } else {
             let get = |i: usize| data[i];
-            eval(&Plane { get: &get, ny, nx, ch: 1, pad: 0 });
+            eval(&Plane {
+                get: &get,
+                ny,
+                nx,
+                ch: 1,
+                pad: 0,
+            });
         }
         out
     }
@@ -496,13 +527,20 @@ mod tests {
             let expected = &case["expected"];
             for (o, order) in ORDERS {
                 for (name, mode) in MODES {
-                    let got = sample(&data, ny, nx, &coords, &Interpolation::new(order, mode, -7.5));
+                    let got = sample(
+                        &data,
+                        ny,
+                        nx,
+                        &coords,
+                        &Interpolation::new(order, mode, -7.5),
+                    );
                     let key = format!("o{o}_{name}");
                     assert_close(&format!("{key} {ny}x{nx}"), &got, &numbers(&expected[&key]));
                     compared += 1;
                 }
             }
-            let nan_fill = Interpolation::new(InterpOrder::Linear, BoundaryMode::Constant, f64::NAN);
+            let nan_fill =
+                Interpolation::new(InterpOrder::Linear, BoundaryMode::Constant, f64::NAN);
             assert_close(
                 "nan cval",
                 &sample(&data, ny, nx, &coords, &nan_fill),
@@ -539,8 +577,14 @@ mod tests {
     fn orders_and_modes_parse() {
         assert!(InterpOrder::from_u8(2).is_err());
         assert_eq!(InterpOrder::from_u8(3).unwrap(), InterpOrder::Cubic);
-        assert_eq!("edge".parse::<BoundaryMode>().unwrap(), BoundaryMode::Nearest);
-        assert_eq!("symmetric".parse::<BoundaryMode>().unwrap(), BoundaryMode::Reflect);
+        assert_eq!(
+            "edge".parse::<BoundaryMode>().unwrap(),
+            BoundaryMode::Nearest
+        );
+        assert_eq!(
+            "symmetric".parse::<BoundaryMode>().unwrap(),
+            BoundaryMode::Reflect
+        );
         assert!("bogus".parse::<BoundaryMode>().is_err());
     }
 }

@@ -38,3 +38,8 @@ orders 0, 1 and 3 and every scipy boundary mode, on any pixel type and channel c
 
 Images serialize with `to_bytes()` / `Image.from_bytes()` works identically to Rust bincode
 `bincode::serialize(&GenericImageOwned)` and pickle.
+
+A Rust library that produces images, such as a camera driver, can return them from its own
+PyO3 module as `refimage.Image` objects, with no Python API of its own and without copying
+pixels. The [`refimage-pyo3`](https://crates.io/crates/refimage-pyo3) crate provides the
+boundary types.

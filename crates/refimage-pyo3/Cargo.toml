@@ -1,0 +1,30 @@
+[package]
+name = "refimage-pyo3"
+description = "Exchange refimage images and pipelines with the refimage Python package from other PyO3 extension modules"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+documentation = "https://docs.rs/refimage-pyo3"
+readme = "README.md"
+keywords = ["refimage", "pyo3", "python", "numpy", "image"]
+categories = ["multimedia::images", "api-bindings"]
+# The tests (an extension module and pytest) run from the repository, not the package.
+exclude = ["tests/"]
+
+[lib]
+# Its code needs a Python interpreter to run: it is tested through an extension module and
+# pytest (tests/), and a Rust test binary would have no libpython to load.
+test = false
+doctest = false
+
+[dependencies]
+refimage.workspace = true
+bincode.workspace = true
+bytemuck = "1.23"
+numpy.workspace = true
+# No PyO3 features here (`abi3-*`, `extension-module`): they belong to the final extension.
+pyo3.workspace = true
+serde = { version = "1.0", features = ["derive"] }
+serde_json.workspace = true

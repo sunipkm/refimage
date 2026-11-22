@@ -16,10 +16,10 @@ pub use bayer::{BayerRead, ColorFilterArray};
 pub use errcode::BayerError;
 pub use errcode::BayerResult;
 
-use crate::coretraits::Enlargeable;
 use crate::ImageProps;
 use crate::ImageRef;
 use crate::PixelStor;
+use crate::coretraits::Enlargeable;
 
 /// Mutable raster structure.
 pub(crate) struct RasterMut<'a, T: PixelStor> {

@@ -19,12 +19,28 @@
   channel count without per-frame allocation. New `PipelineError` variants:
   `WarpOnBayer`, `BadWarpMatrix`, `CoordinateShape`, `UnknownBoundaryMode`,
   `UnsupportedOrder`.
-- Added `ImageOwned::set_bit_depth`, the in-place form of `with_bit_depth`.
+- Added `GenericImageOwned::into_parts` (metadata and pixels, no copy).
+- `ImageOwned::into_vec` now moves the samples out instead of cloning them.
+- Added `ImageOwned::set_bit_depth` / `ImageRef::set_bit_depth`, the in-place forms of
+  `with_bit_depth`.
+- Releases are published by CI: a `vX.Y.Z` / `vX.Y.Z-preN` tag publishes the crates to
+  crates.io and the Python package to PyPI, after the full CI and every wheel's tests
+  pass. The version comes from the tag. The C header no longer carries
+  `REF_VERSION_STRING` (it would change with every release); use `ref_version()`.
+- New `refimage-pyo3` crate, for libraries that hand out refimage images from their own
+  PyO3 extension module. Its `RiImage`, `RiImageRef` and `RiPipeline` types become the
+  `refimage` package's own `Image` / `Pipeline` objects, so no second Python API is
+  needed. Pixels cross without copying: Rust's buffer moves into numpy and
+  `refimage.Image` adopts it, and a Python image lends its buffer to Rust in place. A
+  versioned exchange protocol is checked on first use. `refimage.Image` can now hold
+  such an adopted buffer.
 - New C API in `crates/refimage-capi`: `refimage.h` (cbindgen-generated) and
   `librefimage_c` (shared, ABI-versioned soname, and static) covering images and
   metadata, every pipeline op (typed functions or JSON), buffer-reusing runners that
   read caller frames in place, bincode, FITS and optimum exposure; with pkg-config
-  and CMake packages and an install script.
+  and CMake packages and an install script. Pointers are annotated
+  `_Nonnull` / `_Nullable` (Clang `_Nonnull` / `_Nullable`) and statuses
+  `_MustUse` (`[[nodiscard]]` / `warn_unused_result` / `_Check_return_`).
 - Fixed: `BoundaryMode` parsed scikit-image's `"symmetric"` as `Mirror`; it is
   `Reflect` (scikit-image maps `symmetric` to scipy's `reflect`).
 
