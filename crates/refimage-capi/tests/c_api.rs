@@ -10,17 +10,77 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 
 fn crate_dir() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// `target/<profile>/deps`, next to this test binary: where `cargo test` writes the
-/// `librefimage_c.{a,so,dylib}` it just built. (The copies in `target/<profile>` are
-/// only refreshed by `cargo build`, so they can be stale.)
-fn lib_dir() -> PathBuf {
-    let exe = std::env::current_exe().expect("test executable path");
-    exe.parent().expect("deps dir").to_path_buf()
+/// Scratch space for what these tests build (executables, snippets, symlinks): Cargo's
+/// per-crate integration-test temporary directory.
+fn work_dir() -> &'static Path {
+    Path::new(env!("CARGO_TARGET_TMPDIR"))
+}
+
+/// The C libraries, as Cargo itself reports them.
+struct Libs {
+    /// `librefimage_c.a`.
+    archive: PathBuf,
+    /// `librefimage_c.so` / `.dylib`.
+    shared: PathBuf,
+}
+
+/// Build `librefimage_c` (fresh: a no-op after `cargo test` built it) and take the paths
+/// of its static and shared libraries from Cargo's artifact messages. Where Cargo keeps
+/// its outputs differs between versions (deps/ vs. the build-dir layout), so it is asked
+/// rather than guessed.
+fn libs() -> &'static Libs {
+    static LIBS: OnceLock<Libs> = OnceLock::new();
+    LIBS.get_or_init(|| {
+        let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+        let out = Command::new(cargo)
+            .args([
+                "build",
+                "-p",
+                "refimage-capi",
+                "--lib",
+                "--message-format=json",
+            ])
+            .current_dir(crate_dir())
+            .output()
+            .expect("run cargo build");
+        assert!(
+            out.status.success(),
+            "cargo build -p refimage-capi failed:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let shared_ext = if cfg!(target_os = "macos") {
+            "dylib"
+        } else {
+            "so"
+        };
+        let (mut archive, mut shared) = (None, None);
+        for line in String::from_utf8_lossy(&out.stdout).lines() {
+            let Ok(msg) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+            if msg["reason"] != "compiler-artifact" || msg["target"]["name"] != "refimage_c" {
+                continue;
+            }
+            for f in msg["filenames"].as_array().into_iter().flatten() {
+                let path = PathBuf::from(f.as_str().unwrap_or_default());
+                match path.extension().and_then(|e| e.to_str()) {
+                    Some("a") => archive = Some(path),
+                    Some(e) if e == shared_ext => shared = Some(path),
+                    _ => {}
+                }
+            }
+        }
+        Libs {
+            archive: archive.expect("cargo reported no librefimage_c.a"),
+            shared: shared.expect("cargo reported no shared librefimage_c"),
+        }
+    })
 }
 
 fn compiler() -> Option<String> {
@@ -88,9 +148,9 @@ fn c_test_program_static() {
         eprintln!("no C compiler; skipping");
         return;
     };
-    let lib = lib_dir().join("librefimage_c.a");
+    let lib = &libs().archive;
     assert!(lib.exists(), "{} was not built", lib.display());
-    let dir = lib_dir();
+    let dir = work_dir();
     let link = [lib.display().to_string()];
 
     let plain = dir.join("capi_test_static");
@@ -124,31 +184,36 @@ fn c_test_program_shared() {
         eprintln!("no C compiler; skipping");
         return;
     };
-    let dir = lib_dir();
-    let exe = dir.join("capi_test_shared");
+    let built = &libs().shared;
+    assert!(built.exists(), "{} was not built", built.display());
+    // A directory holding only the shared library, under the names an install gives it:
+    // the development name the linker finds (`-lrefimage_c`), and the ABI-versioned
+    // soname / install name the loader looks for at run time (see build.rs).
+    let dir = work_dir().join("shared-lib");
+    std::fs::create_dir_all(&dir).expect("create the library directory");
+    let abi = env!("REFIMAGE_SONAME_ABI");
+    let names = if cfg!(target_os = "macos") {
+        [
+            "librefimage_c.dylib".to_string(),
+            format!("librefimage_c.{abi}.dylib"),
+        ]
+    } else {
+        [
+            "librefimage_c.so".to_string(),
+            format!("librefimage_c.so.{abi}"),
+        ]
+    };
+    for name in &names {
+        let link = dir.join(name);
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink(built, &link).expect("symlink the shared library");
+    }
+    let exe = work_dir().join("capi_test_shared");
     let link = [
         format!("-L{}", dir.display()),
         "-lrefimage_c".into(),
         format!("-Wl,-rpath,{}", dir.display()),
     ];
-    // Make sure the linker picks the shared library, not the archive next to it.
-    let shared = if cfg!(target_os = "macos") {
-        "dylib"
-    } else {
-        "so"
-    };
-    let built = dir.join(format!("librefimage_c.{shared}"));
-    assert!(built.exists());
-    // The library's soname / install name carries the ABI version (see build.rs);
-    // provide that name next to cargo's unversioned file, as an install would.
-    let abi = env!("REFIMAGE_SONAME_ABI");
-    let versioned = if cfg!(target_os = "macos") {
-        dir.join(format!("librefimage_c.{abi}.dylib"))
-    } else {
-        dir.join(format!("librefimage_c.so.{abi}"))
-    };
-    let _ = std::fs::remove_file(&versioned);
-    std::os::unix::fs::symlink(&built, &versioned).expect("symlink the versioned library");
     let link: Vec<String> = if cfg!(target_os = "macos") {
         link.to_vec()
     } else {
@@ -162,7 +227,7 @@ fn c_test_program_shared() {
 
 /// Compile `src` (C, or C++ when `cxx`) as an object file with `-Werror`; `true` on success.
 fn compiles(cc: &str, name: &str, src: &str, flags: &[&str]) -> bool {
-    let dir = lib_dir();
+    let dir = work_dir();
     let file = dir.join(name);
     std::fs::write(&file, src).expect("write snippet");
     Command::new(cc)

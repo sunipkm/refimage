@@ -49,10 +49,18 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+      # The test runner must match the wasm-bindgen crate in Cargo.lock exactly (its schema
+      # changes between releases), so install that version, not the latest.
+      - name: wasm-bindgen version in Cargo.lock
+        id: wasm-bindgen
+        run: |
+          version=$(cargo metadata --format-version 1 --locked \
+            | jq -r '[.packages[] | select(.name == "wasm-bindgen") | .version] | first')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Install wasm-bindgen-test-runner
         uses: taiki-e/install-action@v2
         with:
-          tool: wasm-bindgen-cli
+          tool: wasm-bindgen-cli@${{ steps.wasm-bindgen.outputs.version }}
       - name: Build (all feature sets that support wasm)
         run: |
           cargo build -p refimage --target wasm32-unknown-unknown --no-default-features

@@ -2,7 +2,8 @@
 //! cfitsio (via the `fitsio` crate). A second, Python-free reader next to
 //! `tests/fits_astropy.rs`.
 
-#![cfg(not(target_arch = "wasm32"))]
+// Unix only: cfitsio is built from source with autotools (see Cargo.toml).
+#![cfg(all(unix, not(target_arch = "wasm32")))]
 
 use std::time::Duration;
 

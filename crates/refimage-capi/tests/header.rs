@@ -225,7 +225,10 @@ fn header_is_up_to_date() {
         std::fs::write(&path, &generated).expect("write include/refimage.h");
         return;
     }
-    let committed = std::fs::read_to_string(&path).unwrap_or_default();
+    // Line endings aside: a Windows checkout may have converted the file to CRLF.
+    let committed = std::fs::read_to_string(&path)
+        .unwrap_or_default()
+        .replace("\r\n", "\n");
     assert!(
         committed == generated,
         "include/refimage.h is stale; regenerate it with \
