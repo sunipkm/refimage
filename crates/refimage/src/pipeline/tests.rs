@@ -1512,3 +1512,222 @@ fn optimize_keeps_arithmetic_stages_unfused() {
         ]
     );
 }
+
+// --- Warp / map_coordinates ---------------------------------------------------
+
+const IDENTITY: [[f64; 3]; 3] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+
+fn rgb8(w: usize, h: usize) -> Vec<u8> {
+    (0..w * h * 3).map(|i| ((i * 37 + 11) % 256) as u8).collect()
+}
+
+/// A 17-degree rotation about the image centre, plus a small shift.
+fn rotation(w: usize, h: usize) -> [[f64; 3]; 3] {
+    let (s, c) = 17f64.to_radians().sin_cos();
+    let (cx, cy) = ((w as f64 - 1.0) / 2.0, (h as f64 - 1.0) / 2.0);
+    [
+        [c, -s, cx - c * cx + s * cy + 0.3],
+        [s, c, cy - s * cx - c * cy - 0.7],
+        [0.0, 0.0, 1.0],
+    ]
+}
+
+#[test]
+fn warp_identity_returns_the_image_and_a_shift_moves_it() {
+    let (w, h) = (5usize, 4usize);
+    let mut data = rgb8(w, h);
+    let img = DynamicImageRef::from(ImageRef::new(&mut data, w, h, ColorSpace::Rgb).unwrap());
+    let lin = Interpolation::default();
+    let same = Pipeline::new().warp(IDENTITY, w, h, lin).apply(&img).unwrap();
+    assert_eq!(same.as_raw_u8(), img.as_raw_u8());
+
+    // Output (col, row) samples the input one column to the right; the last
+    // column falls off the edge and takes the (saturated) fill value.
+    let shift = [[1.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let fill = Interpolation::new(InterpOrder::Linear, BoundaryMode::Constant, 300.0);
+    let moved = Pipeline::new().warp(shift, w, h, fill).apply(&img).unwrap();
+    let (src, out) = (img.as_raw_u8(), moved.as_raw_u8());
+    for y in 0..h {
+        for c in 0..3 {
+            assert_eq!(out[(y * w + 1) * 3 + c], src[(y * w + 2) * 3 + c]);
+            assert_eq!(out[(y * w + w - 1) * 3 + c], 255, "cval saturates into u8");
+        }
+    }
+}
+
+#[test]
+fn warp_equals_map_coordinates_with_the_same_points() {
+    let (w, h) = (23usize, 17usize);
+    let (ow, oh) = (19usize, 21usize);
+    let inv = rotation(w, h);
+    let mut rows = Vec::new();
+    let mut cols = Vec::new();
+    for y in 0..oh {
+        for x in 0..ow {
+            let (xf, yf) = (x as f64, y as f64);
+            let z = inv[2][0] * xf + inv[2][1] * yf + inv[2][2];
+            cols.push((inv[0][0] * xf + inv[0][1] * yf + inv[0][2]) / z);
+            rows.push((inv[1][0] * xf + inv[1][1] * yf + inv[1][2]) / z);
+        }
+    }
+    let mut data = sample16(w * h);
+    let img = gray16(w, h, &mut data);
+    for order in [InterpOrder::Nearest, InterpOrder::Linear, InterpOrder::Cubic] {
+        for mode in ["constant", "nearest", "mirror", "reflect", "wrap"] {
+            let interp = Interpolation::new(order, mode.parse().unwrap(), 9.0);
+            let a = Pipeline::new().warp(inv, ow, oh, interp).apply(&img).unwrap();
+            let b = Pipeline::new()
+                .map_coordinates(rows.clone(), cols.clone(), ow, oh, interp)
+                .apply(&img)
+                .unwrap();
+            assert_eq!((a.width(), a.height()), (ow, oh));
+            assert_eq!(a.as_raw_u8(), b.as_raw_u8(), "{order:?} {mode}");
+        }
+    }
+}
+
+/// Interleaved channels are filtered and sampled independently: warping RGB
+/// equals warping each plane on its own (exercises the strided prefilter).
+#[test]
+fn warp_rgb_matches_per_channel_gray() {
+    let (w, h) = (31usize, 26usize);
+    let mut data = rgb8(w, h);
+    let inv = rotation(w, h);
+    for mode in [BoundaryMode::Nearest, BoundaryMode::Reflect, BoundaryMode::Constant] {
+        let interp = Interpolation::new(InterpOrder::Cubic, mode, 40.0);
+        let img = DynamicImageRef::from(ImageRef::new(&mut data, w, h, ColorSpace::Rgb).unwrap());
+        let rgb = Pipeline::new().warp(inv, w, h, interp).apply(&img).unwrap();
+        for c in 0..3 {
+            let mut plane: Vec<u8> = data.iter().skip(c).step_by(3).copied().collect();
+            let gray =
+                DynamicImageRef::from(ImageRef::new(&mut plane, w, h, ColorSpace::Gray).unwrap());
+            let one = Pipeline::new().warp(inv, w, h, interp).apply(&gray).unwrap();
+            let want = one.as_raw_u8();
+            let got: Vec<u8> = rgb.as_raw_u8().iter().skip(c).step_by(3).copied().collect();
+            assert_eq!(&got[..], want, "channel {c}, {mode:?}");
+        }
+    }
+}
+
+#[test]
+fn warp_f32_keeps_fractional_values_and_saturates() {
+    let (w, h) = (4usize, 1usize);
+    let mut data = vec![0.0f32, 0.5, 1.0, 1.0];
+    let img = DynamicImageRef::from(ImageRef::new(&mut data, w, h, ColorSpace::Gray).unwrap());
+    // Sample halfway between pixels: (0 + 0.5) / 2, (0.5 + 1) / 2.
+    let out = Pipeline::new()
+        .map_coordinates(
+            vec![0.0, 0.0, 0.0],
+            vec![0.5, 1.5, 9.0],
+            3,
+            1,
+            Interpolation::new(InterpOrder::Linear, BoundaryMode::Constant, 2.0),
+        )
+        .apply(&img)
+        .unwrap();
+    assert_eq!(out.as_slice_f32().unwrap(), &[0.25, 0.75, 1.0]);
+}
+
+#[test]
+fn warp_tiles_and_parallelises_identically() {
+    let (w, h) = (96usize, 80usize);
+    let pat = BayerPattern::Grbg;
+    let spec = ImageSpec::new(w, h, ColorSpace::Bayer(pat), PixelType::U16);
+    let pipe = Pipeline::new()
+        .debayer(DemosaicMethod::Linear)
+        .warp(
+            rotation(w, h),
+            70,
+            90,
+            Interpolation::new(InterpOrder::Cubic, BoundaryMode::Nearest, 0.0),
+        )
+        .to_luma()
+        .convert(PixelType::U8);
+    let mut data = sample16(w * h);
+    let reference = {
+        let img = bayer_frame(w, h, pat, &mut data);
+        pipe.apply(&img).unwrap()
+    };
+    for strategy in [
+        Strategy::tiled(8),
+        Strategy::tiled_parallel(8),
+        Strategy::tiled_2d(16, 24),
+        Strategy::tiled_2d_parallel(16, 24),
+    ] {
+        let mut runner = pipe.compile(spec.clone(), strategy).unwrap();
+        assert!(runner.is_tiled());
+        assert_eq!(runner.tiled_pass_count(), 2, "tiles on both sides of the warp");
+        let img = bayer_frame(w, h, pat, &mut data);
+        let out = runner.run(&img).unwrap();
+        assert_eq!((out.width(), out.height()), (70, 90));
+        assert_eq!(out.as_raw_u8(), reference.as_raw_u8(), "{strategy:?}");
+    }
+}
+
+#[test]
+fn warp_scratch_only_for_the_prefilter() {
+    let spec = ImageSpec::new(40, 30, ColorSpace::Rgb, PixelType::U8);
+    let lin = Pipeline::new()
+        .warp(IDENTITY, 40, 30, Interpolation::default())
+        .compile(spec.clone(), Strategy::Sequential)
+        .unwrap();
+    let cubic = Pipeline::new()
+        .warp(
+            IDENTITY,
+            40,
+            30,
+            Interpolation::new(InterpOrder::Cubic, BoundaryMode::Nearest, 0.0),
+        )
+        .compile(spec, Strategy::Sequential)
+        .unwrap();
+    // Padded (12 each side) 3-channel plane + one line, in f64.
+    let plane = (30 + 24) * (40 + 24) * 3 + (40 + 24);
+    assert_eq!(cubic.scratch_bytes() - lin.scratch_bytes(), plane * 8);
+}
+
+#[test]
+fn warp_validation_errors() {
+    let bayer = ImageSpec::new(8, 8, ColorSpace::Bayer(BayerPattern::Rggb), PixelType::U16);
+    let gray = ImageSpec::new(8, 8, ColorSpace::Gray, PixelType::U16);
+    let lin = Interpolation::default();
+    let err = |p: Pipeline, s: &ImageSpec| p.compile(s.clone(), Strategy::Sequential).unwrap_err();
+    assert!(matches!(
+        err(Pipeline::new().warp(IDENTITY, 8, 8, lin), &bayer),
+        PipelineError::WarpOnBayer
+    ));
+    let mut nan = IDENTITY;
+    nan[1][2] = f64::NAN;
+    assert!(matches!(
+        err(Pipeline::new().warp(nan, 8, 8, lin), &gray),
+        PipelineError::BadWarpMatrix
+    ));
+    assert!(matches!(
+        err(Pipeline::new().warp(IDENTITY, 0, 8, lin), &gray),
+        PipelineError::BadDimensions
+    ));
+    assert!(matches!(
+        err(
+            Pipeline::new().map_coordinates(vec![0.0; 6], vec![0.0; 5], 3, 2, lin),
+            &gray
+        ),
+        PipelineError::CoordinateShape {
+            expected: 6,
+            rows: 6,
+            cols: 5
+        }
+    ));
+}
+
+#[test]
+fn warp_pipeline_round_trips_through_json() {
+    let p = Pipeline::new()
+        .warp(
+            rotation(10, 10),
+            12,
+            9,
+            Interpolation::new(InterpOrder::Cubic, BoundaryMode::Wrap, 3.5).with_prefilter(false),
+        )
+        .map_coordinates(vec![0.5, 1.5], vec![2.0, 3.0], 2, 1, Interpolation::default());
+    let json = serde_json::to_string(&p).unwrap();
+    assert_eq!(serde_json::from_str::<Pipeline>(&json).unwrap(), p);
+}

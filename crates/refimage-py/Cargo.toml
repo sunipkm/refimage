@@ -1,0 +1,28 @@
+[package]
+name = "refimage-py"
+description = "Python bindings (refimage._native) for refimage"
+version = "1.0.0-pre6"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lib]
+name = "_native"
+crate-type = ["cdylib", "rlib"]
+test = false
+doctest = false
+
+[features]
+extension-module = ["pyo3/extension-module"]
+
+[dependencies]
+refimage = { path = "../refimage" }
+bincode.workspace = true
+bytemuck = "1.23"
+# `Image()` timestamps default to `Utc::now()`, which needs the `clock` feature.
+chrono = { version = "0.4.31", default-features = false, features = ["clock"] }
+numpy.workspace = true
+pyo3.workspace = true
+serde_json.workspace = true

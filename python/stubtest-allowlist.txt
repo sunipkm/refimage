@@ -1,0 +1,10 @@
+# Type aliases and __all__ exist only in the stub, for annotations.
+refimage._native.BoundaryModeName
+refimage._native.ColorSpace
+refimage._native.ExposureLike
+refimage._native.FitsCompressionName
+refimage._native.MetaValue
+refimage._native.PixelArray
+refimage._native.PixelTypeName
+refimage._native.SplineOrder
+refimage._native.__all__

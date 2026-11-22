@@ -120,6 +120,10 @@ assert_eq!((luma.width(), luma.height()), (48, 48));
 ```
 `Strategy::Sequential` uses one ping-pong buffer pair; `Strategy::tiled`/`tiled_parallel`/`tiled_2d`/`tiled_2d_parallel` cut the frame into cache-sized tiles. A serial-tiled `Runner` does **zero** heap allocation per frame once compiled. A geometric op (rotation, mid-chain crop, `resize_to_fit`) splits the chain into segments that each tile independently — `debayer luma → resize → scale convert` tiles on both sides of the resize (`Runner::tiled_pass_count`). See the module docs for the details and for `Runner::recompile` / the `grow` feature.
 
+`Pipeline::warp` resamples through a 3x3 homography (affine maps, arbitrary-angle rotations, shears, exact-size rescales, perspective) and `Pipeline::map_coordinates` samples at arbitrary per-pixel coordinates, with the results of `skimage.transform.warp` and `scipy.ndimage.map_coordinates`: spline orders 0, 1 and 3 (with SciPy's B-spline prefilter) and every SciPy boundary mode, on any pixel type and channel count. The cubic prefilter's coefficient plane is compile-time scratch, so a warp keeps the serial-tiled zero-allocation guarantee.
+
+Python bindings (`refimage.Image`, `refimage.Pipeline`, ...) live in the [`python/`](https://github.com/sunipkm/refimage/tree/master/python) directory of the repository.
+
 # FITS
 `GenericImageRef` / `GenericImageOwned` can be stored to FITS via the `FitsWrite` trait.
 It writes uncompressed images (`FitsCompression::NONE`) and the tile-compression convention through the builder structs `Gzip`, `Rice` and `Hcompress` (anything `Into<FitsCompression>`).

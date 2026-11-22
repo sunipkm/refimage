@@ -53,6 +53,28 @@ pub enum PipelineError {
     /// [`Op::ResizeToFit`] was applied to a Bayer image.
     #[error("resize is not valid on a Bayer image; debayer first")]
     ResizeOnBayer,
+    /// [`Op::Warp`] / [`Op::MapCoordinates`] was applied to a Bayer image.
+    #[error("warp is not valid on a Bayer image; debayer first")]
+    WarpOnBayer,
+    /// [`Op::Warp`]'s inverse matrix holds a value that is not finite.
+    #[error("the warp's inverse map holds a value that is not finite")]
+    BadWarpMatrix,
+    /// [`Op::MapCoordinates`]' coordinate arrays do not hold one entry per output pixel.
+    #[error("map_coordinates needs {expected} row and column coordinates, got {rows} and {cols}")]
+    CoordinateShape {
+        /// `width * height` of the output.
+        expected: usize,
+        /// Row coordinates supplied.
+        rows: usize,
+        /// Column coordinates supplied.
+        cols: usize,
+    },
+    /// A boundary-mode name [`BoundaryMode`](super::BoundaryMode) does not know.
+    #[error("unknown boundary mode {0:?}")]
+    UnknownBoundaryMode(String),
+    /// A spline order other than 0, 1 or 3.
+    #[error("interpolation order {0} is not supported (use 0, 1 or 3)")]
+    UnsupportedOrder(u8),
     /// [`Op::Debayer`] was applied to a non-Bayer color space.
     #[error("debayer requires a Bayer color space")]
     NotBayer,

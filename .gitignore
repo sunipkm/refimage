@@ -6,4 +6,11 @@ serde-interop/**
 .cl*
 
 # ...but keep the CC0 test photo bundled for the `resize_filters` example.
-!/examples/assets/chelsea.png
+!/crates/refimage/examples/assets/chelsea.png
+
+# Python bindings
+__pycache__/
+*.so
+*.pyd
+/python/.venv/
+/python/dist/

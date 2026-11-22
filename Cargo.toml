@@ -1,102 +1,16 @@
-[package]
-name = "refimage"
-version = "1.0.0-pre6"
+[workspace]
+resolver = "3"
+members = ["crates/refimage", "crates/refimage-py"]
+default-members = ["crates/refimage"]
+
+[workspace.package]
 edition = "2024"
-resolver = "2"
-
 license = "MIT OR Apache-2.0"
-description = "Imaging library. Provides image storage using CoW-like structures to avoid re-allocation in image-aquisition scenarios. Supports rich metadata and serdes."
-authors = ["Sunip K. Mukherjee <sunipkmukherjee@gmail.com>"]
-readme = "README.MD"
-
-# crates.io metadata
-documentation = "https://docs.rs/refimage"
 repository = "https://github.com/sunipkm/refimage"
-homepage = "https://github.com/sunipkm/refimage"
-categories = ["multimedia::images", "multimedia::encoding"]
+authors = ["Sunip K. Mukherjee <sunipkmukherjee@gmail.com>"]
 
-include = [
-    "/LICENSE-APACHE",
-    "/LICENSE-MIT",
-    "/README.MD",
-    "/CHANGELOG.MD",
-    "/src/",
-    "/examples/",
-    "/benches/",
-]
-
-[dependencies]
-# Required.
-bytemuck = "1.23"
-chrono = { version = "0.4.31", default-features = false, features = ["alloc", "serde"] }
-crc32fast = "1.5"
-indexmap = { version = "2", features = ["serde"] }
-miniz_oxide = "0.8"
-num-traits = "0.2.19"
-paste = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-thiserror = "2.0"
-
-# Optional
-image = { version = "0.25", optional = true, default-features = false }
-rayon = { version = "1.10", optional = true }
-
-[dev-dependencies]
+[workspace.dependencies]
 bincode = "1.3"
-serde-generate = "0.34"
-serde_json = "1.0"
-serde-reflection = "0.6"
-image = { version = "0.25", default-features = false, features = ["png"] }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-# Unusable in WASM32 environment
-chrono = { version = "0.4.31", features = ["clock"] } # OS timezone deps
-fitsio = "0.21" # C library link
-image = { version = "0.25", default-features = false } # PNG codec for examples/tests
-rand = "0.10" # getrandom
-
-# `tests/wasm.rs`:
-#   cargo test --target wasm32-unknown-unknown --no-default-features --tests
-[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
-wasm-bindgen-test = "0.3"
-
-[features]
-default = ["rayon", "grow"]
-full = ["default", "image", "grow"]
-
-# Parallel debayer / luminance / pixel-scale kernels in the pipeline.
-rayon = ["dep:rayon"]
-# `TryFrom` conversions to and from `image::DynamicImage`.
-image = ["dep:image"]
-# Let a compiled pipeline `Runner` reallocate its buffers when `run` is handed a
-# frame whose shape differs from the one it was compiled for. Off by default so
-# acquisition loops keep a hard no-allocation guarantee at steady state.
-grow = []
-
-[package.metadata.docs.rs]
-# document all features
-all-features = true
-# defines the configuration attribute `docsrs`
-rustdoc-args = ["--cfg", "docsrs"]
-
-[[bench]]
-path = "benches/cast_u8.rs"
-name = "cast_u8"
-
-[[example]]
-name = "test_debayer"
-path = "examples/test_debayer.rs"
-
-[[example]]
-name = "test_flow"
-path = "examples/test_flow.rs"
-required-features = ["image"]
-
-[[example]]
-name = "pipeline"
-path = "examples/pipeline.rs"
-
-[[example]]
-name = "resize_filters"
-path = "examples/resize_filters.rs"
-required-features = ["image"]
+numpy = "0.29"
+pyo3 = { version = "0.29", features = ["abi3-py312", "chrono"] }
+serde_json = { version = "1.0", features = ["float_roundtrip"] }

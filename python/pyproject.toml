@@ -1,0 +1,34 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "refimage"
+description = "Images with metadata, allocation-aware processing pipelines (debayer, resize, warp, ...) and FITS output, in Rust"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT OR Apache-2.0" }
+authors = [{ name = "Sunip K. Mukherjee" }]
+dependencies = ["numpy>=1.26"]
+# The version is read from crates/refimage-py/Cargo.toml.
+dynamic = ["version"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+
+[project.optional-dependencies]
+test = ["pytest", "scipy", "scikit-image", "astropy", "mypy"]
+
+[tool.maturin]
+manifest-path = "../crates/refimage-py/Cargo.toml"
+module-name = "refimage._native"
+python-source = "."
+features = ["extension-module"]
+profile = "release"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

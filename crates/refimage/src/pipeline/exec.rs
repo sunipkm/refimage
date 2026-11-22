@@ -11,12 +11,15 @@ use super::kernels::{
 };
 use super::plan::{Step, StepKind};
 use super::resample::geo_resize;
+use super::warp::{Coords, geo_warp};
 use super::spec::pixel_size;
 use super::{ImageSpec, PipelineError};
 
 /// Execute every step over an image whose input (shape `w * h`) already sits in
 /// `buf_a`. Geometric steps update the running dimensions. Returns `true` if the
-/// result ended up in `buf_a`, `false` if in `buf_b`.
+/// result ended up in `buf_a`, `false` if in `buf_b`. `warp_scratch` backs any
+/// [`StepKind::Warp`] (empty when the chain has none).
+#[allow(clippy::too_many_arguments)]
 pub(super) fn run_chain(
     steps: &[Step],
     coeffs: &[Box<[f64]>],
@@ -25,6 +28,7 @@ pub(super) fn run_chain(
     w: usize,
     h: usize,
     mut demosaic: Demosaic<'_>,
+    warp_scratch: &mut [f64],
 ) -> Result<bool, PipelineError> {
     let mut cur_a = true;
     let (mut cw, mut ch) = (w, h);
@@ -101,6 +105,39 @@ pub(super) fn run_chain(
                     ow,
                     oh,
                     filter,
+                )?;
+                cw = ow;
+                ch = oh;
+                cur_a = !cur_a;
+            }
+            StepKind::Warp {
+                w: ow,
+                h: oh,
+                interp,
+                map,
+                parallel,
+            } => {
+                let cf = &coeffs[step.coeff_idx];
+                let coords = if map {
+                    let (rows, cols) = cf.split_at(ow * oh);
+                    Coords::Map { rows, cols }
+                } else {
+                    Coords::Homography(cf)
+                };
+                let (src, dst) = pick(&mut *buf_a, &mut *buf_b, cur_a);
+                geo_warp(
+                    src,
+                    dst,
+                    cw,
+                    ch,
+                    step.in_channels as usize,
+                    step.in_pt,
+                    ow,
+                    oh,
+                    &interp,
+                    coords,
+                    &mut *warp_scratch,
+                    parallel,
                 )?;
                 cw = ow;
                 ch = oh;
@@ -234,7 +271,8 @@ pub(super) fn fill_tiled(
             } else {
                 Demosaic::Pooled(&mut *demo)
             };
-            let cur_a = run_chain(steps, coeffs, &mut *sa, &mut *sb, sw, sh, dm)?;
+            // Tiled bodies hold pixel ops only, never a warp.
+            let cur_a = run_chain(steps, coeffs, &mut *sa, &mut *sb, sw, sh, dm, &mut [])?;
             let res: &[f32] = if cur_a { &*sa } else { &*sb };
             let res_u8 = cast_slice::<f32, u8>(res);
             let s_out_row = sw * out_bpp;

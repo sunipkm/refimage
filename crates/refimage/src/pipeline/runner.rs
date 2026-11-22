@@ -42,6 +42,9 @@ pub struct Runner {
     // Tiled: how `steps[prefix_hi..]` is split into whole-frame / retiled passes
     // over `out_buf`/`tail_buf`. Empty for `Sequential` or a bare tiled body.
     pub(super) tail_phases: Vec<TailPhase>,
+    // Warp / map-coordinates: the cubic prefilter's coefficient plane and line
+    // buffer, sized for the hungriest warp step. Empty without a prefiltered warp.
+    pub(super) warp_scratch: Vec<f64>,
 }
 
 impl Runner {
@@ -84,6 +87,7 @@ impl Runner {
             + self.tail_buf.len()
             + self.demosaic_scratch.len())
             * 4
+            + self.warp_scratch.len() * 8
     }
 
     /// Rebuild the plan and buffers for a new input shape. Allocates.
@@ -134,6 +138,7 @@ impl Runner {
                     w,
                     h,
                     Demosaic::Alloc,
+                    &mut self.warp_scratch,
                 )?;
                 let buf = current(&mut self.buf_a, &mut self.buf_b, cur_a);
                 view(buf, &self.out_spec)
@@ -160,6 +165,7 @@ impl Runner {
                     ref mut buf_b,
                     ref mut demosaic_scratch,
                     ref tail_phases,
+                    ref mut warp_scratch,
                     ..
                 } = *self;
 
@@ -211,6 +217,7 @@ impl Runner {
                                 s.width,
                                 s.height,
                                 Demosaic::Alloc,
+                                warp_scratch,
                             )?;
                             if !ended_in_src {
                                 out_holds = !out_holds;

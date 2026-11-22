@@ -3,7 +3,7 @@
 
 use crate::{BayerPattern, ColorSpace, DemosaicMethod, PixelType};
 
-use super::{ImageSpec, Op, PipelineError, ResizeFilter, ScaleFactor, Strategy};
+use super::{ImageSpec, Interpolation, Op, PipelineError, ResizeFilter, ScaleFactor, Strategy};
 
 /// The per-step execution plan plus every intermediate shape.
 pub(super) struct Plan {
@@ -107,6 +107,30 @@ impl Plan {
                         w: next.width,
                         h: next.height,
                         filter: *filter,
+                    }
+                }
+                Op::Warp { inverse, interp, .. } => {
+                    step.coeff_idx = coeffs.len();
+                    coeffs.push(inverse.iter().flatten().copied().collect());
+                    step.kind = StepKind::Warp {
+                        w: next.width,
+                        h: next.height,
+                        interp: *interp,
+                        map: false,
+                        parallel: true,
+                    }
+                }
+                Op::MapCoordinates {
+                    rows, cols, interp, ..
+                } => {
+                    step.coeff_idx = coeffs.len();
+                    coeffs.push(rows.iter().chain(cols).copied().collect());
+                    step.kind = StepKind::Warp {
+                        w: next.width,
+                        h: next.height,
+                        interp: *interp,
+                        map: true,
+                        parallel: true,
                     }
                 }
                 Op::Nop => {
@@ -349,6 +373,7 @@ impl Step {
                 | StepKind::Flip { .. }
                 | StepKind::Rot90 { .. }
                 | StepKind::Resize { .. }
+                | StepKind::Warp { .. }
         )
     }
 }
@@ -393,6 +418,17 @@ pub(super) enum StepKind {
         h: usize,
         filter: ResizeFilter,
     },
+    /// Interpolate the current image at a homography's (`map == false`, the 9
+    /// matrix entries in `coeffs[coeff_idx]`) or explicit (`map == true`, all rows
+    /// then all cols) coordinates into a `w` x `h` output. `parallel` fans output
+    /// rows over rayon; `compile` clears it for a serial-tiled strategy.
+    Warp {
+        w: usize,
+        h: usize,
+        interp: Interpolation,
+        map: bool,
+        parallel: bool,
+    },
     /// Not an operation
     Nop,
 }
@@ -409,6 +445,7 @@ impl StepKind {
                 | StepKind::Flip { .. }
                 | StepKind::Rot90 { .. }
                 | StepKind::Resize { .. }
+                | StepKind::Warp { .. }
         )
     }
 }

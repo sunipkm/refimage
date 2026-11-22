@@ -1,6 +1,7 @@
 //! Reusable, allocation-aware processing pipelines for pixel
 //! conversion in this crate (debayer, luminance, pixel-type conversion, affine
-//! pixel scaling, crop, ROI, flips, 90° rotations, aspect-preserving resize).
+//! pixel scaling, crop, ROI, flips, 90° rotations, aspect-preserving resize,
+//! homography warp and `map_coordinates` resampling).
 //!
 //! A [`Pipeline`] is a declarative, cloneable, serializable list of [`Op`]s.
 //! [`Pipeline::compile`] pairs it with a concrete [`ImageSpec`], validates the
@@ -63,7 +64,11 @@
 //! tile-scratch buffers are sized independently by a liveness walk over the
 //! chain, so a `raw → debayer → luma → u8` pipeline does not pay for the fat RGB
 //! intermediate twice. Luma, scale, and pixel-type conversion all rewrite their
-//! buffer in place; only debayer swaps.
+//! buffer in place; only debayer swaps. [`Op::Warp`] / [`Op::MapCoordinates`]
+//! keep the cubic prefilter's `f64` coefficient plane in compile-time scratch and,
+//! under a serial-tiled strategy, evaluate their rows serially, so they keep the
+//! zero-allocation guarantee; under any other strategy their rows fan out over the
+//! `rayon` pool.
 //!
 //! # Adapting to a new frame shape
 //! By default [`Runner::run`] rejects a frame whose shape differs from the
@@ -85,10 +90,15 @@
 //!   → resize → scale convert` tiles on *both* sides of the resize.
 //!   [`Runner::tiled_pass_count`] reports how many such passes a plan has.
 //!
-//! # Limitations
-//! `Op` covers debayer / luminance / affine pixel scale / pixel-type conversion
-//! / crop / ROI / flip / 90° rotation / aspect-preserving resize. It does not allow
-//! arbitrary-angle rotation and does not support exact-size (aspect-changing) resampling.
+//! # Warping
+//! [`Op::Warp`] resamples through a 3x3 homography — affine maps, arbitrary-angle
+//! rotations, shears, exact-size (aspect-changing) rescales and perspective — and
+//! [`Op::MapCoordinates`] samples at an explicit coordinate per output pixel. Both
+//! reproduce `skimage.transform.warp` / `scipy.ndimage.map_coordinates`: spline
+//! orders 0, 1 and 3 ([`InterpOrder`], cubic with SciPy's B-spline prefilter) and
+//! every SciPy [`BoundaryMode`], configured by an [`Interpolation`]. Samples are
+//! interpolated in `f64`, then rounded (integer types) and saturated into the pixel
+//! type. They run as whole-frame geometric passes and are not valid on Bayer data.
 //!
 //! # Source layout
 //! - `spec` — [`ImageSpec`], the static shape/type description.
@@ -101,6 +111,9 @@
 //! - `plan` — lowering to steps, the buffer-liveness walk, and the tiling math.
 //! - `runner` — [`Runner`]: the compiled pipeline plus its scratch.
 //! - `exec` — `run_chain` / `fill_tiled`, the actual per-frame work.
+//! - `warp` — [`Interpolation`] / [`InterpOrder`] / [`BoundaryMode`] and the spline
+//!   interpolation kernels behind [`Op::Warp`] / [`Op::MapCoordinates`] (ported
+//!   from the `imwarp` crate).
 #[allow(unused_imports)]
 use crate::{DynamicImageOwned, DynamicImageRef, GenericImageOwned, GenericImageRef};
 
@@ -117,6 +130,7 @@ mod resample;
 mod runner;
 mod spec;
 mod strategy;
+mod warp;
 
 pub use apply::{ApplyInput, Frame};
 pub use builder::Pipeline;
@@ -126,6 +140,7 @@ pub use resample::ResizeFilter;
 pub use runner::Runner;
 pub use spec::ImageSpec;
 pub use strategy::Strategy;
+pub use warp::{BoundaryMode, InterpOrder, Interpolation};
 
 #[cfg(test)]
 mod tests;

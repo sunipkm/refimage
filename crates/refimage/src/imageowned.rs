@@ -79,13 +79,20 @@ impl<T: PixelStor> ImageOwned<T> {
     /// Tag the image with its meaningful bit depth (`10` / `12` / `14`).
     /// See [`crate::ImageRef::with_bit_depth`].
     pub fn with_bit_depth(mut self, bits: impl Into<Option<u8>>) -> Self {
+        self.set_bit_depth(bits);
+        self
+    }
+
+    /// In-place [`with_bit_depth`](Self::with_bit_depth): re-tag the meaningful bit
+    /// depth without touching (or reallocating) the samples. Anything other than
+    /// `10` / `12` / `14` on a `u16` image clears the tag.
+    pub fn set_bit_depth(&mut self, bits: impl Into<Option<u8>>) {
         self.bit_depth = match bits.into() {
             Some(b @ (10 | 12 | 14)) if T::PIXEL_TYPE == PixelType::U16 => {
                 core::num::NonZeroU8::new(b)
             }
             _ => None,
         };
-        self
     }
 
     /// Create a new [`ImageOwned`] from a slice of data.

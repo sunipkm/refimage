@@ -2,6 +2,25 @@
 
 ## Changes
 
+### Unreleased
+
+- The repository is now a Cargo workspace: the crate lives in `crates/refimage`,
+  and `crates/refimage-py` + `python/` hold the new Python bindings (`refimage`
+  on PyPI, built with maturin): `refimage.Image` (a `GenericImageOwned` with a
+  zero-copy numpy buffer export), `refimage.Pipeline` / `Runner` (every `Op`,
+  with `Runner.run(frame, out=image)` reusing the output buffer), FITS output and
+  `OptimumExposure`.
+- Added `Op::Warp` (3x3 homography, `skimage.transform.warp` convention) and
+  `Op::MapCoordinates` (`scipy.ndimage.map_coordinates`), with
+  `Pipeline::warp` / `Pipeline::map_coordinates` and the new
+  `pipeline::{Interpolation, InterpOrder, BoundaryMode}`. The interpolation is
+  ported from `imwarp` (spline orders 0 / 1 / 3, SciPy's cubic prefilter and
+  boundary modes, verified against SciPy to 1e-11) and runs on every pixel type and
+  channel count without per-frame allocation. New `PipelineError` variants:
+  `WarpOnBayer`, `BadWarpMatrix`, `CoordinateShape`, `UnknownBoundaryMode`,
+  `UnsupportedOrder`.
+- Added `ImageOwned::set_bit_depth`, the in-place form of `with_bit_depth`.
+
 ### 1.0.0-pre6 (2026-09-03)
 
 - **Breaking:** `PixelType` now has only the six variants the crate can actually

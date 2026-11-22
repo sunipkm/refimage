@@ -7,7 +7,7 @@ use crate::{BayerPattern, BayerShift, ColorSpace, DemosaicMethod, PixelType};
 
 use super::resample::resize_dims;
 use super::spec::pixel_size;
-use super::{ImageSpec, PipelineError, ResizeFilter};
+use super::{ImageSpec, Interpolation, PipelineError, ResizeFilter};
 
 /// The factor for [`Op::ScalePixels`] — a plain per-pixel multiply, no offset.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -106,6 +106,43 @@ pub enum Op {
         max_height: usize,
         /// Resampling filter.
         filter: ResizeFilter,
+    },
+    /// Warp with a homography, as `skimage.transform.warp` does with a 3x3 matrix,
+    /// into a `width * height` output. `inverse` maps output to input in
+    /// scikit-image's convention: it takes `(column, row, 1)` of an output pixel to
+    /// `(column, row, w)` in the input, which is divided by `w`. Affine transforms,
+    /// arbitrary-angle rotations, shears and exact-size rescales are all special
+    /// cases. Interpolated per channel in `f64` (SciPy's spline orders and boundary
+    /// modes, see [`Interpolation`]) and saturated back into the pixel type. Not
+    /// valid on a Bayer image ([`PipelineError::WarpOnBayer`]) — debayer first.
+    /// Runs as one whole-frame pass between tiled segments; the cubic prefilter's
+    /// coefficient plane is compile-time scratch, so it does not allocate per frame.
+    Warp {
+        /// Row-major 3x3 homography from output `(col, row, 1)` to input.
+        inverse: [[f64; 3]; 3],
+        /// Output width.
+        width: usize,
+        /// Output height.
+        height: usize,
+        /// Interpolation order, boundary mode and fill value.
+        interp: Interpolation,
+    },
+    /// Sample the image at arbitrary fractional positions, as
+    /// `scipy.ndimage.map_coordinates` does: output pixel `i` (row-major over
+    /// `width * height`) is the input interpolated at `(rows[i], cols[i])`, pixel
+    /// indices with the centre of the first pixel at `0.0`. Same interpolation,
+    /// saturation and Bayer rules as [`Op::Warp`].
+    MapCoordinates {
+        /// Input row of each output pixel; `width * height` entries.
+        rows: Vec<f64>,
+        /// Input column of each output pixel; `width * height` entries.
+        cols: Vec<f64>,
+        /// Output width.
+        width: usize,
+        /// Output height.
+        height: usize,
+        /// Interpolation order, boundary mode and fill value.
+        interp: Interpolation,
     },
     /// Not an operation
     Nop,
@@ -244,6 +281,34 @@ impl Op {
                     ..input.clone()
                 })
             }
+            Op::Warp {
+                inverse,
+                width,
+                height,
+                ..
+            } => {
+                if inverse.iter().flatten().any(|v| !v.is_finite()) {
+                    return Err(PipelineError::BadWarpMatrix);
+                }
+                warp_output(input, *width, *height)
+            }
+            Op::MapCoordinates {
+                rows,
+                cols,
+                width,
+                height,
+                ..
+            } => {
+                let expected = width * height;
+                if rows.len() != expected || cols.len() != expected {
+                    return Err(PipelineError::CoordinateShape {
+                        expected,
+                        rows: rows.len(),
+                        cols: cols.len(),
+                    });
+                }
+                warp_output(input, *width, *height)
+            }
             Op::Nop => Ok(input.clone()),
         }
     }
@@ -269,6 +334,8 @@ impl Op {
             | Op::Rotate180
             | Op::Rotate270
             | Op::ResizeToFit { .. }
+            | Op::Warp { .. }
+            | Op::MapCoordinates { .. }
             | Op::Nop => 0,
         }
     }
@@ -295,6 +362,21 @@ impl Op {
             _ => None,
         }
     }
+}
+
+fn warp_output(input: &ImageSpec, width: usize, height: usize) -> Result<ImageSpec, PipelineError> {
+    if width == 0 || height == 0 || width > 65535 || height > 65535 {
+        return Err(PipelineError::BadDimensions);
+    }
+    if matches!(input.cspace, ColorSpace::Bayer(_)) {
+        return Err(PipelineError::WarpOnBayer);
+    }
+    pixel_size(input.pixel_type)?;
+    Ok(ImageSpec {
+        width,
+        height,
+        ..input.clone()
+    })
 }
 
 fn luma_output(input: &ImageSpec, ncoeffs: usize) -> Result<ImageSpec, PipelineError> {

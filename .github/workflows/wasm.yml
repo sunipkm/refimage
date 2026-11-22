@@ -23,8 +23,8 @@ jobs:
           tool: wasm-bindgen-cli
       - name: Build (all feature sets that support wasm)
         run: |
-          cargo build --target wasm32-unknown-unknown --no-default-features
-          cargo build --target wasm32-unknown-unknown
-          cargo build --target wasm32-unknown-unknown --no-default-features --features image,grow
+          cargo build -p refimage --target wasm32-unknown-unknown --no-default-features
+          cargo build -p refimage --target wasm32-unknown-unknown
+          cargo build -p refimage --target wasm32-unknown-unknown --no-default-features --features image,grow
       - name: Test
-        run: cargo test --target wasm32-unknown-unknown --no-default-features --lib --tests
+        run: cargo test -p refimage --target wasm32-unknown-unknown --no-default-features --lib --tests

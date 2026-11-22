@@ -1,0 +1,33 @@
+name: python
+
+on:
+  push:
+    branches: [master, development]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build and install the bindings
+        working-directory: python
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install maturin
+          .venv/bin/maturin build --release --out dist
+          .venv/bin/pip install "$(ls dist/*.whl)[test]"
+      - name: Test
+        working-directory: python
+        run: .venv/bin/python -m pytest -q
+      - name: Check the type stub against the compiled module
+        working-directory: python
+        run: .venv/bin/python -m mypy.stubtest refimage._native --allowlist stubtest-allowlist.txt

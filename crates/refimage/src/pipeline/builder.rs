@@ -6,8 +6,11 @@ use serde::{Deserialize, Serialize};
 use crate::demosaic::demosaic_serial_scratch_len;
 use crate::{DemosaicMethod, PixelType};
 
-use super::plan::{build_tail_phases, f32_cap, resolve_exec, Exec, Plan, TailPhase};
-use super::{ApplyInput, ImageSpec, Op, PipelineError, ResizeFilter, Runner, ScaleFactor, Strategy};
+use super::plan::{build_tail_phases, f32_cap, resolve_exec, Exec, Plan, StepKind, TailPhase};
+use super::{
+    ApplyInput, ImageSpec, Interpolation, Op, PipelineError, ResizeFilter, Runner, ScaleFactor,
+    Strategy,
+};
 
 /// A declarative, reusable list of [`Op`]s. Cheap to clone; serializable, so a
 /// processing recipe can live in a config file or image header.
@@ -134,6 +137,65 @@ impl Pipeline {
         self
     }
 
+    /// Append [`Op::Warp`]: resample into a `width` x `height` output through the
+    /// 3x3 homography `inverse` (output `(col, row, 1)` to input, scikit-image's
+    /// convention).
+    ///
+    /// ```
+    /// use refimage::pipeline::{BoundaryMode, InterpOrder, Interpolation, Pipeline};
+    ///
+    /// // Rotate 30 degrees about the centre of a 64 x 64 image, bicubic, edge-extended.
+    /// let (s, c) = 30f64.to_radians().sin_cos();
+    /// let (cx, cy) = (31.5, 31.5);
+    /// let inverse = [
+    ///     [c, -s, cx - c * cx + s * cy],
+    ///     [s, c, cy - s * cx - c * cy],
+    ///     [0.0, 0.0, 1.0],
+    /// ];
+    /// let p = Pipeline::new().warp(
+    ///     inverse,
+    ///     64,
+    ///     64,
+    ///     Interpolation::new(InterpOrder::Cubic, BoundaryMode::Nearest, 0.0),
+    /// );
+    /// # let _ = p;
+    /// ```
+    pub fn warp(
+        mut self,
+        inverse: [[f64; 3]; 3],
+        width: usize,
+        height: usize,
+        interp: Interpolation,
+    ) -> Self {
+        self.ops.push(Op::Warp {
+            inverse,
+            width,
+            height,
+            interp,
+        });
+        self
+    }
+
+    /// Append [`Op::MapCoordinates`]: output pixel `i` of a `width` x `height`
+    /// image samples the input at `(rows[i], cols[i])`.
+    pub fn map_coordinates(
+        mut self,
+        rows: impl Into<Vec<f64>>,
+        cols: impl Into<Vec<f64>>,
+        width: usize,
+        height: usize,
+        interp: Interpolation,
+    ) -> Self {
+        self.ops.push(Op::MapCoordinates {
+            rows: rows.into(),
+            cols: cols.into(),
+            width,
+            height,
+            interp,
+        });
+        self
+    }
+
     /// Append an arbitrary [`Op`].
     pub fn push(mut self, op: Op) -> Self {
         self.ops.push(op);
@@ -200,8 +262,31 @@ impl Pipeline {
     /// Validate the chain against a concrete input and allocate all buffers.
     pub fn compile(&self, input: ImageSpec, strategy: Strategy) -> Result<Runner, PipelineError> {
         input.validate()?;
-        let plan = Plan::build(&self.ops, &input)?;
+        let mut plan = Plan::build(&self.ops, &input)?;
         let n = plan.steps.len();
+
+        // Warp steps: one shared scratch sized for the hungriest, and rows only
+        // fan out over rayon when the strategy is not explicitly serial-tiled (so a
+        // serial-tiled runner keeps its zero-allocation guarantee).
+        let serial = matches!(strategy, Strategy::Tiled { parallel: false, .. });
+        let mut warp_cap = 0usize;
+        for (i, step) in plan.steps.iter_mut().enumerate() {
+            if let StepKind::Warp {
+                ref interp,
+                ref mut parallel,
+                ..
+            } = step.kind
+            {
+                *parallel = !serial;
+                let s = &plan.specs[i];
+                warp_cap = warp_cap.max(super::warp::scratch_len(
+                    interp,
+                    s.width,
+                    s.height,
+                    s.cspace.channels() as usize,
+                ));
+            }
+        }
 
         // Fold a leading run of crops into an input offset, so `crop -> debayer
         // -> ...` still tiles. `plan.specs[prefix_lo]` already carries the
@@ -318,6 +403,7 @@ impl Pipeline {
             tail_buf: vec![0.0; tail_cap],
             demosaic_scratch: vec![0.0; demo_cap],
             tail_phases,
+            warp_scratch: vec![0.0; warp_cap],
         })
     }
 
