@@ -18,8 +18,8 @@ header = """
  * Link against librefimage_c (shared) or librefimage_c.a / refimage_c.lib (static).
  * A static link also needs the system libraries Rust's standard library uses:
  *   Linux:   -lgcc_s -lutil -lrt -lpthread -ldl -lm
- *   macOS:   -framework CoreFoundation -framework Security -lm
- *   Windows: kernel32 advapi32 ntdll userenv ws2_32 dbghelp bcrypt
+ *   macOS:   -framework CoreFoundation -lm
+ *   Windows: kernel32 ntdll userenv ws2_32 dbghelp synchronization
  * (`cargo rustc -p refimage-capi --lib --crate-type staticlib -- --print
  * native-static-libs` prints the exact list for a toolchain.)
  *

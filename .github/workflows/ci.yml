@@ -121,7 +121,7 @@ jobs:
           set INC=/I crates\refimage-capi\include
           set SRC=crates\refimage-capi\tests\c\test_api.c
           cl /nologo /W3 /std:c11 /MD %INC% %SRC% target\release\refimage_c.dll.lib /Fe:capi_shared.exe || exit /b 1
-          cl /nologo /W3 /std:c11 /MD %INC% %SRC% target\release\refimage_c.lib kernel32.lib advapi32.lib ntdll.lib userenv.lib ws2_32.lib dbghelp.lib bcrypt.lib /Fe:capi_static.exe || exit /b 1
+          cl /nologo /W3 /std:c11 /MD %INC% %SRC% target\release\refimage_c.lib kernel32.lib ntdll.lib userenv.lib ws2_32.lib dbghelp.lib synchronization.lib /Fe:capi_static.exe || exit /b 1
           set PATH=%CD%\target\release;%PATH%
           capi_shared.exe %TEMP% || exit /b 1
           capi_static.exe %TEMP% || exit /b 1

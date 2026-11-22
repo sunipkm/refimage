@@ -32,7 +32,7 @@ case "$(uname -s)" in
 Darwin)
     shared=librefimage_c.dylib
     versioned=librefimage_c.$abi.dylib
-    private="-framework CoreFoundation -framework Security -lm"
+    private="-framework CoreFoundation -lm"
     ;;
 *)
     shared=librefimage_c.so

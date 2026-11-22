@@ -96,13 +96,7 @@ fn compiler() -> Option<String> {
 
 fn system_libs() -> &'static [&'static str] {
     if cfg!(target_os = "macos") {
-        &[
-            "-framework",
-            "CoreFoundation",
-            "-framework",
-            "Security",
-            "-lm",
-        ]
+        &["-framework", "CoreFoundation", "-lm"]
     } else {
         &["-lgcc_s", "-lutil", "-lrt", "-lpthread", "-ldl", "-lm"]
     }
