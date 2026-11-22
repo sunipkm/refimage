@@ -20,6 +20,13 @@
   `WarpOnBayer`, `BadWarpMatrix`, `CoordinateShape`, `UnknownBoundaryMode`,
   `UnsupportedOrder`.
 - Added `ImageOwned::set_bit_depth`, the in-place form of `with_bit_depth`.
+- New C API in `crates/refimage-capi`: `refimage.h` (cbindgen-generated) and
+  `librefimage_c` (shared, ABI-versioned soname, and static) covering images and
+  metadata, every pipeline op (typed functions or JSON), buffer-reusing runners that
+  read caller frames in place, bincode, FITS and optimum exposure; with pkg-config
+  and CMake packages and an install script.
+- Fixed: `BoundaryMode` parsed scikit-image's `"symmetric"` as `Mirror`; it is
+  `Reflect` (scikit-image maps `symmetric` to scipy's `reflect`).
 
 ### 1.0.0-pre6 (2026-09-03)
 

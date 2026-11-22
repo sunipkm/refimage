@@ -287,8 +287,8 @@ class Image:
             Spline order: ``0`` nearest, ``1`` bilinear, ``3`` bicubic B-spline.
         mode
             How the input is extended past its edge: ``"constant"`` (fill with
-            ``cval``), ``"nearest"``/``"edge"``, ``"mirror"``/``"symmetric"``,
-            ``"reflect"`` or ``"wrap"`` (scipy's definitions).
+            ``cval``), ``"nearest"``/``"edge"``, ``"mirror"``,
+            ``"reflect"``/``"symmetric"`` or ``"wrap"`` (scipy's definitions).
         cval
             Fill value for ``"constant"``, in raw stored units (``255`` is white on a
             ``uint8`` image, ``1.0`` on a ``float32`` one).

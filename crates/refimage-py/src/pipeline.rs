@@ -188,7 +188,7 @@ impl Pipeline {
     /// output pixel to the input (scikit-image's convention), into an output of
     /// `output_shape` `(rows, cols)`. Spline `order` 0, 1 or 3 (cubic prefilters like
     /// scipy unless `prefilter=False`); `mode` is `"constant"`, `"nearest"`/`"edge"`,
-    /// `"mirror"`/`"symmetric"`, `"reflect"` or `"wrap"`; `cval` fills `"constant"`, in raw
+    /// `"mirror"`, `"reflect"`/`"symmetric"` or `"wrap"`; `cval` fills `"constant"`, in raw
     /// stored units.
     #[pyo3(signature = (inverse_map, output_shape, order = 1, mode = "constant", cval = 0.0, prefilter = true))]
     fn warp(

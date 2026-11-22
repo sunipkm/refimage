@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/refimage", "crates/refimage-py"]
+members = ["crates/refimage", "crates/refimage-capi", "crates/refimage-py"]
 default-members = ["crates/refimage"]
 
 [workspace.package]
@@ -11,6 +11,7 @@ authors = ["Sunip K. Mukherjee <sunipkmukherjee@gmail.com>"]
 
 [workspace.dependencies]
 bincode = "1.3"
+chrono = { version = "0.4.31", default-features = false }
 numpy = "0.29"
 pyo3 = { version = "0.29", features = ["abi3-py312", "chrono"] }
 serde_json = { version = "1.0", features = ["float_roundtrip"] }

@@ -1,0 +1,11 @@
+prefix=@PREFIX@
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: refimage
+Description: C API for refimage: images with metadata, processing pipelines and FITS output
+URL: https://github.com/sunipkm/refimage
+Version: @VERSION@
+Libs: -L${libdir} -lrefimage_c
+Libs.private: @LIBS_PRIVATE@
+Cflags: -I${includedir}

@@ -264,6 +264,20 @@ def test_warp_matches_skimage(order):
     np.testing.assert_allclose(np.asarray(ours), theirs, rtol=0, atol=1e-6)
 
 
+@pytest.mark.parametrize("order", [0, 1])
+def test_skimage_symmetric_mode_is_scipy_reflect(order):
+    # scikit-image's numpy.pad-style names: `symmetric` is scipy's `reflect`.
+    image = np.random.default_rng(11).random((30, 40)).astype(np.float32)
+    inverse = rotation(30, 40, deg=35.0)
+    inverse[:2, 2] += 25.0  # push samples well past the edges
+    ours = np.asarray(Image(image).warp(inverse, order=order, mode="symmetric"))
+    theirs = skimage_transform.warp(
+        image.astype(np.float64), inverse, order=order, mode="symmetric", preserve_range=True
+    )
+    np.testing.assert_allclose(ours, theirs, rtol=0, atol=1e-6)
+    np.testing.assert_array_equal(ours, np.asarray(Image(image).warp(inverse, order=order, mode="reflect")))
+
+
 def test_cubic_warp_is_scipys_b_spline_per_channel():
     # scikit-image's own order-3 kernel is not a B-spline, so SciPy is the reference.
     rgb = np.random.default_rng(3).random((40, 50, 3)).astype(np.float32) * 0.5 + 0.25

@@ -1,0 +1,27 @@
+[package]
+name = "refimage-capi"
+description = "C API (librefimage_c, refimage.h) for refimage"
+version = "1.0.0-pre6"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lib]
+# librefimage_c.{so,dylib,dll} and librefimage_c.a / refimage_c.lib. Not named
+# `refimage` so the artifacts never collide with the Rust crate's in target/.
+name = "refimage_c"
+crate-type = ["cdylib", "staticlib", "rlib"]
+doctest = false
+
+[dependencies]
+refimage = { path = "../refimage" }
+bincode.workspace = true
+bytemuck = "1.23"
+# Default timestamps are `Utc::now()`, which needs the `clock` feature.
+chrono = { workspace = true, features = ["clock"] }
+serde_json.workspace = true
+
+[dev-dependencies]
+cbindgen = { version = "0.29", default-features = false }

@@ -22,7 +22,7 @@ refimage = { path = "../refimage" }
 bincode.workspace = true
 bytemuck = "1.23"
 # `Image()` timestamps default to `Utc::now()`, which needs the `clock` feature.
-chrono = { version = "0.4.31", default-features = false, features = ["clock"] }
+chrono = { workspace = true, features = ["clock"] }
 numpy.workspace = true
 pyo3.workspace = true
 serde_json.workspace = true

@@ -453,7 +453,7 @@ impl Image {
     /// Warp through `inverse_map`, a 3x3 homography taking `(column, row, 1)` of an output
     /// pixel to the input (scikit-image's convention), into `output_shape` `(rows, cols)`
     /// (this image's by default). Spline `order` 0, 1 or 3; `mode` is a scipy boundary
-    /// mode (`"constant"`, `"nearest"`/`"edge"`, `"mirror"`/`"symmetric"`, `"reflect"`,
+    /// mode (`"constant"`, `"nearest"`/`"edge"`, `"mirror"`, `"reflect"`/`"symmetric"`,
     /// `"wrap"`); `cval` fills `"constant"` in raw stored units. Same as
     /// `Pipeline().warp(...)`; returns a new image with this image's metadata.
     #[pyo3(signature = (inverse_map, output_shape = None, order = 1, mode = "constant", cval = 0.0, prefilter = true))]

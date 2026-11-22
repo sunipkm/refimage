@@ -540,7 +540,7 @@ mod tests {
         assert!(InterpOrder::from_u8(2).is_err());
         assert_eq!(InterpOrder::from_u8(3).unwrap(), InterpOrder::Cubic);
         assert_eq!("edge".parse::<BoundaryMode>().unwrap(), BoundaryMode::Nearest);
-        assert_eq!("symmetric".parse::<BoundaryMode>().unwrap(), BoundaryMode::Mirror);
+        assert_eq!("symmetric".parse::<BoundaryMode>().unwrap(), BoundaryMode::Reflect);
         assert!("bogus".parse::<BoundaryMode>().is_err());
     }
 }

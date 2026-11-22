@@ -9,7 +9,8 @@ use crate::pipeline::PipelineError;
 ///
 /// The names follow `scipy.ndimage`; [`FromStr`](std::str::FromStr) also accepts
 /// scikit-image's `edge` (for [`Nearest`](Self::Nearest)) and `symmetric` (for
-/// [`Mirror`](Self::Mirror)).
+/// [`Reflect`](Self::Reflect)). Note that scikit-image's own `reflect` is scipy's
+/// `mirror`; the plain names here always mean scipy's modes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub enum BoundaryMode {
     /// Everything outside the image is the fill value; no interpolation across the edge.
@@ -32,8 +33,8 @@ impl std::str::FromStr for BoundaryMode {
         match s {
             "constant" => Ok(Self::Constant),
             "nearest" | "edge" => Ok(Self::Nearest),
-            "mirror" | "symmetric" => Ok(Self::Mirror),
-            "reflect" => Ok(Self::Reflect),
+            "mirror" => Ok(Self::Mirror),
+            "reflect" | "symmetric" => Ok(Self::Reflect),
             "wrap" => Ok(Self::Wrap),
             other => Err(PipelineError::UnknownBoundaryMode(other.to_owned())),
         }
